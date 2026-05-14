@@ -9,10 +9,18 @@ import (
 )
 
 type Service struct {
-	db *gorm.DB
+	db       *gorm.DB
+	notifier SprintNotifier
+}
+
+type SprintNotifier interface {
+	NotifySprintStarted(projectID, sprintID, sprintName string, startedByUserID string) error
+	NotifySprintCompleted(projectID, sprintID, sprintName string, completedByUserID string) error
 }
 
 func NewService(db *gorm.DB) *Service { return &Service{db: db} }
+
+func (s *Service) SetNotifier(n SprintNotifier) { s.notifier = n }
 
 func (s *Service) Create(projectID, name, goal string) (*Sprint, error) {
 	if name == "" {
@@ -65,6 +73,9 @@ func (s *Service) Start(sprintID string) (*Sprint, error) {
 	if err := s.db.Save(&sp).Error; err != nil {
 		return nil, err
 	}
+	if s.notifier != nil {
+		s.notifier.NotifySprintStarted(sp.ProjectID, sp.ID, sp.Name, "")
+	}
 	return &sp, nil
 }
 
@@ -81,6 +92,9 @@ func (s *Service) Complete(sprintID string, moveOpenToBacklog bool) (*Sprint, er
 	}
 	if moveOpenToBacklog {
 		s.db.Exec("UPDATE issues SET sprint_id = NULL WHERE sprint_id = ? AND status_id NOT IN (SELECT id FROM workflow_statuses WHERE category = 'done')", sprintID)
+	}
+	if s.notifier != nil {
+		s.notifier.NotifySprintCompleted(sp.ProjectID, sp.ID, sp.Name, "")
 	}
 	return &sp, nil
 }

@@ -9,10 +9,18 @@ import (
 )
 
 type Service struct {
-	db *gorm.DB
+	db       *gorm.DB
+	notifier Notifier
+}
+
+type Notifier interface {
+	NotifyIssueAssigned(issueID, assigneeUserID, issueKey, issueTitle string) error
+	NotifyStatusChanged(issueID, newStatus, issueKey, issueTitle, actorUserID string) error
 }
 
 func NewService(db *gorm.DB) *Service { return &Service{db: db} }
+
+func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
 
 func (s *Service) Create(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string) (*Issue, error) {
 	if title == "" {
@@ -77,6 +85,9 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 		}
 		s.logHistory(issue.ID, "", "assignee", old, *assigneeID)
 		updates["assignee_id"] = *assigneeID
+		if *assigneeID != "" && s.notifier != nil {
+			s.notifier.NotifyIssueAssigned(issue.ID, *assigneeID, issue.Key, issue.Title)
+		}
 	}
 	if statusID != nil {
 		old := ""
@@ -85,6 +96,9 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 		}
 		s.logHistory(issue.ID, "", "status", old, *statusID)
 		updates["status_id"] = *statusID
+		if *statusID != old && s.notifier != nil {
+			s.notifier.NotifyStatusChanged(issue.ID, *statusID, issue.Key, issue.Title, "")
+		}
 	}
 	if storyPoints != nil {
 		s.logHistory(issue.ID, "", "story_points", fmt.Sprintf("%d", issue.StoryPoints), fmt.Sprintf("%d", *storyPoints))

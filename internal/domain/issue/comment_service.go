@@ -9,11 +9,22 @@ import (
 )
 
 type CommentService struct {
-	db *gorm.DB
+	db       *gorm.DB
+	notifier CommentNotifier
+}
+
+type CommentNotifier interface {
+	NotifyIssueCommented(issueID, commenterID, issueKey, issueTitle, commentPreview string) error
+	NotifyUsersMentioned(mentionedUserIDs []string, commenterID, issueKey, issueTitle string) error
+	ResolveUserIDsByUsernames(usernames []string) ([]string, error)
 }
 
 func NewCommentService(db *gorm.DB) *CommentService {
 	return &CommentService{db: db}
+}
+
+func (s *CommentService) SetNotifier(n CommentNotifier) {
+	s.notifier = n
 }
 
 func (s *CommentService) AddComment(issueID, authorID, bodyJSON string) (*Comment, error) {
@@ -35,6 +46,24 @@ func (s *CommentService) AddComment(issueID, authorID, bodyJSON string) (*Commen
 		NewValue:  c.ID,
 	}
 	s.db.Create(h)
+	if s.notifier != nil {
+		var result struct {
+			Key       string `gorm:"column:key"`
+			Title     string `gorm:"column:title"`
+			ProjectID string `gorm:"column:project_id"`
+		}
+		s.db.Table("issues").Where("id = ?", issueID).Select("key", "title", "project_id").Scan(&result)
+		issueKey := result.Key
+		issueTitle := result.Title
+		if issueKey != "" {
+			s.notifier.NotifyIssueCommented(issueID, authorID, issueKey, issueTitle, bodyJSON)
+			mentions := ParseMentions(bodyJSON)
+			if len(mentions) > 0 {
+				userIDs, _ := s.notifier.ResolveUserIDsByUsernames(mentions)
+				s.notifier.NotifyUsersMentioned(userIDs, authorID, issueKey, issueTitle)
+			}
+		}
+	}
 	return c, nil
 }
 
