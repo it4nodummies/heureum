@@ -30,6 +30,15 @@ func TestLoadConfigFromEnv(t *testing.T) {
 	if cfg.DB.Driver != "sqlite" {
 		t.Errorf("DB.Driver = %s, want sqlite", cfg.DB.Driver)
 	}
+	if cfg.Env != "development" {
+		t.Errorf("Env = %s, want development", cfg.Env)
+	}
+	if cfg.DB.DSN != "file::memory:?cache=shared" {
+		t.Errorf("DB.DSN = %s, want file::memory:?cache=shared", cfg.DB.DSN)
+	}
+	if cfg.Redis.URL != "redis://localhost:6379/0" {
+		t.Errorf("Redis.URL = %s, want redis://localhost:6379/0", cfg.Redis.URL)
+	}
 }
 
 func TestLoadConfigDefaults(t *testing.T) {
@@ -43,6 +52,15 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 	if cfg.Port != 8080 {
 		t.Errorf("default Port = %d, want 8080", cfg.Port)
+	}
+	if cfg.Env != "development" {
+		t.Errorf("default Env = %s, want development", cfg.Env)
+	}
+	if cfg.DB.Driver != "postgres" {
+		t.Errorf("default DB.Driver = %s, want postgres", cfg.DB.Driver)
+	}
+	if cfg.Redis.URL != "redis://localhost:6379/0" {
+		t.Errorf("default Redis.URL = %s, want redis://localhost:6379/0", cfg.Redis.URL)
 	}
 }
 
