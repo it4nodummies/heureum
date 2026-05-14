@@ -11,6 +11,7 @@ import (
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/dashboard"
+	"github.com/open-jira/open-jira/internal/domain/git"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/notification"
 	"github.com/open-jira/open-jira/internal/domain/project"
@@ -52,6 +53,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	go wsHub.Run()
 	notifSvc := notification.NewService(db)
 	notifSvc.SetBroadcaster(func(msg []byte) { wsHub.Broadcast(msg) })
+	gitConfigSvc := git.NewConfigService(db)
+	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc)
 	notifH := handlers.NewNotificationHandler(notifSvc)
 	issueSvc.SetNotifier(notifSvc)
 	commentSvc.SetNotifier(notifSvc)
@@ -61,6 +64,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
 	mux.HandleFunc("GET /api/v1/auth/oauth/{provider}/redirect", oauthH.Redirect)
 	mux.HandleFunc("GET /api/v1/auth/oauth/{provider}/callback", oauthH.Callback)
+
+	mux.HandleFunc("POST /api/v1/webhooks/git/{token}", gitH.Webhook)
 
 	authMw := middleware.Auth(cfg.Secret)
 	mux.Handle("GET /api/v1/users/me", authMw(http.HandlerFunc(userH.GetMe)))
@@ -74,6 +79,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /api/v1/projects/{key}/members", authMw(http.HandlerFunc(projectH.AddMember)))
 	mux.Handle("DELETE /api/v1/projects/{key}/members/{userId}", authMw(http.HandlerFunc(projectH.RemoveMember)))
 	mux.Handle("POST /api/v1/projects/{key}/invites", authMw(http.HandlerFunc(projectH.Invite)))
+	mux.Handle("GET /api/v1/projects/{key}/git/providers", authMw(http.HandlerFunc(gitH.GetProvider)))
+	mux.Handle("POST /api/v1/projects/{key}/git/providers", authMw(http.HandlerFunc(gitH.ConfigureProvider)))
+	mux.Handle("DELETE /api/v1/projects/{key}/git/providers", authMw(http.HandlerFunc(gitH.DeleteProvider)))
 
 	mux.Handle("GET /api/v1/projects/{key}/issues", authMw(http.HandlerFunc(issueH.List)))
 	mux.Handle("POST /api/v1/projects/{key}/issues", authMw(http.HandlerFunc(issueH.Create)))
@@ -92,6 +100,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /api/v1/issues/{issueKey}/attachments", authMw(http.HandlerFunc(attachmentH.Upload)))
 	mux.Handle("GET /api/v1/attachments/{attachmentId}", authMw(http.HandlerFunc(attachmentH.ServeFile)))
 	mux.Handle("DELETE /api/v1/issues/{issueKey}/attachments/{attachmentId}", authMw(http.HandlerFunc(attachmentH.Delete)))
+	mux.Handle("GET /api/v1/issues/{issueKey}/git", authMw(http.HandlerFunc(gitH.GetIssueGitInfo)))
 
 	mux.Handle("GET /api/v1/projects/{key}/workflow", authMw(http.HandlerFunc(wfH.GetWorkflow)))
 	mux.Handle("POST /api/v1/projects/{key}/workflow/statuses", authMw(http.HandlerFunc(wfH.AddStatus)))
