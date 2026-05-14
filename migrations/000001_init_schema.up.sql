@@ -337,14 +337,12 @@ CREATE TABLE webhooks (
 );
 
 CREATE TABLE project_invites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
-    deleted_at TIMESTAMP,
-    project_id TEXT NOT NULL,
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     email TEXT NOT NULL,
     token TEXT UNIQUE NOT NULL,
     role TEXT NOT NULL DEFAULT 'member',
     accepted BOOLEAN DEFAULT FALSE,
-    accepted_by TEXT
+    accepted_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
