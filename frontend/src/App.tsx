@@ -2,8 +2,9 @@ import { useState } from 'react'
 import BoardPage from './pages/Board'
 import BacklogPage from './pages/Backlog'
 import IssueDetail from './pages/IssueDetail'
+import SearchPage from './pages/Search'
 
-type Page = 'board' | 'backlog' | 'issue'
+type Page = 'board' | 'backlog' | 'issue' | 'search'
 
 function App() {
   const [page, setPage] = useState<Page>('board')
@@ -29,10 +30,17 @@ function App() {
         >
           Backlog
         </button>
+        <button
+          className={page === 'search' ? 'font-bold underline' : ''}
+          onClick={() => setPage('search')}
+        >
+          Search
+        </button>
       </nav>
       {page === 'board' && <BoardPage onNavigateIssue={navigateToIssue} />}
       {page === 'backlog' && <BacklogPage />}
       {page === 'issue' && <IssueDetail issueKey={issueKey} onBack={() => setPage('board')} />}
+      {page === 'search' && <SearchPage />}
     </div>
   )
 }
