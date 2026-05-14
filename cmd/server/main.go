@@ -2,8 +2,10 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/open-jira/open-jira/internal/config"
+	applog "github.com/open-jira/open-jira/internal/log"
 )
 
 func main() {
@@ -11,5 +13,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-	log.Printf("starting server on port %d", cfg.Port)
+	logger := applog.New(cfg.Env)
+	logger.Info("starting server", "port", cfg.Port, "env", cfg.Env)
+	os.Exit(0)
 }
