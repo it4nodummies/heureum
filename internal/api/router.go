@@ -7,10 +7,12 @@ import (
 
 	"github.com/open-jira/open-jira/internal/api/handlers"
 	"github.com/open-jira/open-jira/internal/api/middleware"
+	"github.com/open-jira/open-jira/internal/api/ws"
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/sprint"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
@@ -21,10 +23,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	authH := handlers.NewAuthHandler(authSvc)
 	userH := handlers.NewUserHandler(db)
 	oauthH := handlers.NewOAuthHandler(db, cfg.Secret, cfg.BaseURL)
-	projectH := handlers.NewProjectHandler(project.NewService(db, nil))
+	projectSvc := project.NewService(db, nil)
+	projectH := handlers.NewProjectHandler(projectSvc)
 	issueSvc := issue.NewService(db)
 	issueH := handlers.NewIssueHandler(issueSvc)
-	wfH := handlers.NewWorkflowHandler(workflow.NewService(db), issueSvc)
+	commentSvc := issue.NewCommentService(db)
+	commentH := handlers.NewCommentHandler(commentSvc, issueSvc)
+	wfSvc := workflow.NewService(db)
+	wfH := handlers.NewWorkflowHandler(wfSvc, issueSvc)
+	sprintSvc := sprint.NewService(db)
+	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)
+	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc)
+	wsHub := ws.NewHub()
+	go wsHub.Run()
 
 	mux.HandleFunc("POST /api/v1/auth/register", authH.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
@@ -54,6 +65,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /api/v1/issues/{issueKey}/watch", authMw(http.HandlerFunc(issueH.Watch)))
 	mux.Handle("DELETE /api/v1/issues/{issueKey}/watch", authMw(http.HandlerFunc(issueH.Unwatch)))
 	mux.Handle("GET /api/v1/issues/{issueKey}/history", authMw(http.HandlerFunc(issueH.GetHistory)))
+	mux.Handle("GET /api/v1/issues/{issueKey}/comments", authMw(http.HandlerFunc(commentH.List)))
+	mux.Handle("POST /api/v1/issues/{issueKey}/comments", authMw(http.HandlerFunc(commentH.Create)))
+	mux.Handle("DELETE /api/v1/issues/{issueKey}/comments/{commentId}", authMw(http.HandlerFunc(commentH.Delete)))
 
 	mux.Handle("GET /api/v1/projects/{key}/workflow", authMw(http.HandlerFunc(wfH.GetWorkflow)))
 	mux.Handle("POST /api/v1/projects/{key}/workflow/statuses", authMw(http.HandlerFunc(wfH.AddStatus)))
@@ -61,6 +75,20 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /api/v1/projects/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.DeleteStatus)))
 	mux.Handle("POST /api/v1/projects/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.AddTransition)))
 	mux.Handle("POST /api/v1/issues/{issueKey}/transition", authMw(http.HandlerFunc(wfH.TransitionIssue)))
+
+	mux.Handle("GET /api/v1/projects/{key}/sprints", authMw(http.HandlerFunc(sprintH.List)))
+	mux.Handle("POST /api/v1/projects/{key}/sprints", authMw(http.HandlerFunc(sprintH.Create)))
+	mux.Handle("GET /api/v1/projects/{key}/sprints/{id}", authMw(http.HandlerFunc(sprintH.Get)))
+	mux.Handle("PATCH /api/v1/projects/{key}/sprints/{id}", authMw(http.HandlerFunc(sprintH.Update)))
+	mux.Handle("POST /api/v1/projects/{key}/sprints/{id}/start", authMw(http.HandlerFunc(sprintH.Start)))
+	mux.Handle("POST /api/v1/projects/{key}/sprints/{id}/complete", authMw(http.HandlerFunc(sprintH.Complete)))
+
+	mux.Handle("GET /api/v1/projects/{key}/board", authMw(http.HandlerFunc(boardH.GetBoard)))
+	mux.Handle("POST /api/v1/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
+
+	mux.HandleFunc("GET /ws/v1/projects/{key}/board", func(w http.ResponseWriter, r *http.Request) {
+		ws.ServeWs(wsHub, w, r)
+	})
 
 	return corsMiddleware(mux)
 }
