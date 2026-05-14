@@ -12,6 +12,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/dashboard"
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/open-jira/open-jira/internal/domain/notification"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/report"
 	"github.com/open-jira/open-jira/internal/domain/search"
@@ -49,6 +50,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	dashboardH := handlers.NewDashboardHandler(dashboardSvc)
 	wsHub := ws.NewHub()
 	go wsHub.Run()
+	notifSvc := notification.NewService(db)
+	notifSvc.SetBroadcaster(func(msg []byte) { wsHub.Broadcast(msg) })
+	notifH := handlers.NewNotificationHandler(notifSvc)
+	issueSvc.SetNotifier(notifSvc)
+	commentSvc.SetNotifier(notifSvc)
+	sprintSvc.SetNotifier(notifSvc)
 
 	mux.HandleFunc("POST /api/v1/auth/register", authH.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
@@ -127,6 +134,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.HandleFunc("GET /ws/v1/projects/{key}/board", func(w http.ResponseWriter, r *http.Request) {
 		ws.ServeWs(wsHub, w, r)
 	})
+
+	mux.Handle("GET /api/v1/notifications", authMw(http.HandlerFunc(notifH.List)))
+	mux.Handle("GET /api/v1/notifications/unread-count", authMw(http.HandlerFunc(notifH.UnreadCount)))
+	mux.Handle("PATCH /api/v1/notifications/read-all", authMw(http.HandlerFunc(notifH.MarkAllRead)))
+	mux.Handle("PATCH /api/v1/notifications/{id}/read", authMw(http.HandlerFunc(notifH.MarkRead)))
+	mux.Handle("GET /api/v1/notifications/settings", authMw(http.HandlerFunc(notifH.GetSettings)))
+	mux.Handle("PATCH /api/v1/notifications/settings", authMw(http.HandlerFunc(notifH.UpdateSettings)))
 
 	return corsMiddleware(mux)
 }
