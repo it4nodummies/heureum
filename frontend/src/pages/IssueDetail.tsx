@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { MessageSquare, Paperclip, Upload, History, Trash2 } from 'lucide-react'
+import { MessageSquare, Paperclip, Upload, History, Trash2, GitBranch } from 'lucide-react'
+import GitIntegration from '../components/GitIntegration'
 
 interface Issue {
   id: string
@@ -77,7 +78,8 @@ export default function IssueDetail({ issueKey, onBack }: { issueKey: string; on
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'comments' | 'history' | 'attachments'>('comments')
+  const [tab, setTab] = useState<'comments' | 'history' | 'attachments' | 'git'>('comments')
+  const projectKey = issueKey.split('-')[0]
 
   const fetchIssue = useCallback(async () => {
     const res = await fetch(`${API}/issues/${issueKey}`, { headers: getAuthHeaders() })
@@ -185,7 +187,7 @@ export default function IssueDetail({ issueKey, onBack }: { issueKey: string; on
       </div>
 
       <div className="flex gap-2 mb-4 border-b border-gray-700">
-        {(['comments', 'history', 'attachments'] as const).map((t) => (
+        {(['comments', 'history', 'attachments', 'git'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -196,6 +198,7 @@ export default function IssueDetail({ issueKey, onBack }: { issueKey: string; on
             {t === 'comments' && <MessageSquare className="inline w-4 h-4 mr-1" />}
             {t === 'history' && <History className="inline w-4 h-4 mr-1" />}
             {t === 'attachments' && <Paperclip className="inline w-4 h-4 mr-1" />}
+            {t === 'git' && <GitBranch className="inline w-4 h-4 mr-1" />}
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
@@ -326,6 +329,10 @@ export default function IssueDetail({ issueKey, onBack }: { issueKey: string; on
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'git' && (
+        <GitIntegration projectKey={projectKey} issueKey={issueKey} />
       )}
     </div>
   )
