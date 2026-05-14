@@ -10,8 +10,10 @@ import (
 	"github.com/open-jira/open-jira/internal/api/ws"
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
+	"github.com/open-jira/open-jira/internal/domain/dashboard"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/report"
 	"github.com/open-jira/open-jira/internal/domain/search"
 	"github.com/open-jira/open-jira/internal/domain/sprint"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
@@ -41,6 +43,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	searchSvc := search.NewService(db)
 	filterSvc := search.NewFilterService(db)
 	searchH := handlers.NewSearchHandler(searchSvc, filterSvc)
+	reportSvc := report.NewService(db)
+	reportH := handlers.NewReportHandler(reportSvc, projectSvc)
+	dashboardSvc := dashboard.NewService(db)
+	dashboardH := handlers.NewDashboardHandler(dashboardSvc)
 	wsHub := ws.NewHub()
 	go wsHub.Run()
 
@@ -103,6 +109,20 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /api/v1/filters", authMw(http.HandlerFunc(searchH.CreateFilter)))
 	mux.Handle("GET /api/v1/filters/{id}", authMw(http.HandlerFunc(searchH.GetFilter)))
 	mux.Handle("DELETE /api/v1/filters/{id}", authMw(http.HandlerFunc(searchH.DeleteFilter)))
+
+	mux.Handle("GET /api/v1/projects/{key}/reports/burndown", authMw(http.HandlerFunc(reportH.Burndown)))
+	mux.Handle("GET /api/v1/projects/{key}/reports/velocity", authMw(http.HandlerFunc(reportH.Velocity)))
+	mux.Handle("GET /api/v1/projects/{key}/reports/burnup", authMw(http.HandlerFunc(reportH.Burnup)))
+	mux.Handle("GET /api/v1/projects/{key}/reports/cfd", authMw(http.HandlerFunc(reportH.CFD)))
+	mux.Handle("GET /api/v1/projects/{key}/summary", authMw(http.HandlerFunc(reportH.Summary)))
+
+	mux.Handle("GET /api/v1/dashboards", authMw(http.HandlerFunc(dashboardH.List)))
+	mux.Handle("POST /api/v1/dashboards", authMw(http.HandlerFunc(dashboardH.Create)))
+	mux.Handle("GET /api/v1/dashboards/{id}", authMw(http.HandlerFunc(dashboardH.Get)))
+	mux.Handle("PATCH /api/v1/dashboards/{id}", authMw(http.HandlerFunc(dashboardH.Update)))
+	mux.Handle("DELETE /api/v1/dashboards/{id}", authMw(http.HandlerFunc(dashboardH.Delete)))
+	mux.Handle("POST /api/v1/dashboards/{id}/widgets", authMw(http.HandlerFunc(dashboardH.AddWidget)))
+	mux.Handle("DELETE /api/v1/dashboards/{id}/widgets/{widgetId}", authMw(http.HandlerFunc(dashboardH.RemoveWidget)))
 
 	mux.HandleFunc("GET /ws/v1/projects/{key}/board", func(w http.ResponseWriter, r *http.Request) {
 		ws.ServeWs(wsHub, w, r)
