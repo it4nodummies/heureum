@@ -39,7 +39,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)
 	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc)
 	searchSvc := search.NewService(db)
-	searchH := handlers.NewSearchHandler(searchSvc)
+	filterSvc := search.NewFilterService(db)
+	searchH := handlers.NewSearchHandler(searchSvc, filterSvc)
 	wsHub := ws.NewHub()
 	go wsHub.Run()
 
@@ -97,6 +98,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /api/v1/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
 
 	mux.Handle("GET /api/v1/search", authMw(http.HandlerFunc(searchH.Search)))
+
+	mux.Handle("GET /api/v1/filters", authMw(http.HandlerFunc(searchH.ListFilters)))
+	mux.Handle("POST /api/v1/filters", authMw(http.HandlerFunc(searchH.CreateFilter)))
+	mux.Handle("GET /api/v1/filters/{id}", authMw(http.HandlerFunc(searchH.GetFilter)))
+	mux.Handle("DELETE /api/v1/filters/{id}", authMw(http.HandlerFunc(searchH.DeleteFilter)))
 
 	mux.HandleFunc("GET /ws/v1/projects/{key}/board", func(w http.ResponseWriter, r *http.Request) {
 		ws.ServeWs(wsHub, w, r)
