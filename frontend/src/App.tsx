@@ -5,6 +5,8 @@ import IssueDetail from './pages/IssueDetail'
 import SearchPage from './pages/Search'
 import ReportsPage from './pages/Reports'
 import DashboardPage from './pages/Dashboard'
+import NotificationBell from './components/NotificationBell'
+import NotificationSettings from './components/NotificationSettings'
 
 type Page = 'board' | 'backlog' | 'issue' | 'search' | 'reports' | 'dashboard'
 
@@ -19,7 +21,7 @@ function App() {
 
   return (
     <div>
-      <nav className="flex gap-4 p-4 bg-gray-900 text-white">
+      <nav className="flex gap-4 p-4 bg-gray-900 text-white items-center">
         <button
           className={page === 'dashboard' ? 'font-bold underline' : ''}
           onClick={() => setPage('dashboard')}
@@ -50,6 +52,9 @@ function App() {
         >
           Search
         </button>
+        <div className="flex-1" />
+        <NotificationSettings />
+        <NotificationBell />
       </nav>
       {page === 'dashboard' && <DashboardPage />}
       {page === 'board' && <BoardPage onNavigateIssue={navigateToIssue} />}
