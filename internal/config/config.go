@@ -26,7 +26,10 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	port, _ := strconv.Atoi(getEnv("APP_PORT", "8080"))
+	port, err := strconv.Atoi(getEnv("APP_PORT", "8080"))
+	if err != nil || port == 0 {
+		port = 8080
+	}
 
 	cfg := &Config{
 		Port:    port,

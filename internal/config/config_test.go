@@ -1,18 +1,16 @@
 package config
 
 import (
-	"os"
 	"testing"
 )
 
 func TestLoadConfigFromEnv(t *testing.T) {
-	os.Setenv("APP_PORT", "9090")
-	os.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
-	os.Setenv("APP_BASE_URL", "http://localhost:9090")
-	os.Setenv("DB_DRIVER", "sqlite")
-	os.Setenv("DB_DSN", "file::memory:?cache=shared")
-	os.Setenv("REDIS_URL", "redis://localhost:6379/0")
-	defer os.Clearenv()
+	t.Setenv("APP_PORT", "9090")
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("APP_BASE_URL", "http://localhost:9090")
+	t.Setenv("DB_DRIVER", "sqlite")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("REDIS_URL", "redis://localhost:6379/0")
 
 	cfg, err := Load()
 	if err != nil {
@@ -42,9 +40,8 @@ func TestLoadConfigFromEnv(t *testing.T) {
 }
 
 func TestLoadConfigDefaults(t *testing.T) {
-	os.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
-	os.Setenv("DB_DSN", "file::memory:?cache=shared")
-	defer os.Clearenv()
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
 
 	cfg, err := Load()
 	if err != nil {
@@ -68,5 +65,13 @@ func TestLoadConfigMissingSecret(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Error("expected error for missing APP_SECRET")
+	}
+}
+
+func TestLoadConfigMissingDSN(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	_, err := Load()
+	if err == nil {
+		t.Error("expected error for missing DB_DSN")
 	}
 }
