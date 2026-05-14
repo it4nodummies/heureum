@@ -17,7 +17,11 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/report"
 	"github.com/open-jira/open-jira/internal/domain/search"
+	"github.com/open-jira/open-jira/internal/domain/automation"
+	"github.com/open-jira/open-jira/internal/domain/calendar"
+	"github.com/open-jira/open-jira/internal/domain/customfield"
 	"github.com/open-jira/open-jira/internal/domain/sprint"
+	"github.com/open-jira/open-jira/internal/domain/timeline"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
@@ -59,6 +63,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	issueSvc.SetNotifier(notifSvc)
 	commentSvc.SetNotifier(notifSvc)
 	sprintSvc.SetNotifier(notifSvc)
+
+	cfSvc := customfield.NewService(db)
+	cfH := handlers.NewCustomFieldHandler(cfSvc)
+	autoSvc := automation.NewService(db)
+	autoH := handlers.NewAutomationHandler(autoSvc)
+	timelineSvc := timeline.NewService(db)
+	timelineH := handlers.NewTimelineHandler(timelineSvc)
+	calendarSvc := calendar.NewService(db)
+	calendarH := handlers.NewCalendarHandler(calendarSvc)
 
 	mux.HandleFunc("POST /api/v1/auth/register", authH.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
@@ -150,6 +163,28 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("PATCH /api/v1/notifications/{id}/read", authMw(http.HandlerFunc(notifH.MarkRead)))
 	mux.Handle("GET /api/v1/notifications/settings", authMw(http.HandlerFunc(notifH.GetSettings)))
 	mux.Handle("PATCH /api/v1/notifications/settings", authMw(http.HandlerFunc(notifH.UpdateSettings)))
+
+	mux.Handle("GET /api/v1/projects/{key}/issues/export", authMw(http.HandlerFunc(issueH.ExportCSV)))
+
+	mux.Handle("GET /api/v1/projects/{projectID}/custom-fields", authMw(http.HandlerFunc(cfH.ListFields)))
+	mux.Handle("POST /api/v1/projects/{projectID}/custom-fields", authMw(http.HandlerFunc(cfH.CreateField)))
+	mux.Handle("DELETE /api/v1/custom-fields/{fieldID}", authMw(http.HandlerFunc(cfH.DeleteField)))
+	mux.Handle("GET /api/v1/custom-fields/{fieldID}/options", authMw(http.HandlerFunc(cfH.ListOptions)))
+	mux.Handle("POST /api/v1/custom-fields/{fieldID}/options", authMw(http.HandlerFunc(cfH.AddOption)))
+	mux.Handle("DELETE /api/v1/custom-fields/options/{optionID}", authMw(http.HandlerFunc(cfH.RemoveOption)))
+	mux.Handle("GET /api/v1/issues/{issueID}/custom-values", authMw(http.HandlerFunc(cfH.GetValues)))
+	mux.Handle("PUT /api/v1/issues/{issueID}/custom-values/{fieldID}", authMw(http.HandlerFunc(cfH.SetValue)))
+
+	mux.Handle("GET /api/v1/projects/{projectID}/automation", authMw(http.HandlerFunc(autoH.ListRules)))
+	mux.Handle("POST /api/v1/projects/{projectID}/automation", authMw(http.HandlerFunc(autoH.CreateRule)))
+	mux.Handle("GET /api/v1/automation/{ruleID}", authMw(http.HandlerFunc(autoH.GetRule)))
+	mux.Handle("PATCH /api/v1/automation/{ruleID}", authMw(http.HandlerFunc(autoH.UpdateRule)))
+	mux.Handle("DELETE /api/v1/automation/{ruleID}", authMw(http.HandlerFunc(autoH.DeleteRule)))
+	mux.Handle("POST /api/v1/automation/{ruleID}/execute", authMw(http.HandlerFunc(autoH.ExecuteRule)))
+	mux.Handle("GET /api/v1/automation/{ruleID}/runs", authMw(http.HandlerFunc(autoH.ListRuns)))
+
+	mux.Handle("GET /api/v1/projects/{projectID}/timeline", authMw(http.HandlerFunc(timelineH.GetTimeline)))
+	mux.Handle("GET /api/v1/projects/{projectID}/calendar", authMw(http.HandlerFunc(calendarH.GetCalendar)))
 
 	return corsMiddleware(mux)
 }

@@ -1,0 +1,16 @@
+replicaCount: 1
+image:
+  api: open-jira/api:latest
+  worker: open-jira/worker:latest
+  frontend: open-jira/frontend:latest
+config:
+  appSecret: ""
+  dbDriver: postgres
+  dbDsn: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
+  redisUrl: "redis://redis:6379/0"
+  baseUrl: "http://localhost"
+  smtpHost: ""
+postgresql:
+  enabled: true
+redis:
+  enabled: true

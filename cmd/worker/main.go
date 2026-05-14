@@ -2,8 +2,17 @@ package main
 
 import (
 	"log"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/open-jira/open-jira/internal/config"
+	"github.com/open-jira/open-jira/internal/domain/automation"
+	applog "github.com/open-jira/open-jira/internal/log"
+	"github.com/open-jira/open-jira/internal/store"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -11,5 +20,83 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-	log.Printf("starting worker, env=%s", cfg.Env)
+	logger := applog.New(cfg.Env)
+	s, err := store.New(cfg.DB, cfg.Env)
+	if err != nil {
+		logger.Error("failed to connect to database", "error", err)
+		log.Fatal(err)
+	}
+	defer s.Close()
+
+	if err := store.RunMigrations(cfg.DB); err != nil {
+		logger.Error("failed to run migrations", "error", err)
+		log.Fatal(err)
+	}
+
+	logger.Info("starting worker", "env", cfg.Env)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	autoSvc := automation.NewService(s.DB)
+
+	for {
+		select {
+		case <-ticker.C:
+			processNotificationQueue(logger, s.DB)
+			processWebhookDeliveries(logger, s.DB)
+			processAutomationRules(logger, autoSvc)
+		case <-quit:
+			logger.Info("worker shutting down gracefully")
+			return
+		}
+	}
+}
+
+func processNotificationQueue(logger *slog.Logger, db *gorm.DB) {
+	var pending []struct {
+		ID     string
+		UserID string
+		Title  string
+		Body   string
+	}
+	db.Raw(`
+		SELECT n.id, n.user_id, n.title, n.body
+		FROM notifications n
+		JOIN notification_settings ns ON ns.user_id = n.user_id AND ns.event_type = n.type
+		WHERE ns.via_email = true AND n.is_read = false
+		LIMIT 50
+	`).Scan(&pending)
+
+	for _, p := range pending {
+		var userEmail string
+		db.Table("users").Where("id = ?", p.UserID).Pluck("email", &userEmail)
+
+		logger.Info("email notification", "to", userEmail, "title", p.Title)
+	}
+}
+
+func processWebhookDeliveries(logger *slog.Logger, db *gorm.DB) {
+	var webhooks []struct {
+		ID        string
+		URL       string
+		Secret    string
+		EventsJSON string
+	}
+	db.Raw("SELECT id, url, secret, events_json FROM webhooks WHERE is_active = true").Scan(&webhooks)
+	for _, wh := range webhooks {
+		logger.Info("webhook delivery", "url", wh.URL)
+	}
+}
+
+func processAutomationRules(logger *slog.Logger, svc *automation.Service) {
+	var issues []string
+	db := svc.DB()
+	db.Table("issues").Where("updated_at > ?", time.Now().Add(-5*time.Minute)).Order("updated_at DESC").Limit(100).Pluck("id", &issues)
+	for _, issueID := range issues {
+		svc.ProcessRules("issue_updated", issueID)
+	}
 }

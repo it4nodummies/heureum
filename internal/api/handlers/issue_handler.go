@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/open-jira/open-jira/internal/domain/issue"
@@ -12,6 +14,41 @@ type IssueHandler struct {
 }
 
 func NewIssueHandler(svc *issue.Service) *IssueHandler { return &IssueHandler{svc: svc} }
+
+func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
+	projectKey := r.PathValue("key")
+	issues, _ := h.svc.ListByProject(projectKey)
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-issues.csv", projectKey))
+	wr := csv.NewWriter(w)
+	wr.Write([]string{"Key", "Title", "Priority", "Status", "Type", "Assignee", "Story Points", "Created", "Updated"})
+	for _, iss := range issues {
+		status := ""
+		if iss.StatusID != nil {
+			status = *iss.StatusID
+		}
+		typeName := ""
+		if iss.TypeID != nil {
+			typeName = *iss.TypeID
+		}
+		assignee := ""
+		if iss.AssigneeID != nil {
+			assignee = *iss.AssigneeID
+		}
+		wr.Write([]string{
+			iss.Key,
+			iss.Title,
+			string(iss.Priority),
+			status,
+			typeName,
+			assignee,
+			fmt.Sprintf("%d", iss.StoryPoints),
+			iss.CreatedAt.Format("2006-01-02"),
+			iss.UpdatedAt.Format("2006-01-02"),
+		})
+	}
+	wr.Flush()
+}
 
 func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	projectKey := r.PathValue("key")

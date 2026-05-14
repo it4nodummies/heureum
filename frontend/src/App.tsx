@@ -5,10 +5,12 @@ import IssueDetail from './pages/IssueDetail'
 import SearchPage from './pages/Search'
 import ReportsPage from './pages/Reports'
 import DashboardPage from './pages/Dashboard'
+import TimelinePage from './pages/Timeline'
+import CalendarPage from './pages/Calendar'
 import NotificationBell from './components/NotificationBell'
 import NotificationSettings from './components/NotificationSettings'
 
-type Page = 'board' | 'backlog' | 'issue' | 'search' | 'reports' | 'dashboard'
+type Page = 'board' | 'backlog' | 'issue' | 'search' | 'reports' | 'dashboard' | 'timeline' | 'calendar'
 
 function App() {
   const [page, setPage] = useState<Page>('dashboard')
@@ -52,6 +54,18 @@ function App() {
         >
           Search
         </button>
+        <button
+          className={page === 'timeline' ? 'font-bold underline' : ''}
+          onClick={() => setPage('timeline')}
+        >
+          Timeline
+        </button>
+        <button
+          className={page === 'calendar' ? 'font-bold underline' : ''}
+          onClick={() => setPage('calendar')}
+        >
+          Calendar
+        </button>
         <div className="flex-1" />
         <NotificationSettings />
         <NotificationBell />
@@ -62,6 +76,8 @@ function App() {
       {page === 'issue' && <IssueDetail issueKey={issueKey} onBack={() => setPage('board')} />}
       {page === 'reports' && <ReportsPage />}
       {page === 'search' && <SearchPage />}
+      {page === 'timeline' && <TimelinePage />}
+      {page === 'calendar' && <CalendarPage />}
     </div>
   )
 }
