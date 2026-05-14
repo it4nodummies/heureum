@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/open-jira/open-jira/internal/domain/git"
@@ -269,5 +268,3 @@ func (h *GitHandler) GetIssueGitInfo(w http.ResponseWriter, r *http.Request) {
 		"pull_requests": prs,
 	})
 }
-
-var _ = strings.TrimSpace

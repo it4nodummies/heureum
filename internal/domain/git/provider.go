@@ -1,7 +1,6 @@
 package git
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -84,5 +83,3 @@ func (p *noopProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
 }
 
 var _ GitProvider = (*noopProvider)(nil)
-
-var _ = context.Background
