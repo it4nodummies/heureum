@@ -12,6 +12,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/search"
 	"github.com/open-jira/open-jira/internal/domain/sprint"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
@@ -37,6 +38,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	sprintSvc := sprint.NewService(db)
 	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)
 	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc)
+	searchSvc := search.NewService(db)
+	searchH := handlers.NewSearchHandler(searchSvc)
 	wsHub := ws.NewHub()
 	go wsHub.Run()
 
@@ -92,6 +95,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	mux.Handle("GET /api/v1/projects/{key}/board", authMw(http.HandlerFunc(boardH.GetBoard)))
 	mux.Handle("POST /api/v1/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
+
+	mux.Handle("GET /api/v1/search", authMw(http.HandlerFunc(searchH.Search)))
 
 	mux.HandleFunc("GET /ws/v1/projects/{key}/board", func(w http.ResponseWriter, r *http.Request) {
 		ws.ServeWs(wsHub, w, r)
