@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "model": "ollama/qwen3-coder",
+  "plugin": [
+    "opencode-ralph-loop",
+    "https://github.com/obra/superpowers.git"
+  ],
+  "provider": {
+    "ollama": {
+      "models": {
+        "deepseek-v4-pro:cloud": {
+          "_launch": true,
+          "name": "deepseek-v4-pro:cloud"
+        },
+        "qwen3-coder": {
+          "_launch": true,
+          "name": "qwen3-coder"
+        },
+        "qwen3-coder-next": {
+          "_launch": true,
+          "name": "qwen3-coder-next"
+        }
+      },
+      "name": "Ollama",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://0.0.0.0:11434/v1"
+      }
+    }
+  }
+}
