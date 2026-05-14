@@ -18,7 +18,7 @@ func RunMigrations(cfg config.DBConfig) error {
 		dbURL = fmt.Sprintf("sqlite3://%s", cfg.DSN)
 	}
 
-	m, err := migrate.New("file://migrations", dbURL)
+	m, err := migrate.New("file://../../migrations", dbURL)
 	if err != nil {
 		return fmt.Errorf("migrate init: %w", err)
 	}
