@@ -1,9 +1,18 @@
 import { useState } from 'react'
 import BoardPage from './pages/Board'
 import BacklogPage from './pages/Backlog'
+import IssueDetail from './pages/IssueDetail'
+
+type Page = 'board' | 'backlog' | 'issue'
 
 function App() {
-  const [page, setPage] = useState<'board' | 'backlog'>('board')
+  const [page, setPage] = useState<Page>('board')
+  const [issueKey, setIssueKey] = useState('')
+
+  function navigateToIssue(key: string) {
+    setIssueKey(key)
+    setPage('issue')
+  }
 
   return (
     <div>
@@ -21,7 +30,9 @@ function App() {
           Backlog
         </button>
       </nav>
-      {page === 'board' ? <BoardPage /> : <BacklogPage />}
+      {page === 'board' && <BoardPage onNavigateIssue={navigateToIssue} />}
+      {page === 'backlog' && <BacklogPage />}
+      {page === 'issue' && <IssueDetail issueKey={issueKey} onBack={() => setPage('board')} />}
     </div>
   )
 }
