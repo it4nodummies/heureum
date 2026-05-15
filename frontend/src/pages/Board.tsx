@@ -70,14 +70,14 @@ function IssueCard({ issue, onNavigateIssue }: { issue: Issue; onNavigateIssue?:
             <PriorityIcon priority={issue.priority || 'medium'} />
             {issue.assignee && (
               <div
-                className="w-5 h-5 rounded-full bg-[#2C333A] flex items-center justify-center text-[10px] font-medium text-secondary"
+                className="w-5 h-5 rounded-full bg-[#091E420F] flex items-center justify-center text-[10px] font-medium text-secondary"
                 title={issue.assignee}
               >
                 {issue.assignee.slice(0, 2).toUpperCase()}
               </div>
             )}
             {issue.story_points != null && (
-              <span className="text-xs text-subtlest bg-[#38414A] rounded-full px-1.5 h-4 flex items-center font-medium">
+              <span className="text-xs text-subtlest bg-[#091E4214] rounded-full px-1.5 h-4 flex items-center font-medium">
                 {issue.story_points}
               </span>
             )}
@@ -94,7 +94,7 @@ function BoardColumn({ column, onNavigateIssue }: { column: Column; onNavigateIs
       <div className="flex items-center gap-2 px-2 py-3">
         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: column.color }} />
         <span className="text-xs font-semibold uppercase text-secondary tracking-wide">{column.name}</span>
-        <span className="text-xs text-subtlest bg-[#38414A] rounded-full px-1.5 h-4 flex items-center font-medium ml-auto">
+        <span className="text-xs text-subtlest bg-[#091E4214] rounded-full px-1.5 h-4 flex items-center font-medium ml-auto">
           {column.issues.length}
         </span>
       </div>

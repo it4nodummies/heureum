@@ -28,7 +28,7 @@ export default function Timeline() {
     <div className="h-full flex flex-col">
       <div className="px-6 py-3 border-b border-default flex items-center gap-4 shrink-0">
         <h2 className="text-base font-semibold text-primary">Timeline</h2>
-        <div className="flex bg-[#38414A] rounded-sm">
+        <div className="flex bg-[#091E4214] rounded-sm">
           {(['weeks', 'months', 'quarters'] as const).map(z => (
             <button key={z}
               onClick={() => setZoom(z)}

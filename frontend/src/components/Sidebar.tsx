@@ -31,7 +31,7 @@ export default function Sidebar({ activePage, onNavigate }: Props) {
             onClick={() => onNavigate(item.id)}
             className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors
               ${activePage === item.id
-                ? 'bg-[#1C2B41] text-accent-blue border-l-[3px] border-accent-blue'
+                ? 'bg-[#E9F2FF] text-accent-blue border-l-[3px] border-accent-blue'
                 : 'text-secondary hover:bg-card hover:text-primary border-l-[3px] border-transparent'
               }`}
           >

@@ -79,7 +79,7 @@ export default function Calendar() {
 
             return (
               <div key={day} className={`border-b border-r border-default p-2 min-h-[80px] hover:bg-card-hover transition-colors cursor-pointer ${
-                isToday ? 'bg-[#1C2B41]' : ''
+                isToday ? 'bg-[#E9F2FF]' : ''
               }`}>
                 <div className={`text-xs font-medium mb-1 ${isToday ? 'text-accent-blue' : 'text-secondary'}`}>
                   {day}
