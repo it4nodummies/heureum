@@ -18,7 +18,21 @@ func RunMigrations(cfg config.DBConfig) error {
 		dbURL = fmt.Sprintf("sqlite3://%s", cfg.DSN)
 	}
 
-	m, err := migrate.New("file://../../migrations", dbURL)
+	// Try standard Docker path first, then local dev paths
+	migrationPaths := []string{
+		"file:///migrations",
+		"file://migrations",
+		"file://../../migrations",
+	}
+
+	var m *migrate.Migrate
+	var err error
+	for _, path := range migrationPaths {
+		m, err = migrate.New(path, dbURL)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("migrate init: %w", err)
 	}

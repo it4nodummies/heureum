@@ -87,6 +87,8 @@ type IssueHistory struct {
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
+func (IssueHistory) TableName() string { return "issue_history" }
+
 type Comment struct {
 	ID        string    `gorm:"primaryKey;type:text" json:"id"`
 	IssueID   string    `gorm:"type:text;not null;index" json:"issue_id"`

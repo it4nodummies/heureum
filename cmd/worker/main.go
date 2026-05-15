@@ -28,11 +28,6 @@ func main() {
 	}
 	defer s.Close()
 
-	if err := store.RunMigrations(cfg.DB); err != nil {
-		logger.Error("failed to run migrations", "error", err)
-		log.Fatal(err)
-	}
-
 	logger.Info("starting worker", "env", cfg.Env)
 
 	quit := make(chan os.Signal, 1)
