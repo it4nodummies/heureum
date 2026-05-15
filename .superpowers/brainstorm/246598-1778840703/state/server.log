@@ -9,3 +9,4 @@
 {"source":"user-event","type":"click","text":"B\n    \n      URL di una Jira attiva\n      Dammi un URL di un'istanza Jira raggiungibile (es. harpaitalia.atlassian.net) e la esploro io con WebFetch.","choice":"url","id":null,"timestamp":1778841185875}
 {"source":"user-event","type":"click","text":"A\n    \n      Condividi Screenshot\n      Carica screenshot delle pagine Jira che vuoi replicare: Board, Backlog, Issue Detail, ecc.","choice":"screenshots","id":null,"timestamp":1778841186357}
 {"source":"user-event","type":"click","text":"B\n    \n      URL di una Jira attiva\n      Dammi un URL di un'istanza Jira raggiungibile (es. harpaitalia.atlassian.net) e la esploro io con WebFetch.","choice":"url","id":null,"timestamp":1778841199804}
+{"type":"server-stopped","reason":"idle timeout"}
