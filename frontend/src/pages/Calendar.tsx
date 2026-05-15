@@ -1,103 +1,103 @@
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-interface CalendarIssue {
-  id: string
-  key: string
-  title: string
-  priority: string
-  status: string
-  due_date: string
-  start_date: string | null
-}
+export default function Calendar() {
+  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 4))
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate()
+  const startDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay()
 
-interface CalendarDay {
-  date: string
-  day: number
-  issues: CalendarIssue[]
-}
+  const issues = [
+    { key: 'OJ-1', title: 'Setup K8s', date: '2026-05-05', priority: 'high' },
+    { key: 'OJ-3', title: 'UI Redesign', date: '2026-05-15', priority: 'highest' },
+    { key: 'OJ-5', title: 'CI/CD Pipeline', date: '2026-05-22', priority: 'medium' },
+  ]
 
-interface CalendarData {
-  year: number
-  month: number
-  days: CalendarDay[]
-  total_days: number
-}
-
-function priorityColor(p: string): string {
-  switch (p) {
-    case 'highest':
-    case 'high':
-      return 'bg-red-600'
-    case 'medium':
-      return 'bg-yellow-500'
-    case 'low':
-    case 'lowest':
-      return 'bg-blue-500'
-    default:
-      return 'bg-gray-500'
+  function getIssuesForDay(day: number) {
+    const dateStr = `2026-05-${String(day).padStart(2, '0')}`
+    return issues.filter(i => i.date === dateStr)
   }
-}
 
-function getMonthName(m: number): string {
-  return new Date(2020, m - 1).toLocaleString('default', { month: 'long' })
-}
+  const priorityColors: Record<string, string> = {
+    highest: 'var(--color-priority-highest)',
+    high: 'var(--color-priority-high)',
+    medium: 'var(--color-priority-medium)',
+    low: 'var(--color-priority-low)',
+    lowest: 'var(--color-priority-lowest)',
+  }
 
-export default function CalendarPage({ projectKey = 'DEMO' }: { projectKey?: string }) {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
-
-  const { data, isLoading } = useQuery<CalendarData>({
-    queryKey: ['calendar', projectKey, year, month],
-    queryFn: () =>
-      fetch(`/api/v1/projects/${projectKey}/calendar?year=${year}&month=${month}`).then(r => r.json()),
-  })
-
-  const firstDay = new Date(year, month - 1, 1).getDay()
   const prevMonth = () => {
-    if (month === 1) { setYear(y => y - 1); setMonth(12) }
-    else setMonth(m => m - 1)
-  }
-  const nextMonth = () => {
-    if (month === 12) { setYear(y => y + 1); setMonth(1) }
-    else setMonth(m => m + 1)
+    if (currentMonth.getMonth() === 0) {
+      setCurrentMonth(new Date(currentMonth.getFullYear() - 1, 11))
+    } else {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))
+    }
   }
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading calendar...</div>
+  const nextMonth = () => {
+    if (currentMonth.getMonth() === 11) {
+      setCurrentMonth(new Date(currentMonth.getFullYear() + 1, 0))
+    } else {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))
+    }
+  }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Calendar</h1>
-        <div className="flex items-center gap-4">
-          <button onClick={prevMonth} className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600">&larr;</button>
-          <span className="text-lg font-medium">{getMonthName(month)} {year}</span>
-          <button onClick={nextMonth} className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600">&rarr;</button>
+    <div className="h-full flex flex-col">
+      <div className="px-6 py-3 border-b border-default flex items-center gap-4 shrink-0">
+        <h2 className="text-base font-semibold text-primary">Calendar</h2>
+        <div className="flex items-center gap-2 ml-auto">
+          <button className="p-1 text-secondary hover:text-primary transition-colors" onClick={prevMonth}>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-sm text-primary font-medium w-32 text-center">
+            {months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+          </span>
+          <button className="p-1 text-secondary hover:text-primary transition-colors" onClick={nextMonth}>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-px bg-gray-700 rounded-lg overflow-hidden">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-          <div key={d} className="bg-gray-800 text-center text-sm font-medium py-2 text-gray-300">{d}</div>
-        ))}
-        {Array.from({ length: firstDay }).map((_, i) => (
-          <div key={`empty-${i}`} className="bg-gray-900 min-h-[80px]" />
-        ))}
-        {data?.days.map(day => (
-          <div key={day.day} className="bg-gray-900 min-h-[80px] p-1">
-            <div className="text-xs text-gray-400 mb-1">{day.day}</div>
-            <div className="flex flex-wrap gap-1">
-              {day.issues.map(iss => (
-                <div
-                  key={iss.id}
-                  title={`${iss.key}: ${iss.title}`}
-                  className={`w-2 h-2 rounded-full ${priorityColor(iss.priority)}`}
-                />
-              ))}
+      <div className="flex-1 flex flex-col">
+        <div className="grid grid-cols-7 border-b border-default">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} className="px-3 py-2 text-xs text-subtlest font-semibold uppercase text-center">
+              {d}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        <div className="flex-1 grid grid-cols-7">
+          {Array.from({ length: startDay }).map((_, i) => (
+            <div key={`empty-${i}`} className="border-b border-r border-default bg-surface" />
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1
+            const dayIssues = getIssuesForDay(day)
+            const isToday = day === 15
+
+            return (
+              <div key={day} className={`border-b border-r border-default p-2 min-h-[80px] hover:bg-card-hover transition-colors cursor-pointer ${
+                isToday ? 'bg-[#1C2B41]' : ''
+              }`}>
+                <div className={`text-xs font-medium mb-1 ${isToday ? 'text-accent-blue' : 'text-secondary'}`}>
+                  {day}
+                </div>
+                <div className="space-y-0.5">
+                  {dayIssues.map(issue => (
+                    <div key={issue.key}
+                      className="text-xs bg-card rounded-sm px-1.5 py-0.5 truncate border-l-2"
+                      style={{ borderLeftColor: priorityColors[issue.priority] || 'var(--color-text-subtlest)' }}>
+                      <span className="text-secondary font-medium">{issue.key}</span>{' '}
+                      <span className="text-primary">{issue.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

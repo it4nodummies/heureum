@@ -1,51 +1,40 @@
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
-interface TimelineBar {
-  id: string
-  name: string
-  type: string
-  start_date: string | null
-  end_date: string | null
-  progress: number
-  parent_id: string | null
-  color: string
-}
+export default function Timeline() {
+  const [zoom, setZoom] = useState<'weeks' | 'months' | 'quarters'>('weeks')
 
-interface TimelineData {
-  project_id: string
-  zoom: string
-  start_date: string
-  end_date: string
-  bars: TimelineBar[]
-  headers: string[]
-}
+  const epics = [
+    { id: 'e1', key: 'OJ-1', title: 'Infrastructure Setup', start: '2026-05-01', end: '2026-05-15', color: 'var(--color-accent-purple)' },
+    { id: 'e2', key: 'OJ-2', title: 'Auth Module', start: '2026-05-10', end: '2026-05-25', color: 'var(--color-accent-blue)' },
+    { id: 'e3', key: 'OJ-3', title: 'UI Redesign', start: '2026-05-15', end: '2026-05-30', color: 'var(--color-accent-green)' },
+  ]
 
-export default function TimelinePage({ projectKey = 'DEMO' }: { projectKey?: string }) {
-  const [zoom, setZoom] = useState<'weeks' | 'months' | 'quarters'>('months')
+  const timelineStart = new Date('2026-05-01')
+  const timelineEnd = new Date('2026-06-05')
+  const totalDays = Math.ceil((timelineEnd.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24))
 
-  const { data, isLoading } = useQuery<TimelineData>({
-    queryKey: ['timeline', projectKey, zoom],
-    queryFn: () => fetch(`/api/v1/projects/${projectKey}/timeline?zoom=${zoom}`).then(r => r.json()),
-  })
+  function getBarStyle(start: string, end: string) {
+    const s = new Date(start)
+    const e = new Date(end)
+    const left = ((s.getTime() - timelineStart.getTime()) / (totalDays * 86400000)) * 100
+    const width = ((e.getTime() - s.getTime()) / (totalDays * 86400000)) * 100
+    return { left: `${left}%`, width: `${Math.max(width, 2)}%` }
+  }
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading timeline...</div>
-
-  const barCount = data?.bars.length || 0
-  const startDate = data ? new Date(data.start_date) : new Date()
-  const endDate = data ? new Date(data.end_date) : new Date()
-  const totalDays = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+  const monthLabels = ['May', 'Jun']
+  const weekLabels = ['W17', 'W18', 'W19', 'W20', 'W21', 'W22']
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Timeline</h1>
-        <div className="flex gap-2">
+    <div className="h-full flex flex-col">
+      <div className="px-6 py-3 border-b border-default flex items-center gap-4 shrink-0">
+        <h2 className="text-base font-semibold text-primary">Timeline</h2>
+        <div className="flex bg-[#38414A] rounded-sm">
           {(['weeks', 'months', 'quarters'] as const).map(z => (
-            <button
-              key={z}
+            <button key={z}
               onClick={() => setZoom(z)}
-              className={`px-3 py-1 rounded text-sm ${zoom === z ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              className={`text-xs font-medium px-3 py-1 rounded-sm capitalize transition-colors ${
+                z === zoom ? 'bg-accent-blue text-white' : 'text-secondary hover:text-primary'
+              }`}
             >
               {z}
             </button>
@@ -53,54 +42,45 @@ export default function TimelinePage({ projectKey = 'DEMO' }: { projectKey?: str
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-gray-700 rounded-lg">
-        <div className="min-w-[600px]">
-          <div className="flex border-b border-gray-700">
-            <div className="w-48 shrink-0 px-3 py-2 text-sm font-medium text-gray-300 border-r border-gray-700">Item</div>
-            <div className="flex-1 flex">
-              {data?.headers.map((h, i) => (
-                <div key={i} className="flex-1 px-2 py-2 text-xs text-gray-400 border-r border-gray-700 text-center">
-                  {h}
-                </div>
-              ))}
-            </div>
+      <div className="flex-1 flex overflow-hidden">
+        <div className="w-[250px] border-r border-default shrink-0 overflow-auto">
+          <div className="h-8 border-b border-default px-4 flex items-center">
+            <span className="text-xs text-subtlest uppercase font-semibold">Epic</span>
           </div>
+          {epics.map(epic => (
+            <div key={epic.id} className="px-4 py-2.5 border-b border-default hover:bg-card-hover cursor-pointer transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: epic.color }} />
+                <span className="text-xs text-secondary font-medium">{epic.key}</span>
+              </div>
+              <div className="text-sm text-primary">{epic.title}</div>
+            </div>
+          ))}
+        </div>
 
-          {data?.bars.map((bar, idx) => {
-            if (!bar.start_date || !bar.end_date) return null
-            const barStart = new Date(bar.start_date).getTime()
-            const barEnd = new Date(bar.end_date).getTime()
-            const left = ((barStart - startDate.getTime()) / (totalDays * 1000 * 60 * 60 * 24)) * 100
-            const width = Math.max(2, ((barEnd - barStart) / (totalDays * 1000 * 60 * 60 * 24)) * 100)
-            const isEpic = bar.type === 'epic'
-            return (
-              <div key={idx} className="flex border-b border-gray-800 hover:bg-gray-800/50">
-                <div className="w-48 shrink-0 px-3 py-2 border-r border-gray-700 flex items-center gap-2">
-                  <span
-                    className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: bar.color }}
-                  />
-                  <span className="text-sm truncate">{bar.name}</span>
-                  <span className="text-xs text-gray-500 ml-auto">{isEpic ? 'Epic' : 'Sprint'}</span>
-                </div>
-                <div className="flex-1 relative py-2">
-                  <div
-                    className="absolute h-4 rounded"
-                    style={{
-                      left: `${left}%`,
-                      width: `${width}%`,
-                      backgroundColor: bar.color,
-                      opacity: 0.8,
-                    }}
-                    title={`${bar.name}: ${bar.progress}%`}
-                  />
+        <div className="flex-1 overflow-auto">
+          <div className="h-8 border-b border-default flex">
+            {(zoom === 'weeks' ? weekLabels : monthLabels).map((label, i) => (
+              <div key={i} className="flex-1 px-2 flex items-center text-xs text-subtlest font-medium border-r border-default">
+                {label}
+              </div>
+            ))}
+          </div>
+          <div>
+            {epics.map(epic => (
+              <div key={epic.id} className="relative h-[42px] border-b border-default hover:bg-card-hover transition-colors">
+                <div className="absolute top-2 h-6 rounded-sm opacity-80 hover:opacity-100 cursor-pointer transition-opacity"
+                  style={{
+                    ...getBarStyle(epic.start, epic.end),
+                    backgroundColor: epic.color,
+                  }}>
+                  <div className="px-2 text-xs text-white font-medium truncate leading-6">
+                    {epic.title}
+                  </div>
                 </div>
               </div>
-            )
-          })}
-          {barCount === 0 && (
-            <div className="p-8 text-center text-gray-500">No sprints or epics found in this project.</div>
-          )}
+            ))}
+          </div>
         </div>
       </div>
     </div>

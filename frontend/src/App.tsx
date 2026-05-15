@@ -4,10 +4,10 @@ import BoardPage from './pages/Board'
 import BacklogPage from './pages/Backlog'
 import IssueDetail from './pages/IssueDetail'
 import SearchPage from './pages/Search'
-import ReportsPage from './pages/Reports'
+import Reports from './pages/Reports'
 import DashboardPage from './pages/Dashboard'
-import TimelinePage from './pages/Timeline'
-import CalendarPage from './pages/Calendar'
+import Timeline from './pages/Timeline'
+import Calendar from './pages/Calendar'
 
 type Page = 'board' | 'backlog' | 'issue' | 'issues' | 'reports' | 'dashboard' | 'timeline' | 'calendar'
 
@@ -26,10 +26,10 @@ function App() {
       {page === 'backlog' && <BacklogPage />}
       {page === 'issue' && <IssueDetail issueKey={issueKey} onBack={() => setPage('board')} />}
       {page === 'issues' && <SearchPage />}
-      {page === 'reports' && <ReportsPage />}
+      {page === 'reports' && <Reports />}
       {page === 'dashboard' && <DashboardPage />}
-      {page === 'timeline' && <TimelinePage />}
-      {page === 'calendar' && <CalendarPage />}
+      {page === 'timeline' && <Timeline />}
+      {page === 'calendar' && <Calendar />}
     </Layout>
   )
 }
