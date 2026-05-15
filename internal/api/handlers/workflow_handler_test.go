@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
@@ -20,18 +21,20 @@ func setupWorkflowHandlerTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open db: %v", err)
 	}
-	db.AutoMigrate(&workflow.Workflow{}, &workflow.WorkflowStatus{}, &workflow.WorkflowTransition{}, &issue.Issue{}, &issue.IssueType{})
+	db.AutoMigrate(&project.Project{}, &workflow.Workflow{}, &workflow.WorkflowStatus{}, &workflow.WorkflowTransition{}, &issue.Issue{}, &issue.IssueType{})
 	return db
 }
 
 func TestGetWorkflowHandler(t *testing.T) {
 	db := setupWorkflowHandlerTestDB(t)
+	projectSvc := project.NewService(db, nil)
+	p, _ := projectSvc.Create("Test", "TEST", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wfSvc.CreateDefaultWorkflow("proj-1")
-	h := NewWorkflowHandler(wfSvc, nil)
+	wfSvc.CreateDefaultWorkflow(p.ID)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
 
 	req := httptest.NewRequest("GET", "/api/v1/projects/TEST/workflow", nil)
-	req.SetPathValue("key", "proj-1")
+	req.SetPathValue("key", "TEST")
 	w := httptest.NewRecorder()
 	h.GetWorkflow(w, req)
 
@@ -47,14 +50,16 @@ func TestGetWorkflowHandler(t *testing.T) {
 
 func TestAddStatusHandler(t *testing.T) {
 	db := setupWorkflowHandlerTestDB(t)
+	projectSvc := project.NewService(db, nil)
+	p, _ := projectSvc.Create("Proj2", "PROJ2", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wf, _ := wfSvc.CreateWorkflow("proj-2", "WF")
-	h := NewWorkflowHandler(wfSvc, nil)
+	wfSvc.CreateWorkflow(p.ID, "WF")
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
 
 	body := map[string]string{"name": "Review", "category": "inprogress", "color": "#FF0000"}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest("POST", "/api/v1/projects/PROJ/workflow/statuses", bytes.NewReader(b))
-	req.SetPathValue("key", wf.ProjectID)
+	req.SetPathValue("key", "PROJ2")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	h.AddStatus(w, req)
@@ -66,15 +71,17 @@ func TestAddStatusHandler(t *testing.T) {
 
 func TestUpdateStatusHandler(t *testing.T) {
 	db := setupWorkflowHandlerTestDB(t)
+	projectSvc := project.NewService(db, nil)
+	p, _ := projectSvc.Create("Proj3", "PROJ3", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wf, _ := wfSvc.CreateWorkflow("proj-3", "WF")
+	wf, _ := wfSvc.CreateWorkflow(p.ID, "WF")
 	s, _ := wfSvc.AddStatus(wf.ID, "Old", workflow.CategoryTodo, "#111")
-	h := NewWorkflowHandler(wfSvc, nil)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
 
 	body := map[string]string{"name": "New", "category": "inprogress", "color": "#222"}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest("PATCH", "/api/v1/projects/PROJ/workflow/statuses/"+s.ID, bytes.NewReader(b))
-	req.SetPathValue("key", wf.ProjectID)
+	req.SetPathValue("key", "PROJ3")
 	req.SetPathValue("id", s.ID)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -92,13 +99,15 @@ func TestUpdateStatusHandler(t *testing.T) {
 
 func TestDeleteStatusHandler(t *testing.T) {
 	db := setupWorkflowHandlerTestDB(t)
+	projectSvc := project.NewService(db, nil)
+	p, _ := projectSvc.Create("Proj4", "PROJ4", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wf, _ := wfSvc.CreateWorkflow("proj-4", "WF")
+	wf, _ := wfSvc.CreateWorkflow(p.ID, "WF")
 	s, _ := wfSvc.AddStatus(wf.ID, "Extra", workflow.CategoryTodo, "#111")
-	h := NewWorkflowHandler(wfSvc, nil)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
 
 	req := httptest.NewRequest("DELETE", "/api/v1/projects/PROJ/workflow/statuses/"+s.ID, nil)
-	req.SetPathValue("key", wf.ProjectID)
+	req.SetPathValue("key", "PROJ4")
 	req.SetPathValue("id", s.ID)
 	w := httptest.NewRecorder()
 	h.DeleteStatus(w, req)
@@ -110,16 +119,18 @@ func TestDeleteStatusHandler(t *testing.T) {
 
 func TestAddTransitionHandler(t *testing.T) {
 	db := setupWorkflowHandlerTestDB(t)
+	projectSvc := project.NewService(db, nil)
+	p, _ := projectSvc.Create("Proj5", "PROJ5", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wf, _ := wfSvc.CreateWorkflow("proj-5", "WF")
+	wf, _ := wfSvc.CreateWorkflow(p.ID, "WF")
 	s1, _ := wfSvc.AddStatus(wf.ID, "Todo", workflow.CategoryTodo, "#AAA")
 	s2, _ := wfSvc.AddStatus(wf.ID, "Done", workflow.CategoryDone, "#BBB")
-	h := NewWorkflowHandler(wfSvc, nil)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
 
 	body := map[string]string{"from_status_id": s1.ID, "to_status_id": s2.ID}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest("POST", "/api/v1/projects/PROJ/workflow/transitions", bytes.NewReader(b))
-	req.SetPathValue("key", wf.ProjectID)
+	req.SetPathValue("key", "PROJ5")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	h.AddTransition(w, req)
@@ -131,15 +142,17 @@ func TestAddTransitionHandler(t *testing.T) {
 
 func TestTransitionIssueHandler(t *testing.T) {
 	db := setupWorkflowHandlerTestDB(t)
+	projectSvc := project.NewService(db, nil)
+	p, _ := projectSvc.Create("Proj6", "PROJ6", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wfSvc.CreateDefaultWorkflow("proj-6")
+	wfSvc.CreateDefaultWorkflow(p.ID)
 
 	issueSvc := issue.NewService(db)
-	wfForIssue, _ := wfSvc.GetWorkflow("proj-6")
-	iss, _ := issueSvc.Create("PROJ", "proj-6", "Test", "desc", issue.PriorityMedium, nil, nil)
+	wfForIssue, _ := wfSvc.GetWorkflow(p.ID)
+	iss, _ := issueSvc.Create("PROJ6", p.ID, "Test", "desc", issue.PriorityMedium, nil, nil)
 	iss, _ = issueSvc.Update(iss.Key, nil, nil, nil, nil, &wfForIssue.Statuses[0].ID, nil)
 
-	h := NewWorkflowHandler(wfSvc, issueSvc)
+	h := NewWorkflowHandler(wfSvc, issueSvc, projectSvc)
 
 	progStatus := wfForIssue.Statuses[1]
 
@@ -158,14 +171,16 @@ func TestTransitionIssueHandler(t *testing.T) {
 
 func TestTransitionIssueHandlerInvalid(t *testing.T) {
 	db := setupWorkflowHandlerTestDB(t)
+	projectSvc := project.NewService(db, nil)
+	p, _ := projectSvc.Create("Proj7", "PROJ7", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wfSvc.CreateDefaultWorkflow("proj-7")
-	wfForIssue, _ := wfSvc.GetWorkflow("proj-7")
+	wfSvc.CreateDefaultWorkflow(p.ID)
+	wfForIssue, _ := wfSvc.GetWorkflow(p.ID)
 
 	issueSvc := issue.NewService(db)
-	iss, _ := issueSvc.Create("PROJ", "proj-7", "Test", "desc", issue.PriorityMedium, nil, nil)
+	iss, _ := issueSvc.Create("PROJ7", p.ID, "Test", "desc", issue.PriorityMedium, nil, nil)
 
-	h := NewWorkflowHandler(wfSvc, issueSvc)
+	h := NewWorkflowHandler(wfSvc, issueSvc, projectSvc)
 
 	doneStatus := wfForIssue.Statuses[2]
 

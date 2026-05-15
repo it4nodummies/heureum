@@ -5,21 +5,27 @@ import (
 	"net/http"
 
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
 type WorkflowHandler struct {
-	wfSvc    *workflow.Service
-	issueSvc *issue.Service
+	wfSvc      *workflow.Service
+	issueSvc   *issue.Service
+	projectSvc *project.Service
 }
 
-func NewWorkflowHandler(wfSvc *workflow.Service, issueSvc *issue.Service) *WorkflowHandler {
-	return &WorkflowHandler{wfSvc: wfSvc, issueSvc: issueSvc}
+func NewWorkflowHandler(wfSvc *workflow.Service, issueSvc *issue.Service, projectSvc *project.Service) *WorkflowHandler {
+	return &WorkflowHandler{wfSvc: wfSvc, issueSvc: issueSvc, projectSvc: projectSvc}
 }
 
 func (h *WorkflowHandler) GetWorkflow(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("key")
-	wf, err := h.wfSvc.GetWorkflow(projectID)
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	wf, err := h.wfSvc.GetWorkflow(p.ID)
 	if err != nil {
 		http.Error(w, `{"error":"workflow not found"}`, http.StatusNotFound)
 		return
@@ -29,7 +35,12 @@ func (h *WorkflowHandler) GetWorkflow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WorkflowHandler) AddStatus(w http.ResponseWriter, r *http.Request) {
-	wf, err := h.wfSvc.GetWorkflow(r.PathValue("key"))
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	wf, err := h.wfSvc.GetWorkflow(p.ID)
 	if err != nil {
 		http.Error(w, `{"error":"workflow not found"}`, http.StatusNotFound)
 		return
@@ -82,7 +93,12 @@ func (h *WorkflowHandler) DeleteStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WorkflowHandler) AddTransition(w http.ResponseWriter, r *http.Request) {
-	wf, err := h.wfSvc.GetWorkflow(r.PathValue("key"))
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	wf, err := h.wfSvc.GetWorkflow(p.ID)
 	if err != nil {
 		http.Error(w, `{"error":"workflow not found"}`, http.StatusNotFound)
 		return

@@ -2,17 +2,20 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
 type ProjectHandler struct {
-	svc *project.Service
+	svc   *project.Service
+	wfSvc *workflow.Service
 }
 
-func NewProjectHandler(svc *project.Service) *ProjectHandler {
-	return &ProjectHandler{svc: svc}
+func NewProjectHandler(svc *project.Service, wfSvc *workflow.Service) *ProjectHandler {
+	return &ProjectHandler{svc: svc, wfSvc: wfSvc}
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +37,9 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusConflict)
 		return
+	}
+	if _, err := h.wfSvc.CreateDefaultWorkflow(p.ID); err != nil {
+		log.Printf("failed to create default workflow for project %s: %v", p.Key, err)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

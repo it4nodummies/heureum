@@ -7,19 +7,27 @@ import (
 	"net/http"
 
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/open-jira/open-jira/internal/domain/project"
 )
 
 type IssueHandler struct {
-	svc *issue.Service
+	svc        *issue.Service
+	projectSvc *project.Service
 }
 
-func NewIssueHandler(svc *issue.Service) *IssueHandler { return &IssueHandler{svc: svc} }
+func NewIssueHandler(svc *issue.Service, projectSvc *project.Service) *IssueHandler {
+	return &IssueHandler{svc: svc, projectSvc: projectSvc}
+}
 
 func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
-	projectKey := r.PathValue("key")
-	issues, _ := h.svc.ListByProject(projectKey)
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	issues, _ := h.svc.ListByProject(p.ID)
 	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-issues.csv", projectKey))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-issues.csv", p.Key))
 	wr := csv.NewWriter(w)
 	wr.Write([]string{"Key", "Title", "Priority", "Status", "Type", "Assignee", "Story Points", "Created", "Updated"})
 	for _, iss := range issues {
@@ -71,7 +79,16 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Priority == "" {
 		req.Priority = issue.PriorityMedium
 	}
-	iss, err := h.svc.Create(projectKey, req.ProjectID, req.Title, req.Description, req.Priority, req.ParentID, req.TypeID)
+	projectID := req.ProjectID
+	if projectID == "" {
+		p, err := h.projectSvc.GetByKey(projectKey)
+		if err != nil {
+			http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+			return
+		}
+		projectID = p.ID
+	}
+	iss, err := h.svc.Create(projectKey, projectID, req.Title, req.Description, req.Priority, req.ParentID, req.TypeID)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
@@ -120,8 +137,12 @@ func (h *IssueHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *IssueHandler) List(w http.ResponseWriter, r *http.Request) {
-	projectKey := r.PathValue("key")
-	issues, _ := h.svc.ListByProject(projectKey)
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	issues, _ := h.svc.ListByProject(p.ID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(issues)
 }

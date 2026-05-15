@@ -13,6 +13,7 @@ import (
 
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
 func setupProjectTestDB(t *testing.T) *gorm.DB {
@@ -21,14 +22,14 @@ func setupProjectTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open db: %v", err)
 	}
-	db.AutoMigrate(&user.User{}, &project.Project{}, &project.ProjectMember{}, &project.Invite{})
+	db.AutoMigrate(&user.User{}, &project.Project{}, &project.ProjectMember{}, &project.Invite{}, &workflow.Workflow{}, &workflow.WorkflowStatus{}, &workflow.WorkflowTransition{})
 	return db
 }
 
 func TestProjectCreateHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
-	h := NewProjectHandler(svc)
+	h := NewProjectHandler(svc, workflow.NewService(db))
 
 	body := map[string]string{"name": "Test", "key": "TE", "description": "desc", "type": "scrum"}
 	b, _ := json.Marshal(body)
@@ -51,7 +52,7 @@ func TestProjectGetHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("Get Test", "GET", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc)
+	h := NewProjectHandler(svc, workflow.NewService(db))
 
 	req := httptest.NewRequest("GET", "/api/v1/projects/GET", nil)
 	req.SetPathValue("key", "GET")
@@ -66,7 +67,7 @@ func TestProjectGetHandler(t *testing.T) {
 func TestProjectGetNotFoundHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
-	h := NewProjectHandler(svc)
+	h := NewProjectHandler(svc, workflow.NewService(db))
 
 	req := httptest.NewRequest("GET", "/api/v1/projects/NOPE", nil)
 	req.SetPathValue("key", "NOPE")
@@ -82,7 +83,7 @@ func TestProjectListHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("P1", "P1", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc)
+	h := NewProjectHandler(svc, workflow.NewService(db))
 
 	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
 	w := httptest.NewRecorder()
@@ -102,7 +103,7 @@ func TestProjectDeleteHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("Del", "DEL", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc)
+	h := NewProjectHandler(svc, workflow.NewService(db))
 
 	req := httptest.NewRequest("DELETE", "/api/v1/projects/DEL", nil)
 	req.SetPathValue("key", "DEL")
@@ -118,7 +119,7 @@ func TestProjectUpdateHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("Old", "OLD", "old desc", project.TypeScrum)
-	h := NewProjectHandler(svc)
+	h := NewProjectHandler(svc, workflow.NewService(db))
 
 	body := map[string]string{"name": "New Name", "description": "new desc"}
 	b, _ := json.Marshal(body)
@@ -142,7 +143,7 @@ func TestProjectInviteHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	p, _ := svc.Create("Inv", "INV", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc)
+	h := NewProjectHandler(svc, workflow.NewService(db))
 
 	body := map[string]string{"email": "invited@test.com", "role": "member"}
 	b, _ := json.Marshal(body)
