@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: openjira
+      POSTGRES_PASSWORD: openjira
+      POSTGRES_DB: openjira
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openjira"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: open-jira/api:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_SECRET: "${APP_SECRET:-changeme-please-set-a-real-secret-min-32-chars}"
+      APP_ENV: production
+      APP_PORT: "8080"
+      APP_BASE_URL: "${APP_BASE_URL:-http://localhost:9090}"
+      DB_DRIVER: postgres
+      DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-noreply@openjira.local}"
+    restart: unless-stopped
+
+  worker:
+    image: open-jira/worker:latest
+    depends_on:
+      - api
+    environment:
+      APP_SECRET: "${APP_SECRET:-changeme-please-set-a-real-secret-min-32-chars}"
+      APP_ENV: production
+      DB_DRIVER: postgres
+      DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    restart: unless-stopped
+
+  frontend:
+    image: open-jira/frontend:latest
+    ports:
+      - "${APP_PORT:-9090}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

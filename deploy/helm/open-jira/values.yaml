@@ -10,7 +10,10 @@ config:
   redisUrl: "redis://redis:6379/0"
   baseUrl: "http://localhost"
   smtpHost: ""
+ingress:
+  enabled: false
+  host: jira.example.com
 postgresql:
-  enabled: true
+  enabled: false
 redis:
-  enabled: true
+  enabled: false
