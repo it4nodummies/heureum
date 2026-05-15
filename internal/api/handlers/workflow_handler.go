@@ -128,7 +128,7 @@ func (h *WorkflowHandler) TransitionIssue(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		ToStatusID string `json:"to_status_id"`
+		StatusID string `json:"status_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -143,11 +143,11 @@ func (h *WorkflowHandler) TransitionIssue(w http.ResponseWriter, r *http.Request
 		http.Error(w, `{"error":"workflow not found"}`, http.StatusNotFound)
 		return
 	}
-	if err := h.wfSvc.ValidateTransition(wf.ID, fromStatusID, req.ToStatusID); err != nil {
+	if err := h.wfSvc.ValidateTransition(wf.ID, fromStatusID, req.StatusID); err != nil {
 		http.Error(w, `{"error":"invalid transition"}`, http.StatusBadRequest)
 		return
 	}
-	updated, err := h.issueSvc.Update(iss.Key, nil, nil, nil, nil, &req.ToStatusID, nil)
+	updated, err := h.issueSvc.Update(iss.Key, nil, nil, nil, nil, &req.StatusID, nil)
 	if err != nil {
 		http.Error(w, `{"error":"failed to update issue"}`, http.StatusInternalServerError)
 		return

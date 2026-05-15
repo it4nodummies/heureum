@@ -11,11 +11,12 @@ const (
 )
 
 type Workflow struct {
-	ID        string           `gorm:"primaryKey;type:text" json:"id"`
-	ProjectID string           `gorm:"type:text;not null" json:"project_id"`
-	Name      string           `gorm:"type:text;not null" json:"name"`
-	Statuses  []WorkflowStatus `gorm:"foreignKey:WorkflowID" json:"statuses,omitempty"`
-	CreatedAt time.Time        `gorm:"autoCreateTime" json:"created_at"`
+	ID          string               `gorm:"primaryKey;type:text" json:"id"`
+	ProjectID   string               `gorm:"type:text;not null" json:"project_id"`
+	Name        string               `gorm:"type:text;not null" json:"name"`
+	Statuses    []WorkflowStatus     `gorm:"foreignKey:WorkflowID" json:"statuses,omitempty"`
+	Transitions []WorkflowTransition `gorm:"foreignKey:WorkflowID" json:"transitions,omitempty"`
+	CreatedAt   time.Time            `gorm:"autoCreateTime" json:"created_at"`
 }
 
 type WorkflowStatus struct {

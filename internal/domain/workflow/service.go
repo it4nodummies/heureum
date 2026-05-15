@@ -27,7 +27,7 @@ func (s *Service) CreateWorkflow(projectID, name string) (*Workflow, error) {
 
 func (s *Service) GetWorkflow(projectID string) (*Workflow, error) {
 	var wf Workflow
-	if err := s.db.Preload("Statuses").Where("project_id = ?", projectID).First(&wf).Error; err != nil {
+	if err := s.db.Preload("Statuses").Preload("Transitions").Where("project_id = ?", projectID).First(&wf).Error; err != nil {
 		return nil, errors.New("workflow not found")
 	}
 	return &wf, nil

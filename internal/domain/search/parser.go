@@ -50,7 +50,7 @@ func (q *Query) Apply(db *gorm.DB) *gorm.DB {
 	}
 	if q.Text != "" {
 		like := "%" + q.Text + "%"
-		db = db.Where("LOWER(title) LIKE LOWER(?) OR LOWER(description_json) LIKE LOWER(?)", like, like)
+		db = db.Where("LOWER(key) LIKE LOWER(?) OR LOWER(title) LIKE LOWER(?) OR LOWER(description_json) LIKE LOWER(?)", like, like, like)
 	}
 	if q.Priority != "" {
 		db = db.Where("priority = ?", q.Priority)
