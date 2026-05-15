@@ -101,9 +101,9 @@ export default function DashboardPage() {
   const renderWidget = (widget: Widget) => {
     switch (widget.widget_type) {
       case 'assigned_to_me':
-        return <WidgetAssignedToMe issues={(widget.data as unknown[]) ?? []} />
+        return <WidgetAssignedToMe issues={(widget.data as unknown as any[]) ?? []} />
       case 'activity_stream':
-        return <WidgetActivityStream items={(widget.data as unknown[]) ?? []} />
+        return <WidgetActivityStream items={(widget.data as unknown as any[]) ?? []} />
       default:
         return <p className="text-gray-400 text-sm">Unknown widget: {widget.widget_type}</p>
     }
@@ -208,7 +208,7 @@ export default function DashboardPage() {
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
-                {renderWidget(widget)}
+                {renderWidget(w)}
               </div>
             ))}
           </div>
