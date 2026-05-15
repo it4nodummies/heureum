@@ -8,16 +8,22 @@ import Reports from './pages/Reports'
 import DashboardPage from './pages/Dashboard'
 import Timeline from './pages/Timeline'
 import Calendar from './pages/Calendar'
+import Login from './pages/Login'
 
 type Page = 'board' | 'backlog' | 'issue' | 'issues' | 'reports' | 'dashboard' | 'timeline' | 'calendar'
 
 function App() {
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
   const [page, setPage] = useState<Page>('board')
   const [issueKey, setIssueKey] = useState('')
 
   function navigateToIssue(key: string) {
     setIssueKey(key)
     setPage('issue')
+  }
+
+  if (!token) {
+    return <Login onLogin={(t) => { setToken(t); localStorage.setItem('token', t) }} />
   }
 
   return (

@@ -118,13 +118,30 @@ function BoardColumn({ column, onNavigateIssue }: { column: Column; onNavigateIs
 
 export default function BoardPage({ onNavigateIssue }: { onNavigateIssue?: (key: string) => void }) {
   const [columns, setColumns] = useState<Column[]>([])
+  const [projectKey, setProjectKey] = useState('OJ')
 
   useEffect(() => {
-    fetch('/api/v1/projects/OJ/board', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    fetch('/api/v1/projects', {
+      headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())
-      .then(data => setColumns(data.columns || []))
+      .then(projects => {
+        if (projects && projects.length > 0) {
+          const key = projects[0].key || 'OJ'
+          setProjectKey(key)
+          return fetch(`/api/v1/projects/${key}/board`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+        }
+        throw new Error('No projects')
+      })
+      .then(r => r?.json())
+      .then(data => {
+        if (data) setColumns(data.columns || [])
+      })
       .catch(() => {
         setColumns([
           { id: '1', name: 'To Do', category: 'todo', color: 'var(--color-status-todo)', issues: [
@@ -146,7 +163,7 @@ export default function BoardPage({ onNavigateIssue }: { onNavigateIssue?: (key:
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-3 border-b border-default flex items-center gap-4 shrink-0">
-        <h2 className="text-base font-semibold text-primary">OJ Board</h2>
+        <h2 className="text-base font-semibold text-primary">{projectKey} Board</h2>
         <div className="flex items-center gap-2 ml-auto" />
       </div>
       <DndContext collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
