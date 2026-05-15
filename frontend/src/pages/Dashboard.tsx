@@ -1,226 +1,91 @@
-import { useState, useEffect } from 'react'
-import WidgetAssignedToMe from '../components/WidgetAssignedToMe'
-import WidgetActivityStream from '../components/WidgetActivityStream'
-import { Plus, Trash2, LayoutDashboard } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, ArrowUp, ArrowDown, Minus } from 'lucide-react'
 
-const API = 'http://localhost:8080/api/v1'
-
-function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token')
-  return token ? { Authorization: `Bearer ${token}` } : {}
+interface Issue {
+  id: string
+  key: string
+  title: string
+  priority: string
+  status: string
 }
 
-interface Dashboard {
-  id: string
-  name: string
-  owner_id: string
-  is_public: boolean
-  layout_json: string
-  created_at: string
-  widgets?: Widget[]
-}
-
-interface Widget {
-  id: string
-  widget_type: string
-  config_json: string
-  position_json: string
-  data?: unknown
+const PriorityIcon = ({ priority }: { priority: string }) => {
+  const c = (p: string) => `var(--color-priority-${p})`
+  if (priority === 'highest') return <ArrowUp size={14} color={c('highest')} fill={c('highest')} />
+  if (priority === 'high') return <ArrowUp size={14} color={c('high')} />
+  if (priority === 'low') return <ArrowDown size={14} color={c('low')} />
+  if (priority === 'lowest') return <ArrowDown size={14} color={c('lowest')} fill={c('lowest')} />
+  return <Minus size={14} color={c('medium')} />
 }
 
 export default function DashboardPage() {
-  const [dashboards, setDashboards] = useState<Dashboard[]>([])
-  const [selected, setSelected] = useState<Dashboard | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [assignedIssues] = useState<Issue[]>([
+    { id: 'i1', key: 'OJ-3', title: 'Jira-like UI redesign', priority: 'highest', status: 'In Progress' },
+    { id: 'i2', key: 'OJ-2', title: 'Configure OAuth providers', priority: 'medium', status: 'To Do' },
+  ])
 
-  const fetchDashboards = () => {
-    setLoading(true)
-    fetch(`${API}/dashboards`, { headers: getAuthHeaders() })
-      .then((r) => r.json())
-      .then((data: Dashboard[]) => {
-        if (Array.isArray(data)) {
-          setDashboards(data)
-          if (!selected && data.length > 0) loadDashboard(data[0].id)
-          else if (data.length === 0) setSelected(null)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }
-
-  const loadDashboard = (id: string) => {
-    setLoading(true)
-    fetch(`${API}/dashboards/${id}`, { headers: getAuthHeaders() })
-      .then((r) => r.json())
-      .then((data: Dashboard) => {
-        if (data.id) setSelected(data)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    fetchDashboards()
-  }, [])
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return
-    const res = await fetch(`${API}/dashboards`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ name: newName.trim() }),
-    })
-    if (res.ok) {
-      setNewName('')
-      setShowCreate(false)
-      fetchDashboards()
-    }
-  }
-
-  const handleAddWidget = async (widgetType: string) => {
-    if (!selected) return
-    const res = await fetch(`${API}/dashboards/${selected.id}/widgets`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ widget_type: widgetType, config_json: '{}' }),
-    })
-    if (res.ok) loadDashboard(selected.id)
-  }
-
-  const handleRemoveWidget = async (widgetId: string) => {
-    if (!selected) return
-    const res = await fetch(`${API}/dashboards/${selected.id}/widgets/${widgetId}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    })
-    if (res.ok) loadDashboard(selected.id)
-  }
-
-  const renderWidget = (widget: Widget) => {
-    switch (widget.widget_type) {
-      case 'assigned_to_me':
-        return <WidgetAssignedToMe issues={(widget.data as unknown as any[]) ?? []} />
-      case 'activity_stream':
-        return <WidgetActivityStream items={(widget.data as unknown as any[]) ?? []} />
-      default:
-        return <p className="text-gray-400 text-sm">Unknown widget: {widget.widget_type}</p>
-    }
-  }
-
-  const widgetLabel = (t: string) => {
-    const labels: Record<string, string> = {
-      assigned_to_me: 'Assigned to Me',
-      activity_stream: 'Activity Stream',
-      projects_list: 'Projects List',
-    }
-    return labels[t] || t
-  }
+  const activities = [
+    { id: 'a1', text: 'You created OJ-3', time: '2 hours ago' },
+    { id: 'a2', text: 'Admin changed status of OJ-3 to In Progress', time: '1 hour ago' },
+    { id: 'a3', text: 'You commented on OJ-1', time: '30 minutes ago' },
+  ]
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <LayoutDashboard className="w-6 h-6" />
-          Dashboard
-        </h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Dashboard
+    <div className="h-full overflow-auto">
+      <div className="px-6 py-3 border-b border-default flex items-center justify-between shrink-0">
+        <h2 className="text-base font-semibold text-primary">Dashboard</h2>
+        <button className="text-xs text-accent-blue hover:underline flex items-center gap-1">
+          <Plus className="w-3.5 h-3.5" /> Add widget
         </button>
       </div>
-
-      {showCreate && (
-        <div className="bg-gray-800 rounded-lg p-4 mb-4">
-          <input
-            type="text"
-            placeholder="Dashboard name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            className="bg-gray-700 text-gray-200 rounded px-3 py-2 text-sm border border-gray-600 w-full mb-3"
-            autoFocus
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={handleCreate}
-              className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700"
-            >
-              Create
-            </button>
-            <button
-              onClick={() => { setShowCreate(false); setNewName('') }}
-              className="bg-gray-600 text-gray-300 px-4 py-1.5 rounded text-sm hover:bg-gray-500"
-            >
-              Cancel
-            </button>
+      <div className="p-6 grid grid-cols-2 gap-6">
+        <div className="bg-card rounded-sm border border-default">
+          <div className="px-4 py-3 border-b border-default">
+            <h3 className="text-sm font-semibold text-primary">Assigned to Me</h3>
           </div>
-        </div>
-      )}
-
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-        {dashboards.map((d) => (
-          <button
-            key={d.id}
-            onClick={() => loadDashboard(d.id)}
-            className={`px-4 py-2 rounded text-sm font-medium whitespace-nowrap transition-colors ${
-              selected?.id === d.id
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            {d.name}
-          </button>
-        ))}
-      </div>
-
-      {loading && <p className="text-gray-400 text-center py-8">Loading...</p>}
-
-      {!loading && selected && (
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <p className="text-sm text-gray-400">Add widget:</p>
-            {(['assigned_to_me', 'activity_stream'] as const).map((wt) => (
-              <button
-                key={wt}
-                onClick={() => handleAddWidget(wt)}
-                className="flex items-center gap-1 bg-gray-700 text-gray-300 px-3 py-1.5 rounded text-xs hover:bg-gray-600 transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                {widgetLabel(wt)}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {selected.widgets?.map((w) => (
-              <div key={w.id} className="bg-gray-800 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-300">{widgetLabel(w.widget_type)}</h3>
-                  <button
-                    onClick={() => handleRemoveWidget(w.id)}
-                    className="text-gray-500 hover:text-red-400 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+          <div className="divide-y divide-default">
+            {assignedIssues.map(issue => (
+              <div key={issue.id} className="px-4 py-3 hover:bg-card-hover cursor-pointer transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-secondary font-medium">{issue.key}</span>
+                  <PriorityIcon priority={issue.priority} />
                 </div>
-                {renderWidget(w)}
+                <div className="text-sm text-primary mt-0.5">{issue.title}</div>
+                <div className="text-xs text-subtlest mt-1">{issue.status}</div>
               </div>
             ))}
           </div>
         </div>
-      )}
 
-      {!loading && !selected && (
-        <div className="text-center py-16">
-          <LayoutDashboard className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-500">No dashboards yet. Create one to get started.</p>
+        <div className="bg-card rounded-sm border border-default">
+          <div className="px-4 py-3 border-b border-default">
+            <h3 className="text-sm font-semibold text-primary">Activity Stream</h3>
+          </div>
+          <div className="divide-y divide-default">
+            {activities.map(a => (
+              <div key={a.id} className="px-4 py-3 text-sm text-primary">
+                <div>{a.text}</div>
+                <div className="text-xs text-subtlest mt-1">{a.time}</div>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+
+        <div className="bg-card rounded-sm border border-default">
+          <div className="px-4 py-3 border-b border-default">
+            <h3 className="text-sm font-semibold text-primary">Projects</h3>
+          </div>
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-3 hover:bg-card-hover rounded-sm p-2 -m-2 cursor-pointer transition-colors">
+              <div className="w-8 h-8 rounded-sm bg-accent-blue flex items-center justify-center text-white text-xs font-bold">OJ</div>
+              <div>
+                <div className="text-sm text-primary font-medium">Open Jira</div>
+                <div className="text-xs text-subtlest">Software project</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
