@@ -36,7 +36,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	wfSvc := workflow.NewService(db)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc)
 	issueSvc := issue.NewService(db)
-	issueH := handlers.NewIssueHandler(issueSvc, projectSvc)
+	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc)
 	commentSvc := issue.NewCommentService(db)
 	commentH := handlers.NewCommentHandler(commentSvc, issueSvc)
 	historyH := handlers.NewHistoryHandler(db, issueSvc)

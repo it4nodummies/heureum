@@ -8,15 +8,17 @@ import (
 
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
 type IssueHandler struct {
 	svc        *issue.Service
 	projectSvc *project.Service
+	wfSvc      *workflow.Service
 }
 
-func NewIssueHandler(svc *issue.Service, projectSvc *project.Service) *IssueHandler {
-	return &IssueHandler{svc: svc, projectSvc: projectSvc}
+func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *workflow.Service) *IssueHandler {
+	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc}
 }
 
 func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +94,17 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
+	}
+	if h.wfSvc != nil {
+		wf, wfErr := h.wfSvc.GetWorkflow(projectID)
+		if wfErr == nil {
+			for _, status := range wf.Statuses {
+				if status.Category == workflow.CategoryTodo {
+					iss, _ = h.svc.Update(iss.Key, nil, nil, nil, nil, &status.ID, nil)
+					break
+				}
+			}
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

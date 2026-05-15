@@ -49,7 +49,8 @@ func (q *Query) Apply(db *gorm.DB) *gorm.DB {
 		db = db.Where("project_id IN (SELECT id FROM projects WHERE key = ?)", q.ProjectKey)
 	}
 	if q.Text != "" {
-		db = db.Where("title ILIKE ? OR description_json ILIKE ?", "%"+q.Text+"%", "%"+q.Text+"%")
+		like := "%" + q.Text + "%"
+		db = db.Where("LOWER(title) LIKE LOWER(?) OR LOWER(description_json) LIKE LOWER(?)", like, like)
 	}
 	if q.Priority != "" {
 		db = db.Where("priority = ?", q.Priority)
