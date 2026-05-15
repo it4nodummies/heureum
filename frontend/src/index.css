@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+@theme {
+  --color-surface: #1D2125;
+  --color-sidebar: #161A1D;
+  --color-card: #22272B;
+  --color-card-hover: #2C333A;
+  --color-elevated: #282E33;
+  --color-input: #22272B;
+
+  --color-border-default: #2C333A;
+  --color-border-focus: #579DFF;
+
+  --color-text-primary: #B6C2CF;
+  --color-text-secondary: #8C9BAB;
+  --color-text-inverse: #1D2125;
+  --color-text-link: #579DFF;
+  --color-text-subtlest: #596773;
+
+  --color-accent-blue: #579DFF;
+  --color-accent-green: #2ABB7F;
+  --color-accent-yellow: #E2B203;
+  --color-accent-red: #E2483D;
+  --color-accent-orange: #F18D0D;
+  --color-accent-purple: #9F8FEF;
+  --color-accent-teal: #3E9FA0;
+  --color-accent-magenta: #E774BB;
+
+  --color-status-todo: #8C9BAB;
+  --color-status-inprogress: #579DFF;
+  --color-status-done: #2ABB7F;
+
+  --color-priority-highest: #E2483D;
+  --color-priority-high: #F18D0D;
+  --color-priority-medium: #E2B203;
+  --color-priority-low: #2ABB7F;
+  --color-priority-lowest: #8C9BAB;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  --spacing-sidebar: 240px;
+  --spacing-topbar: 48px;
+}
