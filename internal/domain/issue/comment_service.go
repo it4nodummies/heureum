@@ -74,6 +74,28 @@ func (s *CommentService) GetComments(issueID string) ([]Comment, error) {
 	return comments, err
 }
 
+func (s *CommentService) GetComment(commentID string) (*Comment, error) {
+	var c Comment
+	if err := s.db.Where("id = ? AND is_deleted = ?", commentID, false).First(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (s *CommentService) UpdateComment(commentID string, bodyJSON string) (*Comment, error) {
+	if err := s.db.Model(&Comment{}).Where("id = ?", commentID).Update("body_json", bodyJSON).Error; err != nil {
+		return nil, err
+	}
+	return s.GetComment(commentID)
+}
+
+func (s *CommentService) GetCommentsByIDs(commentIDs []string) ([]Comment, error) {
+	var comments []Comment
+	err := s.db.Where("id IN ? AND is_deleted = ?", commentIDs, false).
+		Order("created_at ASC").Find(&comments).Error
+	return comments, err
+}
+
 func (s *CommentService) SoftDeleteComment(commentID string) error {
 	return s.db.Model(&Comment{}).Where("id = ?", commentID).Update("is_deleted", true).Error
 }

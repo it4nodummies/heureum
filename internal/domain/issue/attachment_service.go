@@ -54,6 +54,14 @@ func (s *AttachmentService) UploadAttachment(issueID, uploaderID, filename strin
 	return att, nil
 }
 
+func (s *AttachmentService) GetAttachment(attachmentID string) (*IssueAttachment, error) {
+	var att IssueAttachment
+	if err := s.db.Where("id = ?", attachmentID).First(&att).Error; err != nil {
+		return nil, err
+	}
+	return &att, nil
+}
+
 func (s *AttachmentService) GetAttachments(issueID string) ([]IssueAttachment, error) {
 	var atts []IssueAttachment
 	err := s.db.Where("issue_id = ?", issueID).Order("created_at DESC").Find(&atts).Error

@@ -18,19 +18,8 @@ func NewAttachmentHandler(svc *issue.AttachmentService, issueSvc *issue.Service)
 	return &AttachmentHandler{svc: svc, issueSvc: issueSvc}
 }
 
-func (h *AttachmentHandler) List(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.issueSvc.GetByKey(r.PathValue("issueKey"))
-	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
-		return
-	}
-	atts, _ := h.svc.GetAttachments(iss.ID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(atts)
-}
-
 func (h *AttachmentHandler) Upload(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.issueSvc.GetByKey(r.PathValue("issueKey"))
+	iss, err := h.issueSvc.GetByKey(r.PathValue("issueIdOrKey"))
 	if err != nil {
 		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
 		return
@@ -57,8 +46,18 @@ func (h *AttachmentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(att)
 }
 
+func (h *AttachmentHandler) Get(w http.ResponseWriter, r *http.Request) {
+	att, err := h.svc.GetAttachment(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, `{"error":"attachment not found"}`, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(att)
+}
+
 func (h *AttachmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteAttachment(r.PathValue("attachmentId")); err != nil {
+	if err := h.svc.DeleteAttachment(r.PathValue("id")); err != nil {
 		http.Error(w, `{"error":"attachment not found"}`, http.StatusNotFound)
 		return
 	}
@@ -66,13 +65,22 @@ func (h *AttachmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AttachmentHandler) ServeFile(w http.ResponseWriter, r *http.Request) {
-	db := h.issueSvc.DB()
-	var attachment issue.IssueAttachment
-	if err := db.Where("id = ?", r.PathValue("attachmentId")).First(&attachment).Error; err != nil {
+	att, err := h.svc.GetAttachment(r.PathValue("id"))
+	if err != nil {
 		http.Error(w, `{"error":"attachment not found"}`, http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Disposition", "inline; filename=\""+filepath.Base(attachment.Filename)+"\"")
+	w.Header().Set("Content-Disposition", "inline; filename=\""+filepath.Base(att.Filename)+"\"")
 	w.Header().Set("Content-Type", "application/octet-stream")
-	http.ServeFile(w, r, attachment.FilePath)
+	http.ServeFile(w, r, att.FilePath)
+}
+
+func (h *AttachmentHandler) Meta(w http.ResponseWriter, r *http.Request) {
+	meta := map[string]interface{}{
+		"enabled":         true,
+		"uploadLimit":     10485760,
+		"allowedFormats":  []string{"*"},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(meta)
 }

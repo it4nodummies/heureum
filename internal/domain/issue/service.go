@@ -142,6 +142,18 @@ func (s *Service) ListLinks(issueID string) ([]IssueLink, error) {
 	return links, nil
 }
 
+func (s *Service) GetLink(linkID string) (*IssueLink, error) {
+	var link IssueLink
+	if err := s.db.Where("id = ?", linkID).First(&link).Error; err != nil {
+		return nil, err
+	}
+	return &link, nil
+}
+
+func (s *Service) DeleteLink(linkID string) error {
+	return s.db.Where("id = ?", linkID).Delete(&IssueLink{}).Error
+}
+
 func (s *Service) ListByProject(projectID string, opts ...ListOption) ([]Issue, error) {
 	q := s.db.Where("project_id = ? AND is_archived = ?", projectID, false)
 	for _, o := range opts {
@@ -166,6 +178,12 @@ func (s *Service) Watch(issueID, userID string) error {
 
 func (s *Service) Unwatch(issueID, userID string) error {
 	return s.db.Where("issue_id = ? AND user_id = ?", issueID, userID).Delete(&IssueWatcher{}).Error
+}
+
+func (s *Service) GetWatchers(issueID string) ([]IssueWatcher, error) {
+	var watchers []IssueWatcher
+	err := s.db.Where("issue_id = ?", issueID).Find(&watchers).Error
+	return watchers, err
 }
 
 func (s *Service) GetHistory(issueID string) ([]IssueHistory, error) {

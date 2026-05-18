@@ -63,6 +63,7 @@ func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	projectKey := r.PathValue("key")
 	var req struct {
+		ProjectKey  string         `json:"project_key"`
 		ProjectID   string         `json:"project_id"`
 		Title       string         `json:"title"`
 		Description string         `json:"description"`
@@ -81,7 +82,14 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Priority == "" {
 		req.Priority = issue.PriorityMedium
 	}
+	if projectKey == "" {
+		projectKey = req.ProjectKey
+	}
 	projectID := req.ProjectID
+	if projectKey == "" && projectID == "" {
+		http.Error(w, `{"error":"project_key or project_id is required"}`, http.StatusBadRequest)
+		return
+	}
 	if projectID == "" {
 		p, err := h.projectSvc.GetByKey(projectKey)
 		if err != nil {
@@ -89,6 +97,14 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		projectID = p.ID
+	}
+	if projectKey == "" {
+		p, err := h.projectSvc.GetByID(projectID)
+		if err != nil {
+			http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+			return
+		}
+		projectKey = p.Key
 	}
 	iss, err := h.svc.Create(projectKey, projectID, req.Title, req.Description, req.Priority, req.ParentID, req.TypeID)
 	if err != nil {
@@ -181,38 +197,65 @@ func (h *IssueHandler) AddLabel(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(label)
 }
 
-func (h *IssueHandler) ListLinks(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.svc.GetByKey(r.PathValue("issueKey"))
+func (h *IssueHandler) GetWatchers(w http.ResponseWriter, r *http.Request) {
+	iss, err := h.svc.GetByKey(r.PathValue("issueIdOrKey"))
 	if err != nil {
 		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
 		return
 	}
-	links, _ := h.svc.ListLinks(iss.ID)
+	watchers, _ := h.svc.GetWatchers(iss.ID)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(links)
+	json.NewEncoder(w).Encode(map[string]interface{}{"watchers": watchers})
 }
 
-func (h *IssueHandler) Watch(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.svc.GetByKey(r.PathValue("issueKey"))
+func (h *IssueHandler) AddWatcher(w http.ResponseWriter, r *http.Request) {
+	iss, err := h.svc.GetByKey(r.PathValue("issueIdOrKey"))
 	if err != nil {
 		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
 		return
 	}
-	var req struct {
-		UserID string `json:"user_id"`
+	var username string
+	if err := json.NewDecoder(r.Body).Decode(&username); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
 	}
-	json.NewDecoder(r.Body).Decode(&req)
-	h.svc.Watch(iss.ID, req.UserID)
-	w.WriteHeader(http.StatusCreated)
+	if username == "" {
+		http.Error(w, `{"error":"username is required"}`, http.StatusBadRequest)
+		return
+	}
+	var user struct {
+		ID string `gorm:"column:id"`
+	}
+	if err := h.svc.DB().Table("users").Where("username = ?", username).Select("id").Scan(&user).Error; err != nil || user.ID == "" {
+		http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
+		return
+	}
+	if err := h.svc.Watch(iss.ID, user.ID); err != nil {
+		http.Error(w, `{"error":"failed to add watcher"}`, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *IssueHandler) Unwatch(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.svc.GetByKey(r.PathValue("issueKey"))
+func (h *IssueHandler) RemoveWatcher(w http.ResponseWriter, r *http.Request) {
+	iss, err := h.svc.GetByKey(r.PathValue("issueIdOrKey"))
 	if err != nil {
 		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
 		return
 	}
-	h.svc.Unwatch(iss.ID, r.URL.Query().Get("user_id"))
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		http.Error(w, `{"error":"username query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
+	var user struct {
+		ID string `gorm:"column:id"`
+	}
+	if err := h.svc.DB().Table("users").Where("username = ?", username).Select("id").Scan(&user).Error; err != nil || user.ID == "" {
+		http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
+		return
+	}
+	h.svc.Unwatch(iss.ID, user.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
