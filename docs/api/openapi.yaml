@@ -1,17 +1,46 @@
 openapi: "3.0.3"
 info:
-  title: Open Jira API
-  description: Open-source Jira clone REST API
-  version: 1.0.0
+  title: Open Jira API — Jira Cloud v3 Compatible
+  description: Open-source Jira clone REST API compatible with Jira Cloud REST API v3
+  version: 3.0.0
 servers:
-  - url: /api/v1
+  - url: /rest/api/3
     description: Base API path
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Myself
+  - name: Users
+  - name: Projects
+  - name: Issues
+  - name: Comments
+  - name: Attachments
+  - name: Issue Links
+  - name: Watchers
+  - name: Workflows
+  - name: Sprints
+  - name: Board
+  - name: Search
+  - name: Filters
+  - name: Reports
+  - name: Dashboards
+  - name: Notifications
+  - name: Git
+  - name: CustomFields
+  - name: Automation
+  - name: Timeline
+  - name: Calendar
+  - name: Export
+
 paths:
+  # ── Auth ──────────────────────────────────────────────────────────
   /auth/register:
     post:
       summary: Register a new user
       operationId: register
       tags: [Auth]
+      security: []
       requestBody:
         required: true
         content:
@@ -20,19 +49,28 @@ paths:
               type: object
               required: [email, username, password]
               properties:
-                email: { type: string, format: email }
-                username: { type: string }
-                password: { type: string, format: password }
-                display_name: { type: string }
+                email:
+                  type: string
+                  format: email
+                username:
+                  type: string
+                password:
+                  type: string
+                  format: password
+                display_name:
+                  type: string
       responses:
-        '201': { description: User created }
-        '409': { description: Email or username taken }
+        "201":
+          description: User created
+        "409":
+          description: Email or username already taken
 
   /auth/login:
     post:
       summary: Login and get JWT token
       operationId: login
       tags: [Auth]
+      security: []
       requestBody:
         required: true
         content:
@@ -41,52 +79,169 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string }
-                password: { type: string }
+                email:
+                  type: string
+                password:
+                  type: string
       responses:
-        '200':
+        "200":
           description: JWT token
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  token: { type: string }
+                  token:
+                    type: string
 
-  /users/me:
+  /auth/oauth/{provider}/redirect:
     get:
-      summary: Get current user profile
-      operationId: getMe
-      tags: [Users]
-      security: [{ bearerAuth: [] }]
+      summary: Initiate OAuth flow
+      operationId: oauthRedirect
+      tags: [Auth]
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [github, gitlab, google]
       responses:
-        '200':
-          description: User profile
+        "302":
+          description: Redirect to OAuth provider
+
+  /auth/oauth/{provider}/callback:
+    get:
+      summary: OAuth callback
+      operationId: oauthCallback
+      tags: [Auth]
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [github, gitlab, google]
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JWT token after OAuth
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                type: object
+                properties:
+                  token:
+                    type: string
 
-  /projects:
+  # ── Myself ───────────────────────────────────────────────────────
+  /myself:
     get:
-      summary: List projects
+      summary: Get current user profile
+      operationId: getMyself
+      tags: [Myself]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # ── Users ────────────────────────────────────────────────────────
+  /users/me:
+    get:
+      summary: Get current user (alias for /myself)
+      operationId: getCurrentUser
+      tags: [Users]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/search:
+    get:
+      summary: Search users by query
+      operationId: searchUsers
+      tags: [Users]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query (matches username, email, display_name)
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Paginated user results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseUser"
+
+  /user:
+    get:
+      summary: Get user by account ID
+      operationId: getUser
+      tags: [Users]
+      parameters:
+        - name: accountId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: User account ID
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: User not found
+
+  # ── Projects ─────────────────────────────────────────────────────
+  /project:
+    get:
+      summary: List all projects
       operationId: listProjects
       tags: [Projects]
-      security: [{ bearerAuth: [] }]
       responses:
-        '200':
+        "200":
           description: Project list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Project'
+                  $ref: "#/components/schemas/Project"
     post:
       summary: Create a project
       operationId: createProject
       tags: [Projects]
-      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -95,226 +250,416 @@ paths:
               type: object
               required: [name, key]
               properties:
-                name: { type: string }
-                key: { type: string }
-                description: { type: string }
-                type: { type: string, enum: [scrum, kanban, business] }
+                name:
+                  type: string
+                  description: Project name
+                key:
+                  type: string
+                  description: Project key (e.g. "PROJ")
+                description:
+                  type: string
+                type:
+                  type: string
+                  enum: [scrum, kanban, business]
+                  default: scrum
       responses:
-        '201': { description: Project created }
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "409":
+          description: Project key already exists
 
-  /projects/{key}:
+  /project/search:
     get:
-      summary: Get project by key
+      summary: Search projects (paginated)
+      operationId: searchProjects
+      tags: [Projects]
+      parameters:
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: query
+          in: query
+          schema:
+            type: string
+          description: Search by name or key
+        - name: typeKey
+          in: query
+          schema:
+            type: string
+            enum: [scrum, kanban, business]
+      responses:
+        "200":
+          description: Paginated project results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseProject"
+
+  /project/{projectIdOrKey}:
+    get:
+      summary: Get project by ID or key
       operationId: getProject
       tags: [Projects]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: key
+        - name: projectIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200':
+        "200":
           description: Project details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Project'
-
-  /projects/{key}/issues:
-    get:
-      summary: List issues for project
-      operationId: listIssues
-      tags: [Issues]
-      security: [{ bearerAuth: [] }]
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+    put:
+      summary: Update project
+      operationId: updateProject
+      tags: [Projects]
       parameters:
-        - name: key
+        - name: projectIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                type:
+                  type: string
+                  enum: [scrum, kanban, business]
+                lead_user_id:
+                  type: string
+                default_assignee:
+                  type: string
+                icon_url:
+                  type: string
       responses:
-        '200':
+        "200":
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      summary: Delete project
+      operationId: deleteProject
+      tags: [Projects]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Project deleted
+
+  /project/{projectIdOrKey}/statuses:
+    get:
+      summary: Get project statuses
+      operationId: getProjectStatuses
+      tags: [Projects]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkflowStatus"
+
+  /project/{projectIdOrKey}/members:
+    get:
+      summary: List project members
+      operationId: listProjectMembers
+      tags: [Projects]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Member list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectMember"
+    post:
+      summary: Add member to project
+      operationId: addProjectMember
+      tags: [Projects]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+      responses:
+        "201":
+          description: Member added
+        "409":
+          description: Already a member
+
+  /project/{projectIdOrKey}/members/{userId}:
+    delete:
+      summary: Remove member from project
+      operationId: removeProjectMember
+      tags: [Projects]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Member removed
+
+  /project/{projectIdOrKey}/invites:
+    post:
+      summary: Invite user to project
+      operationId: inviteToProject
+      tags: [Projects]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "201":
+          description: Invitation sent
+
+  # ── Issues ───────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/issues:
+    get:
+      summary: List issues for a project
+      operationId: listIssuesByProject
+      tags: [Issues]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
           description: Issue list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Issue'
+                  $ref: "#/components/schemas/Issue"
+
+  /issue:
     post:
       summary: Create an issue
       operationId: createIssue
       tags: [Issues]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: key
-          in: path
-          required: true
-          schema: { type: string }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [title, project_id]
+              required: [title]
               properties:
-                project_id: { type: string }
-                title: { type: string }
-                description: { type: string }
-                priority: { type: string, enum: [highest, high, medium, low, lowest] }
-                parent_id: { type: string }
-                type_id: { type: string }
+                project_key:
+                  type: string
+                  description: Project key (e.g. "PROJ")
+                project_id:
+                  type: string
+                  description: Project ID
+                title:
+                  type: string
+                  description: Issue title/summary
+                description:
+                  type: string
+                  description: Issue description (markdown)
+                priority:
+                  type: string
+                  enum: [highest, high, medium, low, lowest]
+                  default: medium
+                parent_id:
+                  type: string
+                  description: Parent issue ID (for subtasks)
+                type_id:
+                  type: string
+                  description: Issue type ID
       responses:
-        '201': { description: Issue created }
+        "201":
+          description: Issue created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
 
-  /issues/{issueKey}:
+  /issue/{issueIdOrKey}:
     get:
-      summary: Get issue by key
+      summary: Get issue by ID or key
       operationId: getIssue
       tags: [Issues]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: issueKey
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200':
+        "200":
           description: Issue details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Issue'
-    patch:
-      summary: Update issue
+                $ref: "#/components/schemas/Issue"
+        "404":
+          description: Issue not found
+    put:
+      summary: Edit issue
       operationId: updateIssue
       tags: [Issues]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: issueKey
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                title: { type: string }
-                description_json: { type: string }
-                priority: { type: string }
-                assignee_id: { type: string }
-                status_id: { type: string }
-                story_points: { type: integer }
+                title:
+                  type: string
+                description_json:
+                  type: string
+                priority:
+                  type: string
+                  enum: [highest, high, medium, low, lowest]
+                assignee_id:
+                  type: string
+                status_id:
+                  type: string
+                story_points:
+                  type: integer
       responses:
-        '200': { description: Issue updated }
-    delete:
-      summary: Soft-delete (archive) issue
-      operationId: deleteIssue
-      tags: [Issues]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: issueKey
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '204': { description: Issue archived }
-
-  /issues/{issueKey}/comments:
-    get:
-      summary: List comments on issue
-      operationId: listComments
-      tags: [Comments]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: issueKey
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Comment list
+        "200":
+          description: Issue updated
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Comment'
-    post:
-      summary: Add comment to issue
-      operationId: createComment
-      tags: [Comments]
-      security: [{ bearerAuth: [] }]
+                $ref: "#/components/schemas/Issue"
+    delete:
+      summary: Delete (archive) issue
+      operationId: deleteIssue
+      tags: [Issues]
       parameters:
-        - name: issueKey
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Issue archived
+
+  /issue/{issueIdOrKey}/assignee:
+    put:
+      summary: Assign an issue to a user
+      operationId: assignIssue
+      tags: [Issues]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [body_json]
               properties:
-                body_json: { type: string }
-                author_id: { type: string }
+                accountId:
+                  type: string
+                  description: User ID to assign (empty to unassign)
       responses:
-        '201': { description: Comment created }
+        "204":
+          description: Assignment updated
 
-  /projects/{key}/issues/export:
-    get:
-      summary: Export issues as CSV
-      operationId: exportIssuesCSV
-      tags: [Issues]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: key
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: CSV file download
-          content:
-            text/csv:
-              schema:
-                type: string
-
-  /projects/{key}/sprints:
-    get:
-      summary: List sprints
-      operationId: listSprints
-      tags: [Sprints]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: key
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Sprint list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Sprint'
+  /issue/{issueIdOrKey}/labels:
     post:
-      summary: Create sprint
-      operationId: createSprint
-      tags: [Sprints]
-      security: [{ bearerAuth: [] }]
+      summary: Add a label to an issue
+      operationId: addLabel
+      tags: [Issues]
       parameters:
-        - name: key
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -323,95 +668,70 @@ paths:
               type: object
               required: [name]
               properties:
-                name: { type: string }
-                goal: { type: string }
+                name:
+                  type: string
+                color:
+                  type: string
+                  default: "#6B7280"
       responses:
-        '201': { description: Sprint created }
+        "201":
+          description: Label added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
 
-  /projects/{key}/sprints/{id}/start:
-    post:
-      summary: Start a sprint
-      operationId: startSprint
-      tags: [Sprints]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: key
-          in: path
-          required: true
-          schema: { type: string }
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: Sprint started }
-
-  /projects/{key}/sprints/{id}/complete:
-    post:
-      summary: Complete a sprint
-      operationId: completeSprint
-      tags: [Sprints]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: key
-          in: path
-          required: true
-          schema: { type: string }
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                move_open_to_backlog: { type: boolean }
-      responses:
-        '200': { description: Sprint completed }
-
-  /projects/{key}/board:
+  /issue/{issueIdOrKey}/changelog:
     get:
-      summary: Get kanban/scrum board
-      operationId: getBoard
-      tags: [Board]
-      security: [{ bearerAuth: [] }]
+      summary: Get issue change history
+      operationId: getChangelog
+      tags: [Issues]
       parameters:
-        - name: key
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200':
-          description: Board data with columns and cards
+        "200":
+          description: Change history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssueHistory"
 
-  /projects/{key}/workflow:
+  /issue/{issueIdOrKey}/transitions:
     get:
-      summary: Get project workflow
-      operationId: getWorkflow
-      tags: [Workflow]
-      security: [{ bearerAuth: [] }]
+      summary: Get available transitions for an issue
+      operationId: getTransitions
+      tags: [Workflows]
       parameters:
-        - name: key
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200':
-          description: Workflow with statuses and transitions
-
-  /issues/{issueKey}/transition:
+        "200":
+          description: Available transitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkflowTransition"
     post:
-      summary: Transition issue to new status
+      summary: Transition issue to a new status
       operationId: transitionIssue
-      tags: [Workflow]
-      security: [{ bearerAuth: [] }]
+      tags: [Workflows]
       parameters:
-        - name: issueKey
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -420,48 +740,1003 @@ paths:
               type: object
               required: [to_status_id]
               properties:
-                to_status_id: { type: string }
+                to_status_id:
+                  type: string
       responses:
-        '200': { description: Issue transitioned }
+        "200":
+          description: Issue transitioned
 
-  /search:
-    get:
-      summary: Search issues with JQL
-      operationId: searchIssues
-      tags: [Search]
-      security: [{ bearerAuth: [] }]
+  /issue/{issueIdOrKey}/notify:
+    post:
+      summary: Send a notification about an issue
+      operationId: notifyIssue
+      tags: [Issues]
       parameters:
-        - name: q
-          in: query
-          schema: { type: string }
-          description: JQL query string
-        - name: project_id
-          in: query
-          schema: { type: string }
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, textBody]
+              properties:
+                subject:
+                  type: string
+                textBody:
+                  type: string
+                htmlBody:
+                  type: string
+                to:
+                  type: object
+                  properties:
+                    users:
+                      type: array
+                      items:
+                        type: string
       responses:
-        '200':
-          description: Search results
+        "200":
+          description: Notification sent
+
+  /issue/{issueIdOrKey}/git:
+    get:
+      summary: Get linked git information for an issue
+      operationId: getIssueGitInfo
+      tags: [Git]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Git info (commits, branches, pull requests)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  commits:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IssueCommit"
+                  branches:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IssueBranch"
+                  pull_requests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IssuePullRequest"
+
+  # ── Comments ─────────────────────────────────────────────────────
+  /issue/{issueIdOrKey}/comment:
+    get:
+      summary: List comments on an issue (paginated)
+      operationId: listComments
+      tags: [Comments]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Paginated comment list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseComment"
+    post:
+      summary: Add a comment to an issue
+      operationId: createComment
+      tags: [Comments]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body_json]
+              properties:
+                body_json:
+                  type: string
+                  description: Comment body in ProseMirror JSON format
+                author_id:
+                  type: string
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+
+  /issue/{issueIdOrKey}/comment/{id}:
+    get:
+      summary: Get a comment by ID
+      operationId: getComment
+      tags: [Comments]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "404":
+          description: Comment not found
+    put:
+      summary: Update a comment
+      operationId: updateComment
+      tags: [Comments]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                body_json:
+                  type: string
+      responses:
+        "200":
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+    delete:
+      summary: Delete a comment
+      operationId: deleteComment
+      tags: [Comments]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Comment deleted
+
+  /comment/list:
+    post:
+      summary: List comments by IDs
+      operationId: listCommentsByIds
+      tags: [Comments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Comments
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Issue'
+                  $ref: "#/components/schemas/Comment"
 
-  /filters:
-    get:
-      summary: List saved filters
-      operationId: listFilters
-      tags: [Filters]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: Filter list
+  # ── Attachments ──────────────────────────────────────────────────
+  /issue/{issueIdOrKey}/attachments:
     post:
-      summary: Save a filter
+      summary: Upload attachments to an issue
+      operationId: uploadAttachment
+      tags: [Attachments]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Attachment uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueAttachment"
+
+  /attachment/{id}:
+    get:
+      summary: Get attachment metadata
+      operationId: getAttachment
+      tags: [Attachments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Attachment metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueAttachment"
+        "404":
+          description: Attachment not found
+    delete:
+      summary: Delete an attachment
+      operationId: deleteAttachment
+      tags: [Attachments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Attachment deleted
+
+  /attachment/content/{id}:
+    get:
+      summary: Download attachment content
+      operationId: downloadAttachment
+      tags: [Attachments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /attachment/meta:
+    get:
+      summary: Get attachment upload configuration
+      operationId: getAttachmentMeta
+      tags: [Attachments]
+      responses:
+        "200":
+          description: Upload configuration (max file size, allowed types)
+
+  # ── Issue Links ──────────────────────────────────────────────────
+  /issueLink:
+    post:
+      summary: Create a link between two issues
+      operationId: createIssueLink
+      tags: [Issue Links]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_id, target_id, link_type]
+              properties:
+                source_id:
+                  type: string
+                target_id:
+                  type: string
+                link_type:
+                  type: string
+                  enum: [blocks, is_blocked, duplicates, relates]
+      responses:
+        "201":
+          description: Link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueLink"
+
+  /issueLink/{linkId}:
+    get:
+      summary: Get an issue link
+      operationId: getIssueLink
+      tags: [Issue Links]
+      parameters:
+        - name: linkId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Issue link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueLink"
+        "404":
+          description: Link not found
+    delete:
+      summary: Delete an issue link
+      operationId: deleteIssueLink
+      tags: [Issue Links]
+      parameters:
+        - name: linkId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Link deleted
+
+  # ── Watchers ─────────────────────────────────────────────────────
+  /issue/{issueIdOrKey}/watchers:
+    get:
+      summary: List watchers for an issue
+      operationId: getWatchers
+      tags: [Watchers]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Watcher list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  watchers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+    post:
+      summary: Add a watcher to an issue
+      operationId: addWatcher
+      tags: [Watchers]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+              description: Username of the watcher to add
+      responses:
+        "204":
+          description: Watcher added
+    delete:
+      summary: Remove a watcher from an issue
+      operationId: removeWatcher
+      tags: [Watchers]
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Username of the watcher to remove
+      responses:
+        "204":
+          description: Watcher removed
+
+  # ── Workflows & Statuses ─────────────────────────────────────────
+  /workflow/search:
+    get:
+      summary: Search workflows
+      operationId: searchWorkflows
+      tags: [Workflows]
+      parameters:
+        - name: projectId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workflow search results
+
+  /status:
+    get:
+      summary: List all statuses across workflows
+      operationId: listStatuses
+      tags: [Workflows]
+      responses:
+        "200":
+          description: Status list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkflowStatus"
+
+  /status/{idOrName}:
+    get:
+      summary: Get a status by ID or name
+      operationId: getStatus
+      tags: [Workflows]
+      parameters:
+        - name: idOrName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowStatus"
+        "404":
+          description: Status not found
+
+  /project/{projectIdOrKey}/workflow:
+    get:
+      summary: Get project workflow
+      operationId: getWorkflow
+      tags: [Workflows]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workflow with statuses and transitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+
+  /project/{projectIdOrKey}/workflow/statuses:
+    post:
+      summary: Add a status to a workflow
+      operationId: addWorkflowStatus
+      tags: [Workflows]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, category]
+              properties:
+                name:
+                  type: string
+                category:
+                  type: string
+                  enum: [todo, inprogress, done]
+                color:
+                  type: string
+                position:
+                  type: integer
+      responses:
+        "201":
+          description: Status added
+
+  /project/{projectIdOrKey}/workflow/statuses/{id}:
+    patch:
+      summary: Update a workflow status
+      operationId: updateWorkflowStatus
+      tags: [Workflows]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                category:
+                  type: string
+                  enum: [todo, inprogress, done]
+                color:
+                  type: string
+                position:
+                  type: integer
+      responses:
+        "200":
+          description: Status updated
+    delete:
+      summary: Delete a workflow status
+      operationId: deleteWorkflowStatus
+      tags: [Workflows]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Status deleted
+
+  /project/{projectIdOrKey}/workflow/transitions:
+    post:
+      summary: Add a transition to a workflow
+      operationId: addWorkflowTransition
+      tags: [Workflows]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_status_id, to_status_id]
+              properties:
+                from_status_id:
+                  type: string
+                to_status_id:
+                  type: string
+      responses:
+        "201":
+          description: Transition added
+
+  # ── Sprints ──────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/sprints:
+    get:
+      summary: List sprints for a project
+      operationId: listSprints
+      tags: [Sprints]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sprint list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sprint"
+    post:
+      summary: Create a sprint
+      operationId: createSprint
+      tags: [Sprints]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                goal:
+                  type: string
+                start_date:
+                  type: string
+                  format: date-time
+                end_date:
+                  type: string
+                  format: date-time
+      responses:
+        "201":
+          description: Sprint created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sprint"
+
+  /project/{projectIdOrKey}/sprints/{id}:
+    get:
+      summary: Get a sprint
+      operationId: getSprint
+      tags: [Sprints]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sprint details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sprint"
+    patch:
+      summary: Update a sprint
+      operationId: updateSprint
+      tags: [Sprints]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                goal:
+                  type: string
+                start_date:
+                  type: string
+                  format: date-time
+                end_date:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Sprint updated
+
+  /project/{projectIdOrKey}/sprints/{id}/start:
+    post:
+      summary: Start a sprint
+      operationId: startSprint
+      tags: [Sprints]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Sprint started (state: active)"
+
+  /project/{projectIdOrKey}/sprints/{id}/complete:
+    post:
+      summary: Complete a sprint
+      operationId: completeSprint
+      tags: [Sprints]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                move_open_to_backlog:
+                  type: boolean
+                  default: true
+                  description: Move incomplete issues back to backlog
+      responses:
+        "200":
+          description: "Sprint completed (state: closed)"
+
+  # ── Board ────────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/board:
+    get:
+      summary: Get kanban/scrum board
+      operationId: getBoard
+      tags: [Board]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Board data with columns and cards
+
+  /issues/rank:
+    post:
+      summary: Rank (reorder) issues on a board
+      operationId: rankIssue
+      tags: [Board]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issue_id, prev_id, next_id]
+              properties:
+                issue_id:
+                  type: string
+                prev_id:
+                  type: string
+                next_id:
+                  type: string
+      responses:
+        "200":
+          description: Issue ranked
+
+  # ── Search ───────────────────────────────────────────────────────
+  /search:
+    get:
+      summary: JQL search via query parameter
+      operationId: searchJQLGet
+      tags: [Search]
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: JQL query string
+        - name: project_id
+          in: query
+          schema:
+            type: string
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseIssue"
+    post:
+      summary: JQL search via POST body
+      operationId: searchJQLPost
+      tags: [Search]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jql:
+                  type: string
+                startAt:
+                  type: integer
+                  default: 0
+                maxResults:
+                  type: integer
+                  default: 50
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseIssue"
+
+  /search/jql:
+    get:
+      summary: JQL search via query parameter (alias)
+      operationId: searchJQL
+      tags: [Search]
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: project_id
+          in: query
+          schema:
+            type: string
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseIssue"
+
+  # ── Filters ──────────────────────────────────────────────────────
+  /filter/my:
+    get:
+      summary: List my saved filters
+      operationId: listMyFilters
+      tags: [Filters]
+      responses:
+        "200":
+          description: Filter list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedFilter"
+
+  /filter/favourite:
+    get:
+      summary: List favourite filters
+      operationId: listFavouriteFilters
+      tags: [Filters]
+      responses:
+        "200":
+          description: Favourite filter list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedFilter"
+
+  /filter/search:
+    get:
+      summary: Search saved filters
+      operationId: searchFilters
+      tags: [Filters]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Paginated filter results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseFilter"
+
+  /filter:
+    post:
+      summary: Create a saved filter
       operationId: createFilter
       tags: [Filters]
-      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -470,110 +1745,394 @@ paths:
               type: object
               required: [name, jql]
               properties:
-                name: { type: string }
-                jql: { type: string }
-                project_id: { type: string }
-                is_shared: { type: boolean }
+                name:
+                  type: string
+                jql:
+                  type: string
+                project_id:
+                  type: string
+                is_shared:
+                  type: boolean
       responses:
-        '201': { description: Filter saved }
+        "201":
+          description: Filter created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedFilter"
 
-  /projects/{key}/reports/burndown:
+  /filter/{id}:
     get:
-      summary: Get burndown chart data
-      operationId: getBurndown
-      tags: [Reports]
-      security: [{ bearerAuth: [] }]
+      summary: Get a saved filter
+      operationId: getFilter
+      tags: [Filters]
       parameters:
-        - name: key
+        - name: id
           in: path
           required: true
-          schema: { type: string }
-        - name: sprint_id
-          in: query
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200': { description: Burndown data }
-
-  /projects/{key}/reports/velocity:
-    get:
-      summary: Get velocity chart data
-      operationId: getVelocity
-      tags: [Reports]
-      security: [{ bearerAuth: [] }]
+        "200":
+          description: Filter details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedFilter"
+    put:
+      summary: Update a saved filter
+      operationId: updateFilter
+      tags: [Filters]
       parameters:
-        - name: key
+        - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                jql:
+                  type: string
+                is_shared:
+                  type: boolean
       responses:
-        '200': { description: Velocity data }
-
-  /projects/{key}/reports/burnup:
-    get:
-      summary: Get burnup chart data
-      operationId: getBurnup
-      tags: [Reports]
-      security: [{ bearerAuth: [] }]
+        "200":
+          description: Filter updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedFilter"
+    delete:
+      summary: Delete a saved filter
+      operationId: deleteFilter
+      tags: [Filters]
       parameters:
-        - name: key
+        - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200': { description: Burnup data }
+        "204":
+          description: Filter deleted
 
-  /projects/{key}/reports/cfd:
-    get:
-      summary: Get cumulative flow diagram data
-      operationId: getCFD
-      tags: [Reports]
-      security: [{ bearerAuth: [] }]
+  /filter/{id}/favourite:
+    put:
+      summary: Add filter to favourites
+      operationId: addFavouriteFilter
+      tags: [Filters]
       parameters:
-        - name: key
+        - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200': { description: CFD data }
+        "200":
+          description: Filter favourited
+    delete:
+      summary: Remove filter from favourites
+      operationId: removeFavouriteFilter
+      tags: [Filters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Filter unfavourited
 
-  /dashboards:
-    get:
-      summary: List dashboards
-      operationId: listDashboards
-      tags: [Dashboards]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: Dashboard list }
-    post:
-      summary: Create dashboard
-      operationId: createDashboard
-      tags: [Dashboards]
-      security: [{ bearerAuth: [] }]
+  /filter/{id}/owner:
+    put:
+      summary: Change filter owner
+      operationId: changeFilterOwner
+      tags: [Filters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              required: [name]
               type: object
+              required: [owner_id]
               properties:
-                name: { type: string }
-                is_public: { type: boolean }
-                layout_json: { type: string }
+                owner_id:
+                  type: string
       responses:
-        '201': { description: Dashboard created }
+        "200":
+          description: Owner changed
 
-  /dashboards/{id}/widgets:
-    post:
-      summary: Add widget to dashboard
-      operationId: addWidget
+  # ── Reports ──────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/reports/burndown:
+    get:
+      summary: Get burndown chart data for a sprint
+      operationId: getBurndown
+      tags: [Reports]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sprint_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Burndown chart data
+
+  /project/{projectIdOrKey}/reports/velocity:
+    get:
+      summary: Get velocity chart data
+      operationId: getVelocity
+      tags: [Reports]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Velocity chart data
+
+  /project/{projectIdOrKey}/reports/burnup:
+    get:
+      summary: Get burnup chart data for a sprint
+      operationId: getBurnup
+      tags: [Reports]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sprint_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Burnup chart data
+
+  /project/{projectIdOrKey}/reports/cfd:
+    get:
+      summary: Get cumulative flow diagram data
+      operationId: getCFD
+      tags: [Reports]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cumulative flow diagram data
+
+  /project/{projectIdOrKey}/summary:
+    get:
+      summary: Get project summary
+      operationId: getProjectSummary
+      tags: [Reports]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project summary statistics
+
+  # ── Dashboards ───────────────────────────────────────────────────
+  /dashboard:
+    get:
+      summary: List dashboards
+      operationId: listDashboards
       tags: [Dashboards]
-      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Dashboard list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Dashboard"
+    post:
+      summary: Create a dashboard
+      operationId: createDashboard
+      tags: [Dashboards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                is_public:
+                  type: boolean
+                  default: false
+                layout_json:
+                  type: string
+                  description: Dashboard layout in JSON format
+      responses:
+        "201":
+          description: Dashboard created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+
+  /dashboard/search:
+    get:
+      summary: Search dashboards
+      operationId: searchDashboards
+      tags: [Dashboards]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Paginated dashboard results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseDashboard"
+
+  /dashboard/{id}:
+    get:
+      summary: Get a dashboard
+      operationId: getDashboard
+      tags: [Dashboards]
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dashboard details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+        "404":
+          description: Dashboard not found
+    put:
+      summary: Update a dashboard
+      operationId: updateDashboard
+      tags: [Dashboards]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                is_public:
+                  type: boolean
+                layout_json:
+                  type: string
+      responses:
+        "200":
+          description: Dashboard updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+    delete:
+      summary: Delete a dashboard
+      operationId: deleteDashboard
+      tags: [Dashboards]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Dashboard deleted
+
+  /dashboard/{id}/copy:
+    post:
+      summary: Copy a dashboard
+      operationId: copyDashboard
+      tags: [Dashboards]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Dashboard copied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+
+  /dashboard/{dashboardId}/gadget:
+    post:
+      summary: Add a gadget (widget) to a dashboard
+      operationId: addDashboardGadget
+      tags: [Dashboards]
+      parameters:
+        - name: dashboardId
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -582,42 +2141,285 @@ paths:
               type: object
               required: [widget_type]
               properties:
-                widget_type: { type: string }
-                config_json: { type: string }
-                position_json: { type: string }
+                widget_type:
+                  type: string
+                  description: Type of widget/gadget
+                config_json:
+                  type: string
+                  description: Widget configuration in JSON
+                position_json:
+                  type: string
+                  description: Widget position in JSON
       responses:
-        '201': { description: Widget added }
+        "201":
+          description: Gadget added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardWidget"
 
-  /projects/{projectID}/custom-fields:
-    get:
-      summary: List custom fields for project
-      operationId: listCustomFields
-      tags: [CustomFields]
-      security: [{ bearerAuth: [] }]
+  /dashboard/{dashboardId}/gadget/{gadgetId}:
+    delete:
+      summary: Remove a gadget from a dashboard
+      operationId: removeDashboardGadget
+      tags: [Dashboards]
       parameters:
-        - name: projectID
+        - name: dashboardId
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+        - name: gadgetId
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
-        '200':
+        "204":
+          description: Gadget removed
+
+  # ── Notifications ────────────────────────────────────────────────
+  /notifications:
+    get:
+      summary: List notifications
+      operationId: listNotifications
+      tags: [Notifications]
+      parameters:
+        - name: startAt
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: maxResults
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Notification list
+
+  /notifications/unread-count:
+    get:
+      summary: Get unread notification count
+      operationId: unreadCount
+      tags: [Notifications]
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+
+  /notifications/read-all:
+    patch:
+      summary: Mark all notifications as read
+      operationId: markAllRead
+      tags: [Notifications]
+      responses:
+        "204":
+          description: All marked as read
+
+  /notifications/{id}/read:
+    patch:
+      summary: Mark a notification as read
+      operationId: markRead
+      tags: [Notifications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Notification marked as read
+
+  /notifications/settings:
+    get:
+      summary: Get notification settings
+      operationId: getNotificationSettings
+      tags: [Notifications]
+      responses:
+        "200":
+          description: Notification settings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NotificationSetting"
+    patch:
+      summary: Update notification settings
+      operationId: updateNotificationSettings
+      tags: [Notifications]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id:
+                  type: string
+                event_type:
+                  type: string
+                via_email:
+                  type: boolean
+                via_app:
+                  type: boolean
+      responses:
+        "200":
+          description: Settings updated
+
+  # ── Git ──────────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/git/providers:
+    get:
+      summary: Get configured git provider for a project
+      operationId: getGitProvider
+      tags: [Git]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Git provider configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitProviderConfig"
+        "404":
+          description: No provider configured
+    post:
+      summary: Configure a git provider for a project
+      operationId: configureGitProvider
+      tags: [Git]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider_type, base_url]
+              properties:
+                provider_type:
+                  type: string
+                  enum: [github, gitlab, gitea, forgejo]
+                base_url:
+                  type: string
+                token:
+                  type: string
+                  description: "Access token (GitHub: personal access token, GitLab: access token)"
+                webhook_secret:
+                  type: string
+      responses:
+        "201":
+          description: Provider configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitProviderConfig"
+    delete:
+      summary: Remove git provider configuration
+      operationId: deleteGitProvider
+      tags: [Git]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Provider removed
+
+  /webhooks/git/{token}:
+    post:
+      summary: Receive git webhook events
+      operationId: gitWebhook
+      tags: [Git]
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Webhook secret token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider-specific webhook payload
+      responses:
+        "200":
+          description: Webhook processed
+
+  # ── Export ───────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/issues/export:
+    get:
+      summary: Export project issues as CSV
+      operationId: exportIssuesCSV
+      tags: [Export]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # ── Custom Fields ────────────────────────────────────────────────
+  /project/{projectIdOrKey}/custom-fields:
+    get:
+      summary: List custom fields for a project
+      operationId: listCustomFields
+      tags: [CustomFields]
+      parameters:
+        - name: projectIdOrKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
           description: Custom field list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CustomField'
+                  $ref: "#/components/schemas/CustomField"
     post:
-      summary: Create custom field
+      summary: Create a custom field
       operationId: createCustomField
       tags: [CustomFields]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: projectID
+        - name: projectIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -626,34 +2428,58 @@ paths:
               type: object
               required: [name, field_type]
               properties:
-                name: { type: string }
-                field_type: { type: string, enum: [text, number, date, select, multiselect, user] }
+                name:
+                  type: string
+                field_type:
+                  type: string
+                  enum: [text, number, date, select, multiselect, user]
       responses:
-        '201': { description: Custom field created }
+        "201":
+          description: Custom field created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomField"
+
+  /custom-fields/{fieldID}:
+    delete:
+      summary: Delete a custom field
+      operationId: deleteCustomField
+      tags: [CustomFields]
+      parameters:
+        - name: fieldID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Field deleted
 
   /custom-fields/{fieldID}/options:
     get:
-      summary: List options for custom field
-      operationId: listOptions
+      summary: List options for a custom field
+      operationId: listFieldOptions
       tags: [CustomFields]
-      security: [{ bearerAuth: [] }]
       parameters:
         - name: fieldID
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200': { description: Option list }
+        "200":
+          description: Option list
     post:
-      summary: Add option to custom field
-      operationId: addOption
+      summary: Add an option to a custom field
+      operationId: addFieldOption
       tags: [CustomFields]
-      security: [{ bearerAuth: [] }]
       parameters:
         - name: fieldID
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -662,39 +2488,58 @@ paths:
               type: object
               required: [value]
               properties:
-                value: { type: string }
+                value:
+                  type: string
       responses:
-        '201': { description: Option created }
+        "201":
+          description: Option created
 
-  /issues/{issueID}/custom-values:
+  /custom-fields/options/{optionID}:
+    delete:
+      summary: Remove a custom field option
+      operationId: removeFieldOption
+      tags: [CustomFields]
+      parameters:
+        - name: optionID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Option removed
+
+  /issue/{issueIdOrKey}/custom-values:
     get:
-      summary: Get custom field values for issue
+      summary: Get custom field values for an issue
       operationId: getCustomValues
       tags: [CustomFields]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: issueID
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200': { description: Custom values }
+        "200":
+          description: Custom values for the issue
 
-  /issues/{issueID}/custom-values/{fieldID}:
+  /issue/{issueIdOrKey}/custom-values/{fieldID}:
     put:
-      summary: Set custom field value on issue
+      summary: Set a custom field value on an issue
       operationId: setCustomValue
       tags: [CustomFields]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: issueID
+        - name: issueIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - name: fieldID
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -703,40 +2548,43 @@ paths:
               type: object
               properties:
                 value: {}
-                option_id: { type: string }
+                option_id:
+                  type: string
       responses:
-        '200': { description: Value set }
+        "200":
+          description: Value set
 
-  /projects/{projectID}/automation:
+  # ── Automation ───────────────────────────────────────────────────
+  /project/{projectIdOrKey}/automation:
     get:
       summary: List automation rules
       operationId: listAutomationRules
       tags: [Automation]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: projectID
+        - name: projectIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200':
-          description: Rule list
+        "200":
+          description: Automation rule list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/AutomationRule'
+                  $ref: "#/components/schemas/AutomationRule"
     post:
-      summary: Create automation rule
+      summary: Create an automation rule
       operationId: createAutomationRule
       tags: [Automation]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: projectID
+        - name: projectIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -745,50 +2593,94 @@ paths:
               type: object
               required: [name, trigger_type, conditions_json, actions_json]
               properties:
-                name: { type: string }
-                trigger_type: { type: string }
-                conditions_json: { type: string }
-                actions_json: { type: string }
+                name:
+                  type: string
+                trigger_type:
+                  type: string
+                conditions_json:
+                  type: string
+                actions_json:
+                  type: string
       responses:
-        '201': { description: Rule created }
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
 
   /automation/{ruleID}:
     get:
-      summary: Get automation rule
+      summary: Get an automation rule
       operationId: getAutomationRule
       tags: [Automation]
-      security: [{ bearerAuth: [] }]
       parameters:
         - name: ruleID
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200': { description: Rule details }
+        "200":
+          description: Rule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
     patch:
-      summary: Update automation rule
+      summary: Update an automation rule
       operationId: updateAutomationRule
       tags: [Automation]
-      security: [{ bearerAuth: [] }]
       parameters:
         - name: ruleID
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                is_active:
+                  type: boolean
+                trigger_type:
+                  type: string
+                conditions_json:
+                  type: string
+                actions_json:
+                  type: string
       responses:
-        '200': { description: Rule updated }
+        "200":
+          description: Rule updated
+    delete:
+      summary: Delete an automation rule
+      operationId: deleteAutomationRule
+      tags: [Automation]
+      parameters:
+        - name: ruleID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Rule deleted
 
   /automation/{ruleID}/execute:
     post:
-      summary: Test-execute automation rule
+      summary: Test-execute an automation rule
       operationId: executeAutomationRule
       tags: [Automation]
-      security: [{ bearerAuth: [] }]
       parameters:
         - name: ruleID
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -797,126 +2689,74 @@ paths:
               type: object
               required: [issue_id]
               properties:
-                issue_id: { type: string }
+                issue_id:
+                  type: string
       responses:
-        '200': { description: Execution result }
+        "200":
+          description: Execution result
 
   /automation/{ruleID}/runs:
     get:
-      summary: List automation execution runs
+      summary: List execution runs for an automation rule
       operationId: listAutomationRuns
       tags: [Automation]
-      security: [{ bearerAuth: [] }]
       parameters:
         - name: ruleID
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        '200': { description: Run history }
+        "200":
+          description: Run history
 
-  /projects/{projectID}/timeline:
+  # ── Timeline ─────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/timeline:
     get:
       summary: Get timeline (Gantt) data
       operationId: getTimeline
       tags: [Timeline]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: projectID
+        - name: projectIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - name: zoom
           in: query
-          schema: { type: string, enum: [weeks, months, quarters] }
+          schema:
+            type: string
+            enum: [weeks, months, quarters]
+            default: months
       responses:
-        '200': { description: Timeline data }
+        "200":
+          description: Timeline data
 
-  /projects/{projectID}/calendar:
+  # ── Calendar ─────────────────────────────────────────────────────
+  /project/{projectIdOrKey}/calendar:
     get:
       summary: Get calendar data
       operationId: getCalendar
       tags: [Calendar]
-      security: [{ bearerAuth: [] }]
       parameters:
-        - name: projectID
+        - name: projectIdOrKey
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - name: year
           in: query
           required: true
-          schema: { type: integer }
+          schema:
+            type: integer
         - name: month
           in: query
           required: true
-          schema: { type: integer }
+          schema:
+            type: integer
       responses:
-        '200': { description: Calendar data }
-
-  /notifications:
-    get:
-      summary: List notifications
-      operationId: listNotifications
-      tags: [Notifications]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: Notification list }
-
-  /notifications/unread-count:
-    get:
-      summary: Get unread notification count
-      operationId: unreadCount
-      tags: [Notifications]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: Unread count
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  count: { type: integer }
-
-  /notifications/read-all:
-    patch:
-      summary: Mark all notifications as read
-      operationId: markAllRead
-      tags: [Notifications]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '204': { description: All marked read }
-
-  /notifications/{id}/read:
-    patch:
-      summary: Mark notification as read
-      operationId: markRead
-      tags: [Notifications]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '204': { description: Marked read }
-
-  /notifications/settings:
-    get:
-      summary: Get notification settings
-      operationId: getNotificationSettings
-      tags: [Notifications]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: Notification settings }
-    patch:
-      summary: Update notification settings
-      operationId: updateNotificationSettings
-      tags: [Notifications]
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: Settings updated }
+        "200":
+          description: Calendar data
 
 components:
   securitySchemes:
@@ -926,83 +2766,551 @@ components:
       bearerFormat: JWT
 
   schemas:
+    # ── Pagination ──────────────────────────────────────────────────
+    PageResponse:
+      type: object
+      properties:
+        startAt:
+          type: integer
+        maxResults:
+          type: integer
+        total:
+          type: integer
+        isLast:
+          type: boolean
+        values:
+          type: array
+          items: {}
+
+    PageResponseUser:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            values:
+              type: array
+              items:
+                $ref: "#/components/schemas/User"
+
+    PageResponseProject:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            values:
+              type: array
+              items:
+                $ref: "#/components/schemas/Project"
+
+    PageResponseIssue:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            values:
+              type: array
+              items:
+                $ref: "#/components/schemas/Issue"
+
+    PageResponseComment:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            values:
+              type: array
+              items:
+                $ref: "#/components/schemas/Comment"
+
+    PageResponseDashboard:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            values:
+              type: array
+              items:
+                $ref: "#/components/schemas/Dashboard"
+
+    PageResponseFilter:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            values:
+              type: array
+              items:
+                $ref: "#/components/schemas/SavedFilter"
+
+    # ── Error ──────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        errorMessages:
+          type: array
+          items:
+            type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: integer
+
+    # ── User ───────────────────────────────────────────────────────
     User:
       type: object
       properties:
-        id: { type: string }
-        email: { type: string }
-        username: { type: string }
-        display_name: { type: string }
-        avatar_url: { type: string }
-        is_admin: { type: boolean }
-        created_at: { type: string, format: date-time }
+        id:
+          type: string
+        email:
+          type: string
+        username:
+          type: string
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+        is_admin:
+          type: boolean
+        is_active:
+          type: boolean
 
+    # ── Project ────────────────────────────────────────────────────
     Project:
       type: object
       properties:
-        id: { type: string }
-        name: { type: string }
-        key: { type: string }
-        description: { type: string }
-        type: { type: string, enum: [scrum, kanban, business] }
-        is_archived: { type: boolean }
-        created_at: { type: string, format: date-time }
+        id:
+          type: string
+        name:
+          type: string
+        key:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [scrum, kanban, business]
+        lead_user_id:
+          type: string
+        default_assignee:
+          type: string
+        icon_url:
+          type: string
+        is_archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
+    ProjectMember:
+      type: object
+      properties:
+        project_id:
+          type: string
+        user_id:
+          type: string
+
+    # ── Issue ──────────────────────────────────────────────────────
     Issue:
       type: object
       properties:
-        id: { type: string }
-        project_id: { type: string }
-        key: { type: string }
-        title: { type: string }
-        description_json: { type: string }
-        priority: { type: string, enum: [highest, high, medium, low, lowest] }
-        type_id: { type: string }
-        status_id: { type: string }
-        assignee_id: { type: string }
-        reporter_id: { type: string }
-        parent_id: { type: string }
-        sprint_id: { type: string }
-        story_points: { type: integer }
-        position: { type: number }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+        id:
+          type: string
+        project_id:
+          type: string
+        key:
+          type: string
+        title:
+          type: string
+        description_json:
+          type: string
+        type_id:
+          type: string
+        status_id:
+          type: string
+        priority:
+          type: string
+          enum: [highest, high, medium, low, lowest]
+        assignee_id:
+          type: string
+        reporter_id:
+          type: string
+        resolution_id:
+          type: string
+        parent_id:
+          type: string
+        sprint_id:
+          type: string
+        version_id:
+          type: string
+        story_points:
+          type: integer
+        original_estimate:
+          type: integer
+        time_spent:
+          type: integer
+        start_date:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date-time
+        environment:
+          type: string
+        is_archived:
+          type: boolean
+        position:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
+    # ── Comment ────────────────────────────────────────────────────
     Comment:
       type: object
       properties:
-        id: { type: string }
-        issue_id: { type: string }
-        author_id: { type: string }
-        body_json: { type: string }
-        created_at: { type: string, format: date-time }
+        id:
+          type: string
+        issue_id:
+          type: string
+        author_id:
+          type: string
+        body_json:
+          type: string
+        is_deleted:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
+    # ── Issue Attachment ───────────────────────────────────────────
+    IssueAttachment:
+      type: object
+      properties:
+        id:
+          type: string
+        issue_id:
+          type: string
+        filename:
+          type: string
+        file_path:
+          type: string
+        file_size:
+          type: integer
+        uploader_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Label ──────────────────────────────────────────────────────
+    Label:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+
+    # ── Issue History ──────────────────────────────────────────────
+    IssueHistory:
+      type: object
+      properties:
+        id:
+          type: string
+        issue_id:
+          type: string
+        actor_id:
+          type: string
+        field_name:
+          type: string
+        old_value:
+          type: string
+        new_value:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Issue Link ─────────────────────────────────────────────────
+    IssueLink:
+      type: object
+      properties:
+        id:
+          type: string
+        source_id:
+          type: string
+        target_id:
+          type: string
+        link_type:
+          type: string
+          enum: [blocks, is_blocked, duplicates, relates]
+
+    # ── Workflow ───────────────────────────────────────────────────
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        statuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowStatus"
+        transitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowTransition"
+        created_at:
+          type: string
+          format: date-time
+
+    WorkflowStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        workflow_id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+          enum: [todo, inprogress, done]
+        color:
+          type: string
+        position:
+          type: integer
+
+    WorkflowTransition:
+      type: object
+      properties:
+        id:
+          type: string
+        workflow_id:
+          type: string
+        from_status_id:
+          type: string
+        to_status_id:
+          type: string
+
+    # ── Sprint ─────────────────────────────────────────────────────
     Sprint:
       type: object
       properties:
-        id: { type: string }
-        project_id: { type: string }
-        name: { type: string }
-        goal: { type: string }
-        state: { type: string, enum: [future, active, closed] }
-        start_date: { type: string, format: date-time }
-        end_date: { type: string, format: date-time }
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        goal:
+          type: string
+        state:
+          type: string
+          enum: [future, active, closed]
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
+    # ── Dashboard ──────────────────────────────────────────────────
+    Dashboard:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        owner_id:
+          type: string
+        is_public:
+          type: boolean
+        layout_json:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    DashboardWidget:
+      type: object
+      properties:
+        id:
+          type: string
+        dashboard_id:
+          type: string
+        widget_type:
+          type: string
+        config_json:
+          type: string
+        position_json:
+          type: string
+
+    # ── Saved Filter ───────────────────────────────────────────────
+    SavedFilter:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        owner_id:
+          type: string
+        name:
+          type: string
+        jql:
+          type: string
+        is_shared:
+          type: boolean
+        is_favourite:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Notification ───────────────────────────────────────────────
+    NotificationSetting:
+      type: object
+      properties:
+        user_id:
+          type: string
+        project_id:
+          type: string
+        event_type:
+          type: string
+        via_email:
+          type: boolean
+        via_app:
+          type: boolean
+
+    # ── Git ────────────────────────────────────────────────────────
+    GitProviderConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        provider_type:
+          type: string
+          enum: [github, gitlab, gitea, forgejo]
+        base_url:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    IssueCommit:
+      type: object
+      properties:
+        id:
+          type: string
+        issue_id:
+          type: string
+        provider_id:
+          type: string
+        commit_sha:
+          type: string
+        message:
+          type: string
+        author:
+          type: string
+        committed_at:
+          type: string
+          format: date-time
+
+    IssueBranch:
+      type: object
+      properties:
+        id:
+          type: string
+        issue_id:
+          type: string
+        provider_id:
+          type: string
+        branch_name:
+          type: string
+        repo_url:
+          type: string
+
+    IssuePullRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        issue_id:
+          type: string
+        provider_id:
+          type: string
+        pr_number:
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+        state:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        merged_at:
+          type: string
+          format: date-time
+
+    # ── Custom Field ───────────────────────────────────────────────
     CustomField:
       type: object
       properties:
-        id: { type: string }
-        project_id: { type: string }
-        name: { type: string }
-        field_type: { type: string, enum: [text, number, date, select, multiselect, user] }
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        field_type:
+          type: string
+          enum: [text, number, date, select, multiselect, user]
 
+    # ── Automation ─────────────────────────────────────────────────
     AutomationRule:
       type: object
       properties:
-        id: { type: string }
-        project_id: { type: string }
-        name: { type: string }
-        is_active: { type: boolean }
-        trigger_type: { type: string }
-        conditions_json: { type: string }
-        actions_json: { type: string }
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        is_active:
+          type: boolean
+        trigger_type:
+          type: string
+        conditions_json:
+          type: string
+        actions_json:
+          type: string
