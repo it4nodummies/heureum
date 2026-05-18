@@ -21,7 +21,7 @@ func setupWorkflowHandlerTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open db: %v", err)
 	}
-	db.AutoMigrate(&project.Project{}, &workflow.Workflow{}, &workflow.WorkflowStatus{}, &workflow.WorkflowTransition{}, &issue.Issue{}, &issue.IssueType{})
+	db.AutoMigrate(&project.Project{}, &workflow.Workflow{}, &workflow.WorkflowStatus{}, &workflow.WorkflowTransition{}, &issue.Issue{}, &issue.IssueType{}, &issue.IssueHistory{})
 	return db
 }
 
@@ -33,7 +33,7 @@ func TestGetWorkflowHandler(t *testing.T) {
 	wfSvc.CreateDefaultWorkflow(p.ID)
 	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
 
-	req := httptest.NewRequest("GET", "/api/v1/projects/TEST/workflow", nil)
+	req := httptest.NewRequest("GET", "/rest/api/3/project/TEST/workflow", nil)
 	req.SetPathValue("key", "TEST")
 	w := httptest.NewRecorder()
 	h.GetWorkflow(w, req)
@@ -58,7 +58,7 @@ func TestAddStatusHandler(t *testing.T) {
 
 	body := map[string]string{"name": "Review", "category": "inprogress", "color": "#FF0000"}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/projects/PROJ/workflow/statuses", bytes.NewReader(b))
+	req := httptest.NewRequest("POST", "/rest/api/3/project/PROJ/workflow/statuses", bytes.NewReader(b))
 	req.SetPathValue("key", "PROJ2")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -80,7 +80,7 @@ func TestUpdateStatusHandler(t *testing.T) {
 
 	body := map[string]string{"name": "New", "category": "inprogress", "color": "#222"}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("PATCH", "/api/v1/projects/PROJ/workflow/statuses/"+s.ID, bytes.NewReader(b))
+	req := httptest.NewRequest("PATCH", "/rest/api/3/project/PROJ/workflow/statuses/"+s.ID, bytes.NewReader(b))
 	req.SetPathValue("key", "PROJ3")
 	req.SetPathValue("id", s.ID)
 	req.Header.Set("Content-Type", "application/json")
@@ -106,7 +106,7 @@ func TestDeleteStatusHandler(t *testing.T) {
 	s, _ := wfSvc.AddStatus(wf.ID, "Extra", workflow.CategoryTodo, "#111")
 	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/projects/PROJ/workflow/statuses/"+s.ID, nil)
+	req := httptest.NewRequest("DELETE", "/rest/api/3/project/PROJ/workflow/statuses/"+s.ID, nil)
 	req.SetPathValue("key", "PROJ4")
 	req.SetPathValue("id", s.ID)
 	w := httptest.NewRecorder()
@@ -129,7 +129,7 @@ func TestAddTransitionHandler(t *testing.T) {
 
 	body := map[string]string{"from_status_id": s1.ID, "to_status_id": s2.ID}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/projects/PROJ/workflow/transitions", bytes.NewReader(b))
+	req := httptest.NewRequest("POST", "/rest/api/3/project/PROJ/workflow/transitions", bytes.NewReader(b))
 	req.SetPathValue("key", "PROJ5")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -156,9 +156,9 @@ func TestTransitionIssueHandler(t *testing.T) {
 
 	progStatus := wfForIssue.Statuses[1]
 
-	body := map[string]string{"to_status_id": progStatus.ID}
+	body := map[string]string{"status_id": progStatus.ID}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/issues/"+iss.Key+"/transition", bytes.NewReader(b))
+	req := httptest.NewRequest("POST", "/rest/api/3/issue/"+iss.Key+"/transitions", bytes.NewReader(b))
 	req.SetPathValue("issueKey", iss.Key)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -184,9 +184,9 @@ func TestTransitionIssueHandlerInvalid(t *testing.T) {
 
 	doneStatus := wfForIssue.Statuses[2]
 
-	body := map[string]string{"to_status_id": doneStatus.ID}
+	body := map[string]string{"status_id": doneStatus.ID}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/issues/"+iss.Key+"/transition", bytes.NewReader(b))
+	req := httptest.NewRequest("POST", "/rest/api/3/issue/"+iss.Key+"/transitions", bytes.NewReader(b))
 	req.SetPathValue("issueKey", iss.Key)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

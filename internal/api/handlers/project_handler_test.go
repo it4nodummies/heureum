@@ -33,7 +33,7 @@ func TestProjectCreateHandler(t *testing.T) {
 
 	body := map[string]string{"name": "Test", "key": "TE", "description": "desc", "type": "scrum"}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/projects", bytes.NewReader(b))
+	req := httptest.NewRequest("POST", "/rest/api/3/project", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	h.Create(w, req)
@@ -54,7 +54,7 @@ func TestProjectGetHandler(t *testing.T) {
 	svc.Create("Get Test", "GET", "desc", project.TypeScrum)
 	h := NewProjectHandler(svc, workflow.NewService(db))
 
-	req := httptest.NewRequest("GET", "/api/v1/projects/GET", nil)
+	req := httptest.NewRequest("GET", "/rest/api/3/project/GET", nil)
 	req.SetPathValue("key", "GET")
 	w := httptest.NewRecorder()
 	h.Get(w, req)
@@ -69,7 +69,7 @@ func TestProjectGetNotFoundHandler(t *testing.T) {
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	h := NewProjectHandler(svc, workflow.NewService(db))
 
-	req := httptest.NewRequest("GET", "/api/v1/projects/NOPE", nil)
+	req := httptest.NewRequest("GET", "/rest/api/3/project/NOPE", nil)
 	req.SetPathValue("key", "NOPE")
 	w := httptest.NewRecorder()
 	h.Get(w, req)
@@ -85,7 +85,7 @@ func TestProjectListHandler(t *testing.T) {
 	svc.Create("P1", "P1", "desc", project.TypeScrum)
 	h := NewProjectHandler(svc, workflow.NewService(db))
 
-	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	req := httptest.NewRequest("GET", "/rest/api/3/project", nil)
 	w := httptest.NewRecorder()
 	h.List(w, req)
 
@@ -105,7 +105,7 @@ func TestProjectDeleteHandler(t *testing.T) {
 	svc.Create("Del", "DEL", "desc", project.TypeScrum)
 	h := NewProjectHandler(svc, workflow.NewService(db))
 
-	req := httptest.NewRequest("DELETE", "/api/v1/projects/DEL", nil)
+	req := httptest.NewRequest("DELETE", "/rest/api/3/project/DEL", nil)
 	req.SetPathValue("key", "DEL")
 	w := httptest.NewRecorder()
 	h.Delete(w, req)
@@ -123,7 +123,7 @@ func TestProjectUpdateHandler(t *testing.T) {
 
 	body := map[string]string{"name": "New Name", "description": "new desc"}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("PATCH", "/api/v1/projects/OLD", bytes.NewReader(b))
+	req := httptest.NewRequest("PUT", "/rest/api/3/project/OLD", bytes.NewReader(b))
 	req.SetPathValue("key", "OLD")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -147,7 +147,7 @@ func TestProjectInviteHandler(t *testing.T) {
 
 	body := map[string]string{"email": "invited@test.com", "role": "member"}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/projects/INV/invites", bytes.NewReader(b))
+	req := httptest.NewRequest("POST", "/rest/api/3/project/INV/invites", bytes.NewReader(b))
 	req.SetPathValue("key", "INV")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

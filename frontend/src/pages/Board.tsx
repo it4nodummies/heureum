@@ -124,7 +124,7 @@ export default function BoardPage({ onNavigateIssue }: { onNavigateIssue?: (key:
     const token = localStorage.getItem('token')
     if (!token) return
 
-    fetch('/api/v1/projects', {
+    fetch('/rest/api/3/project', {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())
@@ -132,7 +132,7 @@ export default function BoardPage({ onNavigateIssue }: { onNavigateIssue?: (key:
         if (projects && projects.length > 0) {
           const key = projects[0].key || 'OJ'
           setProjectKey(key)
-          return fetch(`/api/v1/projects/${key}/board`, {
+          return fetch(`/rest/api/3/project/${key}/board`, {
             headers: { Authorization: `Bearer ${token}` }
           })
         }

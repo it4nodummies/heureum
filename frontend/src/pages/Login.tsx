@@ -16,7 +16,7 @@ export default function Login({ onLogin }: Props) {
     e.preventDefault()
     setError('')
 
-    const endpoint = isRegister ? '/api/v1/auth/register' : '/api/v1/auth/login'
+    const endpoint = isRegister ? '/rest/api/3/auth/register' : '/rest/api/3/auth/login'
     const body = isRegister
       ? { email, username, password }
       : { email, password }
@@ -31,7 +31,7 @@ export default function Login({ onLogin }: Props) {
       if (!res.ok) { setError(data.error || 'Failed'); return }
 
       if (isRegister) {
-        const loginRes = await fetch('/api/v1/auth/login', {
+        const loginRes = await fetch('/rest/api/3/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })

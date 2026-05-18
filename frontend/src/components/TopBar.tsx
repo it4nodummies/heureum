@@ -7,7 +7,7 @@ export default function TopBar() {
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (!token) return
-    fetch('/api/v1/projects', {
+    fetch('/rest/api/3/project', {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())

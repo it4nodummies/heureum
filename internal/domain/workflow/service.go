@@ -104,6 +104,26 @@ func (s *Service) ValidateTransition(workflowID, fromStatusID, toStatusID string
 	return nil
 }
 
+func (s *Service) ListAllStatuses() ([]WorkflowStatus, error) {
+	var statuses []WorkflowStatus
+	if err := s.db.Order("position ASC").Find(&statuses).Error; err != nil {
+		return nil, err
+	}
+	return statuses, nil
+}
+
+func (s *Service) GetStatus(idOrName string) (*WorkflowStatus, error) {
+	var status WorkflowStatus
+	if err := s.db.Where("id = ? OR name = ?", idOrName, idOrName).First(&status).Error; err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+func (s *Service) GetWorkflowByProjectID(projectID string) (*Workflow, error) {
+	return s.GetWorkflow(projectID)
+}
+
 func (s *Service) CreateDefaultWorkflow(projectID string) (*Workflow, error) {
 	wf, err := s.CreateWorkflow(projectID, "Default Workflow")
 	if err != nil {

@@ -157,3 +157,89 @@ func (h *DashboardHandler) RemoveWidget(w http.ResponseWriter, r *http.Request) 
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *DashboardHandler) RemoveGadget(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.RemoveWidget(r.PathValue("gadgetId")); err != nil {
+		http.Error(w, `{"error":"widget not found"}`, http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *DashboardHandler) SearchDashboards(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	dashboards, _ := h.svc.ListDashboards(userID)
+
+	query := r.URL.Query().Get("dashboardName")
+	if query != "" {
+		filtered := make([]dashboard.Dashboard, 0)
+		lowerQuery := query
+		for _, d := range dashboards {
+			if len(d.Name) > 0 {
+				if len(d.Name) >= len(lowerQuery) {
+					if d.Name == lowerQuery || containsIgnoreCase(d.Name, lowerQuery) {
+						filtered = append(filtered, d)
+					}
+				}
+			}
+		}
+		dashboards = filtered
+	}
+	if dashboards == nil {
+		dashboards = []dashboard.Dashboard{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"values": dashboards,
+		"total":  len(dashboards),
+	})
+}
+
+func containsIgnoreCase(s, substr string) bool {
+	if len(substr) > len(s) {
+		return false
+	}
+	for i := 0; i <= len(s)-len(substr); i++ {
+		match := true
+		for j := 0; j < len(substr); j++ {
+			sc := s[i+j]
+			ss := substr[j]
+			if sc >= 'A' && sc <= 'Z' {
+				sc += 32
+			}
+			if ss >= 'A' && ss <= 'Z' {
+				ss += 32
+			}
+			if sc != ss {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *DashboardHandler) CopyDashboard(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	original, err := h.svc.GetDashboard(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, `{"error":"dashboard not found"}`, http.StatusNotFound)
+		return
+	}
+	copied, err := h.svc.CreateDashboard(userID, original.Name+" (copy)")
+	if err != nil {
+		http.Error(w, `{"error":"failed to copy dashboard"}`, http.StatusInternalServerError)
+		return
+	}
+	widgets, _ := h.svc.GetWidgets(original.ID)
+	for _, wg := range widgets {
+		h.svc.AddWidget(copied.ID, wg.WidgetType, wg.ConfigJSON)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(copied)
+}

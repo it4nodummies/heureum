@@ -8,13 +8,14 @@ import (
 )
 
 type SavedFilter struct {
-	ID        string    `gorm:"primaryKey;type:text" json:"id"`
-	ProjectID *string   `gorm:"type:text" json:"project_id,omitempty"`
-	OwnerID   string    `gorm:"type:text;not null" json:"owner_id"`
-	Name      string    `gorm:"type:text;not null" json:"name"`
-	JQL       string    `gorm:"type:text;default:''" json:"jql"`
-	IsShared  bool      `gorm:"default:false" json:"is_shared"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	ID          string    `gorm:"primaryKey;type:text" json:"id"`
+	ProjectID   *string   `gorm:"type:text" json:"project_id,omitempty"`
+	OwnerID     string    `gorm:"type:text;not null" json:"owner_id"`
+	Name        string    `gorm:"type:text;not null" json:"name"`
+	JQL         string    `gorm:"type:text;default:''" json:"jql"`
+	IsShared    bool      `gorm:"default:false" json:"is_shared"`
+	IsFavourite bool      `gorm:"default:false" json:"is_favourite"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 type FilterService struct {
@@ -58,4 +59,44 @@ func (s *FilterService) Get(id string) (*SavedFilter, error) {
 
 func (s *FilterService) Delete(id string) error {
 	return s.db.Where("id = ?", id).Delete(&SavedFilter{}).Error
+}
+
+func (s *FilterService) Update(id string, name, jql string, isShared *bool) (*SavedFilter, error) {
+	var f SavedFilter
+	if err := s.db.Where("id = ?", id).First(&f).Error; err != nil {
+		return nil, err
+	}
+	updates := map[string]interface{}{}
+	if name != "" {
+		updates["name"] = name
+	}
+	if jql != "" {
+		updates["jql"] = jql
+	}
+	if isShared != nil {
+		updates["is_shared"] = *isShared
+	}
+	if len(updates) > 0 {
+		if err := s.db.Model(&f).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+	}
+	return s.Get(id)
+}
+
+func (s *FilterService) ToggleFavourite(id string, favourite bool) error {
+	return s.db.Model(&SavedFilter{}).Where("id = ?", id).Update("is_favourite", favourite).Error
+}
+
+func (s *FilterService) ChangeOwner(id, newOwnerID string) error {
+	return s.db.Model(&SavedFilter{}).Where("id = ?", id).Update("owner_id", newOwnerID).Error
+}
+
+func (s *FilterService) ListFavourites(userID string) ([]SavedFilter, error) {
+	var filters []SavedFilter
+	if err := s.db.Where("(owner_id = ? OR is_shared = ?) AND is_favourite = ?", userID, true, true).
+		Order("created_at DESC").Find(&filters).Error; err != nil {
+		return nil, err
+	}
+	return filters, nil
 }

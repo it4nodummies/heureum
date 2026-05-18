@@ -83,6 +83,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	authMw := middleware.Auth(cfg.Secret)
 	mux.Handle("GET /rest/api/3/users/me", authMw(http.HandlerFunc(userH.GetMe)))
+	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMe)))
+	mux.Handle("GET /rest/api/3/users/search", authMw(http.HandlerFunc(userH.SearchUsers)))
+	mux.Handle("GET /rest/api/3/user", authMw(http.HandlerFunc(userH.GetUser)))
 
 	mux.Handle("GET /rest/api/3/project", authMw(http.HandlerFunc(projectH.List)))
 	mux.Handle("POST /rest/api/3/project", authMw(http.HandlerFunc(projectH.Create)))
@@ -132,6 +135,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.DeleteStatus)))
 	mux.Handle("POST /rest/api/3/project/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.AddTransition)))
 	mux.Handle("POST /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.TransitionIssue)))
+	mux.Handle("GET /rest/api/3/status", authMw(http.HandlerFunc(wfH.ListStatuses)))
+	mux.Handle("GET /rest/api/3/status/{idOrName}", authMw(http.HandlerFunc(wfH.GetStatus)))
+	mux.Handle("GET /rest/api/3/workflow/search", authMw(http.HandlerFunc(wfH.SearchWorkflows)))
 
 	mux.Handle("GET /rest/api/3/project/{key}/sprints", authMw(http.HandlerFunc(sprintH.List)))
 	mux.Handle("POST /rest/api/3/project/{key}/sprints", authMw(http.HandlerFunc(sprintH.Create)))
@@ -144,11 +150,23 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
 
 	mux.Handle("GET /rest/api/3/search", authMw(http.HandlerFunc(searchH.Search)))
+	mux.Handle("POST /rest/api/3/search", authMw(http.HandlerFunc(searchH.SearchPost)))
+	mux.Handle("GET /rest/api/3/search/jql", authMw(http.HandlerFunc(searchH.Search)))
 
-	mux.Handle("GET /rest/api/3/filters", authMw(http.HandlerFunc(searchH.ListFilters)))
+	mux.Handle("GET /rest/api/3/filters", authMw(http.HandlerFunc(searchH.ListMyFilters)))
 	mux.Handle("POST /rest/api/3/filters", authMw(http.HandlerFunc(searchH.CreateFilter)))
 	mux.Handle("GET /rest/api/3/filters/{id}", authMw(http.HandlerFunc(searchH.GetFilter)))
 	mux.Handle("DELETE /rest/api/3/filters/{id}", authMw(http.HandlerFunc(searchH.DeleteFilter)))
+	mux.Handle("GET /rest/api/3/filter/my", authMw(http.HandlerFunc(searchH.ListMyFilters)))
+	mux.Handle("GET /rest/api/3/filter/favourite", authMw(http.HandlerFunc(searchH.ListFavouriteFilters)))
+	mux.Handle("GET /rest/api/3/filter/search", authMw(http.HandlerFunc(searchH.ListMyFilters)))
+	mux.Handle("POST /rest/api/3/filter", authMw(http.HandlerFunc(searchH.CreateFilter)))
+	mux.Handle("GET /rest/api/3/filter/{id}", authMw(http.HandlerFunc(searchH.GetFilter)))
+	mux.Handle("PUT /rest/api/3/filter/{id}", authMw(http.HandlerFunc(searchH.UpdateFilter)))
+	mux.Handle("DELETE /rest/api/3/filter/{id}", authMw(http.HandlerFunc(searchH.DeleteFilter)))
+	mux.Handle("PUT /rest/api/3/filter/{id}/favourite", authMw(http.HandlerFunc(searchH.AddFavourite)))
+	mux.Handle("DELETE /rest/api/3/filter/{id}/favourite", authMw(http.HandlerFunc(searchH.RemoveFavourite)))
+	mux.Handle("PUT /rest/api/3/filter/{id}/owner", authMw(http.HandlerFunc(searchH.ChangeFilterOwner)))
 
 	mux.Handle("GET /rest/api/3/project/{key}/reports/burndown", authMw(http.HandlerFunc(reportH.Burndown)))
 	mux.Handle("GET /rest/api/3/project/{key}/reports/velocity", authMw(http.HandlerFunc(reportH.Velocity)))
@@ -163,6 +181,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/dashboards/{id}", authMw(http.HandlerFunc(dashboardH.Delete)))
 	mux.Handle("POST /rest/api/3/dashboards/{id}/widgets", authMw(http.HandlerFunc(dashboardH.AddWidget)))
 	mux.Handle("DELETE /rest/api/3/dashboards/{id}/widgets/{widgetId}", authMw(http.HandlerFunc(dashboardH.RemoveWidget)))
+	mux.Handle("GET /rest/api/3/dashboard", authMw(http.HandlerFunc(dashboardH.List)))
+	mux.Handle("POST /rest/api/3/dashboard", authMw(http.HandlerFunc(dashboardH.Create)))
+	mux.Handle("GET /rest/api/3/dashboard/search", authMw(http.HandlerFunc(dashboardH.SearchDashboards)))
+	mux.Handle("GET /rest/api/3/dashboard/{id}", authMw(http.HandlerFunc(dashboardH.Get)))
+	mux.Handle("PUT /rest/api/3/dashboard/{id}", authMw(http.HandlerFunc(dashboardH.Update)))
+	mux.Handle("DELETE /rest/api/3/dashboard/{id}", authMw(http.HandlerFunc(dashboardH.Delete)))
+	mux.Handle("POST /rest/api/3/dashboard/{id}/copy", authMw(http.HandlerFunc(dashboardH.CopyDashboard)))
+	mux.Handle("POST /rest/api/3/dashboard/{dashboardId}/gadget", authMw(http.HandlerFunc(dashboardH.AddWidget)))
+	mux.Handle("DELETE /rest/api/3/dashboard/{dashboardId}/gadget/{gadgetId}", authMw(http.HandlerFunc(dashboardH.RemoveGadget)))
 
 	mux.HandleFunc("GET /ws/v1/projects/{key}/board", func(w http.ResponseWriter, r *http.Request) {
 		ws.ServeWs(wsHub, w, r)
@@ -203,7 +230,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)

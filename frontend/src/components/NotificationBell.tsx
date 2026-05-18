@@ -13,7 +13,7 @@ interface Notif {
   created_at: number
 }
 
-const API = 'http://localhost:8080/api/v1'
+const API = 'http://localhost:8080/rest/api/3'
 
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('token') || ''

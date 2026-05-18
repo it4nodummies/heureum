@@ -155,3 +155,41 @@ func (h *WorkflowHandler) TransitionIssue(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updated)
 }
+
+func (h *WorkflowHandler) ListStatuses(w http.ResponseWriter, r *http.Request) {
+	statuses, err := h.wfSvc.ListAllStatuses()
+	if err != nil {
+		http.Error(w, `{"error":"failed to list statuses"}`, http.StatusInternalServerError)
+		return
+	}
+	if statuses == nil {
+		statuses = []workflow.WorkflowStatus{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(statuses)
+}
+
+func (h *WorkflowHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.wfSvc.GetStatus(r.PathValue("idOrName"))
+	if err != nil {
+		http.Error(w, `{"error":"status not found"}`, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
+
+func (h *WorkflowHandler) SearchWorkflows(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("projectId")
+	if projectID == "" {
+		http.Error(w, `{"error":"projectId is required"}`, http.StatusBadRequest)
+		return
+	}
+	wf, err := h.wfSvc.GetWorkflowByProjectID(projectID)
+	if err != nil {
+		http.Error(w, `{"error":"workflow not found"}`, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode([]workflow.Workflow{*wf})
+}
