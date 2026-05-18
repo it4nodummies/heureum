@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"github.com/open-jira/open-jira/internal/api/middleware"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
@@ -56,10 +59,49 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(p)
 }
 
+// List supports: query, type (comma-sep), orderBy, direction, startAt, maxResults
 func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
-	projects, _ := h.svc.List(false)
+	q := r.URL.Query()
+
+	var types []string
+	if tp := q.Get("type"); tp != "" {
+		for _, t := range strings.Split(tp, ",") {
+			if t = strings.TrimSpace(t); t != "" {
+				types = append(types, t)
+			}
+		}
+	}
+
+	startAt, _ := strconv.Atoi(q.Get("startAt"))
+	maxResults, _ := strconv.Atoi(q.Get("maxResults"))
+	if maxResults == 0 {
+		maxResults = 50
+	}
+
+	filter := project.ListFilter{
+		Search:     q.Get("query"),
+		Types:      types,
+		SortKey:    q.Get("orderBy"),
+		SortDir:    q.Get("direction"),
+		StartAt:    startAt,
+		MaxResults: maxResults,
+	}
+
+	userID := middleware.UserIDFromContext(r.Context())
+	projects, total, err := h.svc.ListWithFilters(filter, userID)
+	if err != nil {
+		http.Error(w, `{"error":"failed to list projects"}`, http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(projects)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"startAt":    startAt,
+		"maxResults": maxResults,
+		"total":      total,
+		"isLast":     startAt+maxResults >= int(total),
+		"values":     projects,
+	})
 }
 
 func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -143,4 +185,34 @@ func (h *ProjectHandler) Invite(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"token": inv.Token})
+}
+
+// StarProject adds a project to the current user's favourites.
+func (h *ProjectHandler) StarProject(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	p, err := h.svc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	if err := h.svc.Star(p.ID, userID); err != nil {
+		http.Error(w, `{"error":"failed to star project"}`, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// UnstarProject removes a project from the current user's favourites.
+func (h *ProjectHandler) UnstarProject(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	p, err := h.svc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	if err := h.svc.Unstar(p.ID, userID); err != nil {
+		http.Error(w, `{"error":"failed to unstar project"}`, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

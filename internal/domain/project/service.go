@@ -72,6 +72,112 @@ func (s *Service) List(archived bool) ([]Project, error) {
 	return projects, nil
 }
 
+// ListWithFilters returns paginated, filtered, sorted projects enriched with lead info and starred status.
+func (s *Service) ListWithFilters(f ListFilter, userID string) ([]ProjectWithLead, int64, error) {
+	if f.MaxResults <= 0 {
+		f.MaxResults = 20
+	}
+
+	query := s.db.Model(&Project{}).Where("is_archived = ?", false)
+
+	if f.Search != "" {
+		like := "%" + strings.ToLower(f.Search) + "%"
+		query = query.Where("LOWER(name) LIKE ? OR LOWER(key) LIKE ?", like, like)
+	}
+	if len(f.Types) > 0 {
+		query = query.Where("type IN ?", f.Types)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Sorting
+	sortCol := "name"
+	switch f.SortKey {
+	case "key":
+		sortCol = "key"
+	case "type":
+		sortCol = "type"
+	case "created_at", "created":
+		sortCol = "created_at"
+	}
+	dir := "ASC"
+	if strings.EqualFold(f.SortDir, "desc") {
+		dir = "DESC"
+	}
+	query = query.Order("projects." + sortCol + " " + dir)
+
+	// Pagination
+	query = query.Offset(f.StartAt).Limit(f.MaxResults)
+
+	var projects []Project
+	if err := query.Find(&projects).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Collect project IDs and lead IDs
+	projectIDs := make([]string, 0, len(projects))
+	leadIDs := make([]string, 0, len(projects))
+	for _, p := range projects {
+		projectIDs = append(projectIDs, p.ID)
+		if p.LeadUserID != nil && *p.LeadUserID != "" {
+			leadIDs = append(leadIDs, *p.LeadUserID)
+		}
+	}
+
+	// Fetch lead users in one query
+	leadMap := make(map[string]*LeadInfo)
+	if len(leadIDs) > 0 {
+		var users []user.User
+		s.db.Where("id IN ?", leadIDs).Find(&users)
+		for i := range users {
+			u := users[i]
+			leadMap[u.ID] = &LeadInfo{
+				ID:          u.ID,
+				DisplayName: u.DisplayName,
+				AvatarURL:   u.AvatarURL,
+				Email:       u.Email,
+			}
+		}
+	}
+
+	// Fetch starred status in one query
+	starredSet := make(map[string]bool)
+	if userID != "" && len(projectIDs) > 0 {
+		var favs []ProjectFavorite
+		s.db.Where("user_id = ? AND project_id IN ?", userID, projectIDs).Find(&favs)
+		for _, fav := range favs {
+			starredSet[fav.ProjectID] = true
+		}
+	}
+
+	result := make([]ProjectWithLead, 0, len(projects))
+	for _, p := range projects {
+		pwl := ProjectWithLead{
+			Project:   p,
+			IsStarred: starredSet[p.ID],
+		}
+		if p.LeadUserID != nil {
+			pwl.Lead = leadMap[*p.LeadUserID]
+		}
+		result = append(result, pwl)
+	}
+	return result, total, nil
+}
+
+// Star marks a project as favourite for userID.
+func (s *Service) Star(projectID, userID string) error {
+	fav := ProjectFavorite{UserID: userID, ProjectID: projectID}
+	return s.db.Where(fav).FirstOrCreate(&fav).Error
+}
+
+// Unstar removes a project from a user's favourites.
+func (s *Service) Unstar(projectID, userID string) error {
+	return s.db.Where("user_id = ? AND project_id = ?", userID, projectID).Delete(&ProjectFavorite{}).Error
+}
+
 func (s *Service) Update(key string, name, description string) (*Project, error) {
 	p, err := s.GetByKey(key)
 	if err != nil {

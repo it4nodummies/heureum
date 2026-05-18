@@ -96,6 +96,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/project/{key}/members", authMw(http.HandlerFunc(projectH.AddMember)))
 	mux.Handle("DELETE /rest/api/3/project/{key}/members/{userId}", authMw(http.HandlerFunc(projectH.RemoveMember)))
 	mux.Handle("POST /rest/api/3/project/{key}/invites", authMw(http.HandlerFunc(projectH.Invite)))
+	mux.Handle("PUT /rest/api/3/project/{key}/star", authMw(http.HandlerFunc(projectH.StarProject)))
+	mux.Handle("DELETE /rest/api/3/project/{key}/star", authMw(http.HandlerFunc(projectH.UnstarProject)))
 	mux.Handle("GET /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.GetProvider)))
 	mux.Handle("POST /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.ConfigureProvider)))
 	mux.Handle("DELETE /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.DeleteProvider)))
