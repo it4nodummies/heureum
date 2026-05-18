@@ -215,71 +215,162 @@ helm uninstall open-jira
 └── PersistentVolumeClaim: upload allegati
 ```
 
-## API REST
+## API REST (Jira Cloud v3 aligned)
 
 Documentazione OpenAPI completa: `docs/api/openapi.yaml`
 
-### Endpoint principali
+Base URL: `/rest/api/3`
 
+### Auth
 ```
-# Auth
-POST   /api/v1/auth/register
-POST   /api/v1/auth/login
-GET    /api/v1/auth/oauth/{provider}/redirect
-GET    /api/v1/auth/oauth/{provider}/callback
+POST   /rest/api/3/auth/register
+POST   /rest/api/3/auth/login
+GET    /rest/api/3/auth/oauth/{provider}/redirect
+GET    /rest/api/3/auth/oauth/{provider}/callback
+```
 
-# Utenti
-GET    /api/v1/users/me
+### Myself
+```
+GET    /rest/api/3/myself
+```
 
-# Progetti
-GET    /api/v1/projects
-POST   /api/v1/projects
-GET    /api/v1/projects/{key}
-PATCH  /api/v1/projects/{key}
-DELETE /api/v1/projects/{key}
+### Users
+```
+GET    /rest/api/3/users/search?query={name}
+GET    /rest/api/3/user?accountId={id}
+```
 
-# Issues
-GET    /api/v1/projects/{key}/issues
-POST   /api/v1/projects/{key}/issues
-GET    /api/v1/issues/{issueKey}
-PATCH  /api/v1/issues/{issueKey}
-DELETE /api/v1/issues/{issueKey}
+### Projects
+```
+GET    /rest/api/3/project                              # list all
+GET    /rest/api/3/project/search                       # paginated search
+POST   /rest/api/3/project                              # create
+GET    /rest/api/3/project/{projectIdOrKey}              # get
+PUT    /rest/api/3/project/{projectIdOrKey}              # update
+DELETE /rest/api/3/project/{projectIdOrKey}              # delete
+GET    /rest/api/3/project/{projectIdOrKey}/statuses     # project statuses
+```
 
-# Workflow
-GET    /api/v1/projects/{key}/workflow
-POST   /api/v1/projects/{key}/workflow/statuses
-POST   /api/v1/projects/{key}/workflow/transitions
-POST   /api/v1/issues/{issueKey}/transition
+### Issues
+```
+GET    /rest/api/3/issue/{issueIdOrKey}                  # get issue
+POST   /rest/api/3/issue                                 # create issue
+PUT    /rest/api/3/issue/{issueIdOrKey}                  # edit issue
+DELETE /rest/api/3/issue/{issueIdOrKey}                  # delete issue
+PUT    /rest/api/3/issue/{issueIdOrKey}/assignee         # assign issue
+GET    /rest/api/3/issue/{issueIdOrKey}/changelog        # get changelog
+GET    /rest/api/3/issue/{issueIdOrKey}/transitions      # get available transitions
+POST   /rest/api/3/issue/{issueIdOrKey}/transitions      # transition issue
+POST   /rest/api/3/issue/{issueIdOrKey}/notify           # send notification
+```
 
-# Sprint
-GET    /api/v1/projects/{key}/sprints
-POST   /api/v1/projects/{key}/sprints/{id}/start
-POST   /api/v1/projects/{key}/sprints/{id}/complete
+### Comments
+```
+GET    /rest/api/3/issue/{issueIdOrKey}/comment           # list comments
+POST   /rest/api/3/issue/{issueIdOrKey}/comment           # add comment
+GET    /rest/api/3/issue/{issueIdOrKey}/comment/{id}      # get comment
+PUT    /rest/api/3/issue/{issueIdOrKey}/comment/{id}      # update comment
+DELETE /rest/api/3/issue/{issueIdOrKey}/comment/{id}      # delete comment
+POST   /rest/api/3/comment/list                           # get comments by IDs
+```
 
-# Board
-GET    /api/v1/projects/{key}/board
-POST   /api/v1/issues/rank
+### Attachments
+```
+POST   /rest/api/3/issue/{issueIdOrKey}/attachments       # upload attachment
+GET    /rest/api/3/attachment/{id}                        # get metadata
+GET    /rest/api/3/attachment/content/{id}                # download content
+DELETE /rest/api/3/attachment/{id}                        # delete attachment
+GET    /rest/api/3/attachment/meta                        # attachment settings
+```
 
-# Ricerca
-GET    /api/v1/search?q=project=PROJ type=Bug
+### Issue Links
+```
+POST   /rest/api/3/issueLink                              # create link
+GET    /rest/api/3/issueLink/{linkId}                     # get link
+DELETE /rest/api/3/issueLink/{linkId}                     # delete link
+```
 
-# Reports
-GET    /api/v1/projects/{key}/reports/burndown?sprintId=...
+### Watchers
+```
+GET    /rest/api/3/issue/{issueIdOrKey}/watchers          # list watchers
+POST   /rest/api/3/issue/{issueIdOrKey}/watchers          # add watcher
+DELETE /rest/api/3/issue/{issueIdOrKey}/watchers?username=X # remove watcher
+```
 
-# Dashboard
-GET    /api/v1/dashboards
-POST   /api/v1/dashboards
+### Workflows & Statuses
+```
+GET    /rest/api/3/workflow/search?projectId={id}         # search workflows
+GET    /rest/api/3/status                                 # all statuses
+GET    /rest/api/3/status/{idOrName}                      # get status
+```
 
-# Notifiche
-GET    /api/v1/notifications
-PATCH  /api/v1/notifications/read-all
+### Dashboards
+```
+GET    /rest/api/3/dashboard                              # list dashboards
+POST   /rest/api/3/dashboard                              # create dashboard
+GET    /rest/api/3/dashboard/{id}                         # get dashboard
+PUT    /rest/api/3/dashboard/{id}                         # update dashboard
+DELETE /rest/api/3/dashboard/{id}                         # delete dashboard
+GET    /rest/api/3/dashboard/search                       # search dashboards
+POST   /rest/api/3/dashboard/{id}/copy                    # copy dashboard
+POST   /rest/api/3/dashboard/{dashboardId}/gadget         # add gadget
+DELETE /rest/api/3/dashboard/{dashboardId}/gadget/{id}    # remove gadget
+```
 
-# Git
-POST   /api/v1/projects/{key}/git/providers
-POST   /api/v1/webhooks/git/{token}
+### Filters
+```
+GET    /rest/api/3/filter/my                              # my filters
+GET    /rest/api/3/filter/favourite                       # favorite filters
+GET    /rest/api/3/filter/search                          # search filters
+POST   /rest/api/3/filter                                 # create filter
+GET    /rest/api/3/filter/{id}                            # get filter
+PUT    /rest/api/3/filter/{id}                            # update filter
+DELETE /rest/api/3/filter/{id}                            # delete filter
+PUT    /rest/api/3/filter/{id}/favourite                  # add favorite
+DELETE /rest/api/3/filter/{id}/favourite                  # remove favorite
+```
 
-# WebSocket
-WS     /ws/v1/projects/{key}/board
+### Search
+```
+POST   /rest/api/3/search                                 # JQL search
+GET    /rest/api/3/search/jql?jql=...                     # JQL search GET
+```
+
+### Board & Backlog
+```
+GET    /rest/api/3/project/{key}/board                    # board view
+POST   /rest/api/3/issue/rank                             # reorder issues
+GET    /rest/api/3/project/{key}/sprints                  # list sprints
+POST   /rest/api/3/project/{key}/sprints                  # create sprint
+POST   /rest/api/3/project/{key}/sprints/{id}/start       # start sprint
+POST   /rest/api/3/project/{key}/sprints/{id}/complete    # complete sprint
+```
+
+### Reports
+```
+GET    /rest/api/3/project/{key}/reports/burndown?sprintId=...
+GET    /rest/api/3/project/{key}/reports/velocity
+GET    /rest/api/3/project/{key}/summary
+GET    /rest/api/3/project/{key}/issues/export?format=csv
+```
+
+### Notifications
+```
+GET    /rest/api/3/notifications
+PATCH  /rest/api/3/notifications/read-all
+GET    /rest/api/3/notifications/settings
+PATCH  /rest/api/3/notifications/settings
+```
+
+### Git Integration
+```
+POST   /rest/api/3/project/{key}/git/providers
+POST   /rest/api/3/webhooks/git/{token}
+```
+
+### WebSocket
+```
+WS     /ws/v1/project/{key}/board
 ```
 
 ### Autenticazione
@@ -295,7 +386,7 @@ Authorization: Bearer <jwt-token>
 ### Forgejo / Gitea
 
 1. Vai su **Settings → Applications → Manage OAuth2 Applications**
-2. Crea una nuova applicazione con redirect URI: `<BASE_URL>/api/v1/auth/oauth/forgejo/callback`
+2. Crea una nuova applicazione con redirect URI: `<BASE_URL>/rest/api/3/auth/oauth/forgejo/callback`
 3. Imposta le env vars:
    ```bash
    OAUTH_FORGEJO_CLIENT_ID=<client-id>
@@ -306,13 +397,13 @@ Authorization: Bearer <jwt-token>
 ### GitLab
 
 1. Vai su **Settings → Applications**
-2. Crea una nuova applicazione con redirect URI: `<BASE_URL>/api/v1/auth/oauth/gitlab/callback`
+2. Crea una nuova applicazione con redirect URI: `<BASE_URL>/rest/api/3/auth/oauth/gitlab/callback`
 3. Scope: `read_user`
 
 ### GitHub
 
 1. Vai su **Settings → Developer settings → OAuth Apps**
-2. Crea una nuova app con callback URL: `<BASE_URL>/api/v1/auth/oauth/github/callback`
+2. Crea una nuova app con callback URL: `<BASE_URL>/rest/api/3/auth/oauth/github/callback`
 
 ## Integrazione Git
 
@@ -320,7 +411,7 @@ Collega un repository Git al progetto per tracciare commit, branch e PR.
 
 ```bash
 # Configura un provider Git per il progetto
-curl -X POST /api/v1/projects/PROJ/git/providers \
+curl -X POST /rest/api/3/project/PROJ/git/providers \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -333,7 +424,7 @@ curl -X POST /api/v1/projects/PROJ/git/providers \
 
 Aggiungi il webhook sul tuo repository Git:
 ```
-URL: <BASE_URL>/api/v1/webhooks/git/<webhook-secret>
+URL: <BASE_URL>/rest/api/3/webhooks/git/<webhook-secret>
 Eventi: Push, Pull Request
 Content type: application/json
 Secret: <webhook-secret>
@@ -421,4 +512,4 @@ MIT
 
 ---
 
-**Versione:** 1.0.0 | **Tag:** [v1.0.0](https://github.com/open-jira/open-jira/releases/tag/v1.0.0)
+**Versione:** 2.0.0 | **Tag:** [v2.0.0](https://github.com/open-jira/open-jira/releases/tag/v2.0.0)
