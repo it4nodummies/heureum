@@ -19,11 +19,19 @@ type User struct {
 	AvatarUrls   map[string]string `json:"avatarUrls"`
 }
 
+// DefaultAvatarPath è servito da router.go (SVG inline, non autenticato):
+// è il fallback quando l'utente non ha un AvatarURL proprio.
+const DefaultAvatarPath = "/static/default-avatar.svg"
+
 // JiraUser mappa il modello interno user.User nella forma Jira v3.
+//
+// AccountType è fisso a "atlassian" e TimeZone/Locale restano sempre vuoti
+// finché user.User non guadagna quei campi (TODO: aggiungere fuso orario e
+// locale al modello utente e popolarli qui).
 func JiraUser(u user.User, baseURL string) User {
 	avatar := u.AvatarURL
 	if avatar == "" {
-		avatar = baseURL + "/static/default-avatar.png"
+		avatar = baseURL + DefaultAvatarPath
 	}
 	return User{
 		Self:         fmt.Sprintf("%s/rest/api/3/user?accountId=%s", baseURL, u.ID),

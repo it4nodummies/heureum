@@ -70,6 +70,25 @@ func TestMyself_ConformsToContract(t *testing.T) {
 	}
 }
 
+// TestDefaultAvatar_IsServed verifica che il fallback avatar puntato da
+// JiraUser (baseURL + v3.DefaultAvatarPath) sia realmente servito con 200 e
+// Content-Type SVG, senza autenticazione.
+func TestDefaultAvatar_IsServed(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	res, err := http.Get(srv.URL + "/static/default-avatar.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("Content-Type = %q, want image/svg+xml", ct)
+	}
+}
+
 func TestMyself_UnauthorizedIsJiraShaped(t *testing.T) {
 	srv, _ := newTestServer(t)
 

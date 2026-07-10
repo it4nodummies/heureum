@@ -16,15 +16,11 @@ type UserHandler struct {
 	BaseURL string
 }
 
-// NewUserHandler costruisce lo handler. baseURL è opzionale (variadico) per
-// non rompere le chiamate esistenti (es. NewUserHandler(db) nei test);
-// serve solo a GetMyself per costruire i link "self" nel formato Jira v3.
-func NewUserHandler(db *gorm.DB, baseURL ...string) *UserHandler {
-	bu := ""
-	if len(baseURL) > 0 {
-		bu = baseURL[0]
-	}
-	return &UserHandler{DB: db, BaseURL: bu}
+// NewUserHandler costruisce lo handler. baseURL serve a GetMyself per
+// costruire i link "self" e gli avatar nel formato Jira v3 (stessa
+// convenzione posizionale di NewOAuthHandler).
+func NewUserHandler(db *gorm.DB, baseURL string) *UserHandler {
+	return &UserHandler{DB: db, BaseURL: baseURL}
 }
 
 func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +43,8 @@ func (h *UserHandler) GetMyself(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
 	var u user.User
 	if err := h.DB.First(&u, "id = ?", userID).Error; err != nil {
+		// 401 (non 404 come GetMe): un token valido il cui principal non
+		// esiste più è un fallimento di autenticazione per /myself.
 		v3.WriteError(w, http.StatusUnauthorized, []string{"The user does not exist."}, nil)
 		return
 	}

@@ -79,6 +79,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 		w.Write([]byte("ok"))
 	})
 
+	// Avatar di default servito da JiraUser quando l'utente non ne ha uno.
+	// Non autenticato: gli avatar sono risorse pubbliche.
+	mux.HandleFunc("GET /static/default-avatar.svg", serveDefaultAvatar)
+
 	mux.HandleFunc("POST /rest/api/3/auth/register", authH.Register)
 	mux.HandleFunc("POST /rest/api/3/auth/login", authH.Login)
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/redirect", oauthH.Redirect)
@@ -233,6 +237,17 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/project/{projectID}/calendar", authMw(http.HandlerFunc(calendarH.GetCalendar)))
 
 	return corsMiddleware(mux)
+}
+
+// defaultAvatarSVG è un avatar neutro (cerchio grigio con silhouette) servito
+// inline, senza file su disco, come fallback per gli utenti senza AvatarURL.
+const defaultAvatarSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#C1C7D0"/><circle cx="24" cy="19" r="8" fill="#FFFFFF"/><path d="M8 44c0-8.837 7.163-14 16-14s16 5.163 16 14z" fill="#FFFFFF"/></svg>`
+
+func serveDefaultAvatar(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(defaultAvatarSVG))
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
