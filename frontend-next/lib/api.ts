@@ -65,20 +65,29 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+interface ApiFetchOptions extends RequestInit {
+  // When true, a 401 response is NOT treated as "session expired" (no
+  // localStorage wipe / redirect to /login). Use this for the login and
+  // register requests themselves, whose own 401 means "wrong credentials",
+  // not "your session died" — the caller needs the parsed error to reach it.
+  skipAuthRedirect?: boolean;
+}
+
 async function apiFetch<T>(
   path: string,
-  options: RequestInit = {}
+  options: ApiFetchOptions = {}
 ): Promise<T> {
+  const { skipAuthRedirect, ...requestInit } = options;
   const token = getToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
+    ...requestInit.headers,
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${BASE_URL}${path}`, { ...requestInit, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !skipAuthRedirect) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("token");
       window.location.href = "/login";
@@ -126,12 +135,14 @@ export const auth = {
     apiFetch<{ token: string }>("/rest/api/3/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+      skipAuthRedirect: true,
     }),
 
   register: (email: string, username: string, password: string) =>
     apiFetch<User>("/rest/api/3/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, username, password }),
+      skipAuthRedirect: true,
     }),
 
   me: () => apiFetch<User>("/rest/api/3/users/me"),

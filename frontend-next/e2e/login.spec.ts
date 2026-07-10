@@ -10,17 +10,17 @@ test("login con utente demo e arrivo sui progetti", async ({ page }) => {
   await expect(page.getByText("Demo Project")).toBeVisible();
 });
 
-test("login con credenziali errate non porta ai progetti", async ({ page }) => {
+test("login con credenziali errate mostra errore e resta su /login", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("wrong-password");
   await page.locator('form button[type="submit"]').click();
 
-  // NOTE: lib/api.ts's global 401 handler currently force-redirects to /login
-  // via window.location on ANY 401 (including a failed login attempt itself),
-  // which wipes the inline "invalid credentials" message before it can render.
-  // Until that's fixed, the strongest faithful assertion is that the user is
-  // kept out of the authenticated area and lands back on the login form.
-  await page.waitForURL(/\/login/);
-  await expect(page.getByLabel(/email/i)).toBeVisible();
+  // lib/api.ts's apiFetch now skips the global 401-redirect for the login
+  // request itself (skipAuthRedirect), so the backend's "invalid credentials"
+  // error (auth_handler.go: {"error":"invalid credentials"}, HTTP 401) propagates
+  // to the login page's catch block and renders inline instead of bouncing the
+  // user back to an empty /login form.
+  await expect(page.getByText(/invalid|credenziali|incorrect/i)).toBeVisible();
+  await expect(page).toHaveURL(/\/login/);
 });
