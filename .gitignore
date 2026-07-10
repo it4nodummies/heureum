@@ -5,3 +5,6 @@
 /bin/
 /tmp/
 .superpowers/
+
+# macOS
+.DS_Store
