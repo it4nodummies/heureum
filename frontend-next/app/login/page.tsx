@@ -99,10 +99,14 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">
+              <label
+                htmlFor="login-email"
+                className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5"
+              >
                 Email
               </label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -114,10 +118,14 @@ export default function LoginPage() {
 
             {tab === "register" && (
               <div>
-                <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">
+                <label
+                  htmlFor="login-username"
+                  className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5"
+                >
                   Username
                 </label>
                 <input
+                  id="login-username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -129,10 +137,14 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">
+              <label
+                htmlFor="login-password"
+                className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5"
+              >
                 Password
               </label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
