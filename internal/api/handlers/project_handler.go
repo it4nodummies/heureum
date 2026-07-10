@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -85,6 +86,10 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := h.svc.CreateProject(in)
 	if err != nil {
+		if errors.Is(err, project.ErrInvalidKey) {
+			v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"key": project.ErrInvalidKey.Error()})
+			return
+		}
 		v3.WriteError(w, http.StatusBadRequest, []string{err.Error()}, nil)
 		return
 	}

@@ -3,6 +3,7 @@ package project
 import (
 	"database/sql"
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -10,6 +11,14 @@ import (
 
 	"github.com/open-jira/open-jira/internal/domain/user"
 )
+
+// keyFormat is Jira's project key rule: a leading uppercase letter followed by
+// uppercase letters/digits, total length 2-10. This guarantees a valid key can
+// never be all-numeric, so it can never shadow a numeric seq_id lookup in GET.
+var keyFormat = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
+
+// ErrInvalidKey is returned when a project key does not match Jira's key format.
+var ErrInvalidKey = errors.New("key: must start with an uppercase letter, contain only uppercase letters and digits, and be 2-10 characters")
 
 type Service struct {
 	db   *gorm.DB
@@ -34,8 +43,8 @@ func (s *Service) nextSeqID() (int64, error) {
 
 func (s *Service) Create(name, key, description string, pType Type) (*Project, error) {
 	key = strings.ToUpper(key)
-	if len(key) < 2 || len(key) > 10 {
-		return nil, errors.New("project key must be 2-10 characters")
+	if !keyFormat.MatchString(key) {
+		return nil, ErrInvalidKey
 	}
 	var existing Project
 	if s.db.Where("key = ?", key).First(&existing).Error == nil {
@@ -80,6 +89,10 @@ func (s *Service) CreateProject(in CreateInput) (*Project, error) {
 	if in.Key == "" || in.Name == "" {
 		return nil, errors.New("key and name are required")
 	}
+	key := strings.ToUpper(in.Key)
+	if !keyFormat.MatchString(key) {
+		return nil, ErrInvalidKey
+	}
 	if in.Type == "" {
 		in.Type = TypeScrum
 	}
@@ -93,7 +106,7 @@ func (s *Service) CreateProject(in CreateInput) (*Project, error) {
 	p := &Project{
 		ID:           uuid.New().String(),
 		SeqID:        seqID,
-		Key:          strings.ToUpper(in.Key),
+		Key:          key,
 		Name:         in.Name,
 		Description:  in.Description,
 		Type:         in.Type,

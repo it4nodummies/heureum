@@ -82,6 +82,36 @@ func TestCreateProject_MissingKey_400(t *testing.T) {
 	}
 }
 
+// TestCreateProject_InvalidKey_400 verifica che una key non conforme al
+// formato Jira (qui tutta numerica) venga rifiutata con 400 e un errore di
+// campo su "key". Questo impedisce che una key numerica possa mascherare una
+// lookup per seq_id numerico in GET.
+func TestCreateProject_InvalidKey_400(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	body := `{"key":"99999","name":"X","projectTypeKey":"software","projectTemplateKey":"com.pyxis.greenhopper.jira:gh-scrum-template"}`
+	req, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/project", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 400 {
+		t.Fatalf("status = %d, want 400", res.StatusCode)
+	}
+	var errBody struct {
+		Errors map[string]string `json:"errors"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody.Errors["key"] == "" {
+		t.Errorf("expected a 'key' field error, got %+v", errBody.Errors)
+	}
+}
+
 func TestGetProject_ConformsToContract(t *testing.T) {
 	srv, authSvc := newTestServer(t)
 	jwt := registerAndLogin(t, authSvc)

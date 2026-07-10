@@ -1,6 +1,7 @@
 package project
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -56,6 +57,26 @@ func TestCreateProjectWithInput(t *testing.T) {
 	}
 	if p.Key != "NEW" || p.Type != TypeKanban || p.AssigneeType != "PROJECT_LEAD" {
 		t.Errorf("unexpected: %+v", p)
+	}
+}
+
+func TestCreateProjectInvalidKey(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+	// All-numeric and otherwise malformed keys must be rejected so a key can
+	// never shadow a numeric seq_id lookup in GET.
+	for _, k := range []string{"99999", "1", "A", "toolongkey1", "A-B", "9AB"} {
+		if _, err := svc.CreateProject(CreateInput{Key: k, Name: "X"}); !errors.Is(err, ErrInvalidKey) {
+			t.Errorf("key %q: err = %v, want ErrInvalidKey", k, err)
+		}
+	}
+	// Legacy Create path shares the same rule.
+	if _, err := svc.Create("X", "12345", "d", TypeScrum); !errors.Is(err, ErrInvalidKey) {
+		t.Errorf("Create numeric key: err = %v, want ErrInvalidKey", err)
+	}
+	// A valid key still succeeds.
+	if _, err := svc.CreateProject(CreateInput{Key: "OK1", Name: "X"}); err != nil {
+		t.Errorf("valid key OK1: unexpected err = %v", err)
 	}
 }
 
