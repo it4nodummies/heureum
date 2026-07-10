@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { issues } from "@/lib/api";
 import { AdfRenderer } from "./adf";
 
@@ -12,6 +13,17 @@ export function IssueView({ issueKey }: Props) {
   const { data: issue, isLoading, isError, error } = useQuery({
     queryKey: ["issue", issueKey],
     queryFn: () => issues.get(issueKey),
+  });
+
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const save = useMutation({
+    mutationFn: (summary: string) => issues.update(issueKey, { summary }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issue", issueKey] });
+      setEditing(false);
+    },
   });
 
   if (isLoading) {
@@ -38,7 +50,29 @@ export function IssueView({ issueKey }: Props) {
   return (
     <div className="max-w-5xl px-8 py-8">
       <div className="mb-2 text-xs font-mono text-slate-400">{issue.key}</div>
-      <h1 className="mb-6 text-2xl font-bold text-[#1a1f36] tracking-tight">{f.summary}</h1>
+      {editing ? (
+        <input
+          autoFocus
+          defaultValue={f.summary}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => save.mutate(draft || f.summary)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save.mutate(draft || f.summary);
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="mb-6 w-full rounded border border-[#0052cc] px-2 py-1 text-2xl font-bold text-[#1a1f36] tracking-tight"
+        />
+      ) : (
+        <h1
+          className="mb-6 cursor-text text-2xl font-bold text-[#1a1f36] tracking-tight"
+          onClick={() => {
+            setDraft(f.summary);
+            setEditing(true);
+          }}
+        >
+          {f.summary}
+        </h1>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-8">
         <div className="bg-white border border-slate-100 rounded-2xl shadow-sm shadow-slate-100/80 p-6">
