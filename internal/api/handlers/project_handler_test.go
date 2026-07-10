@@ -92,10 +92,15 @@ func TestProjectListHandler(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
-	var projects []project.Project
-	json.NewDecoder(w.Body).Decode(&projects)
-	if len(projects) != 1 {
-		t.Errorf("expected 1 project, got %d", len(projects))
+	var resp struct {
+		Total  int                       `json:"total"`
+		Values []project.ProjectWithLead `json:"values"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.Values) != 1 {
+		t.Errorf("expected 1 project, got %d", len(resp.Values))
 	}
 }
 
