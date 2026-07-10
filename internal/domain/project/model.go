@@ -12,6 +12,7 @@ const (
 
 type Project struct {
 	ID              string    `gorm:"primaryKey;type:text" json:"id"`
+	SeqID           int64     `gorm:"column:seq_id;uniqueIndex" json:"seq_id"`
 	OrgID           *string   `gorm:"type:text" json:"org_id,omitempty"`
 	Name            string    `gorm:"not null;type:text" json:"name"`
 	Key             string    `gorm:"uniqueIndex;not null;type:text" json:"key"`

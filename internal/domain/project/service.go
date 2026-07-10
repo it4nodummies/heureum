@@ -1,6 +1,7 @@
 package project
 
 import (
+	"database/sql"
 	"errors"
 	"strings"
 
@@ -19,6 +20,18 @@ func NewService(db *gorm.DB, lead *user.User) *Service {
 	return &Service{db: db, lead: lead}
 }
 
+// nextSeqID returns the next Jira-style numeric project id, starting at 10000
+// (legacy rows with a NULL seq_id are ignored by MAX). This uses MAX(seq_id)+1,
+// which has a theoretical race under concurrent creates; acceptable at the
+// current single-writer scale.
+func (s *Service) nextSeqID() (int64, error) {
+	var max sql.NullInt64
+	if err := s.db.Model(&Project{}).Select("COALESCE(MAX(seq_id), 9999)").Scan(&max).Error; err != nil {
+		return 0, err
+	}
+	return max.Int64 + 1, nil
+}
+
 func (s *Service) Create(name, key, description string, pType Type) (*Project, error) {
 	key = strings.ToUpper(key)
 	if len(key) < 2 || len(key) > 10 {
@@ -28,8 +41,13 @@ func (s *Service) Create(name, key, description string, pType Type) (*Project, e
 	if s.db.Where("key = ?", key).First(&existing).Error == nil {
 		return nil, errors.New("project key already exists")
 	}
+	seqID, err := s.nextSeqID()
+	if err != nil {
+		return nil, err
+	}
 	p := &Project{
 		ID:          uuid.New().String(),
+		SeqID:       seqID,
 		Name:        name,
 		Key:         key,
 		Description: description,
@@ -68,8 +86,13 @@ func (s *Service) CreateProject(in CreateInput) (*Project, error) {
 	if in.AssigneeType == "" {
 		in.AssigneeType = "UNASSIGNED"
 	}
+	seqID, err := s.nextSeqID()
+	if err != nil {
+		return nil, err
+	}
 	p := &Project{
 		ID:           uuid.New().String(),
+		SeqID:        seqID,
 		Key:          strings.ToUpper(in.Key),
 		Name:         in.Name,
 		Description:  in.Description,
@@ -109,6 +132,15 @@ func (s *Service) GetCategory(id string) (*ProjectCategory, error) {
 func (s *Service) GetByKey(key string) (*Project, error) {
 	var p Project
 	if err := s.db.Where("key = ?", strings.ToUpper(key)).First(&p).Error; err != nil {
+		return nil, errors.New("project not found")
+	}
+	return &p, nil
+}
+
+// GetBySeqID looks up a project by its Jira-style numeric id (seq_id).
+func (s *Service) GetBySeqID(id int64) (*Project, error) {
+	var p Project
+	if err := s.db.Where("seq_id = ?", id).First(&p).Error; err != nil {
 		return nil, errors.New("project not found")
 	}
 	return &p, nil

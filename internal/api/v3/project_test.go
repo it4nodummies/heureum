@@ -9,12 +9,12 @@ import (
 
 func TestJiraProject_Basic(t *testing.T) {
 	lead := &user.User{ID: "u1", DisplayName: "Ada", Email: "ada@x.io", IsActive: true}
-	p := project.Project{ID: "p1", Key: "DEMO", Name: "Demo", Description: "d", Type: project.TypeScrum, AssigneeType: "PROJECT_LEAD", Style: "classic"}
+	p := project.Project{ID: "p1", SeqID: 10005, Key: "DEMO", Name: "Demo", Description: "d", Type: project.TypeScrum, AssigneeType: "PROJECT_LEAD", Style: "classic"}
 	jp := JiraProject(p, lead, nil, "http://h")
-	if jp.ID != "p1" || jp.Key != "DEMO" || jp.Name != "Demo" {
+	if jp.ID != "10005" || jp.Key != "DEMO" || jp.Name != "Demo" {
 		t.Fatalf("basic fields wrong: %+v", jp)
 	}
-	if jp.Self != "http://h/rest/api/3/project/p1" {
+	if jp.Self != "http://h/rest/api/3/project/10005" {
 		t.Errorf("self = %q", jp.Self)
 	}
 	if jp.ProjectTypeKey != "software" {

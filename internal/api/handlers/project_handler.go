@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"hash/fnv"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -44,17 +44,6 @@ func (h *ProjectHandler) categoryOf(p *project.Project) *project.ProjectCategory
 	}
 	c, _ := h.svc.GetCategory(*p.CategoryID)
 	return c
-}
-
-// projectNumericID derives a stable int64 from a project's UUID. The Jira v3
-// contract's ProjectIdentifiers schema declares "id" as an int64 (legacy
-// Jira project IDs are numeric), while our internal storage keys projects by
-// UUID. We hash the UUID into a positive int64 so the response conforms to
-// the contract's type without needing a separate numeric column.
-func projectNumericID(uuid string) int64 {
-	hh := fnv.New64a()
-	_, _ = hh.Write([]byte(uuid))
-	return int64(hh.Sum64() &^ (1 << 63))
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -103,17 +92,27 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to create default workflow for project %s: %v", p.Key, err)
 	}
 	v3.WriteJSON(w, http.StatusCreated, map[string]any{
-		"self": h.baseURL + "/rest/api/3/project/" + p.ID,
-		"id":   projectNumericID(p.ID),
+		"self": h.baseURL + "/rest/api/3/project/" + fmt.Sprint(p.SeqID),
+		"id":   p.SeqID,
 		"key":  p.Key,
 	})
 }
 
 func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
-	key := r.PathValue("key")
-	p, err := h.svc.GetByKey(key)
+	idOrKey := r.PathValue("key")
+	// The path segment may be either a numeric project id (seq_id) or a
+	// project key. Resolve numerically first when it's all digits.
+	var (
+		p   *project.Project
+		err error
+	)
+	if n, convErr := strconv.ParseInt(idOrKey, 10, 64); convErr == nil {
+		p, err = h.svc.GetBySeqID(n)
+	} else {
+		p, err = h.svc.GetByKey(idOrKey)
+	}
 	if err != nil || p == nil {
-		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + idOrKey + "'."}, nil)
 		return
 	}
 	v3.WriteJSON(w, http.StatusOK, v3.JiraProject(*p, h.leadOf(p), h.categoryOf(p), h.baseURL))

@@ -48,8 +48,8 @@ func JiraProject(p project.Project, lead *user.User, cat *project.ProjectCategor
 		avatar = baseURL + DefaultProjectAvatarPath
 	}
 	jp := Project{
-		Self:           fmt.Sprintf("%s/rest/api/3/project/%s", baseURL, p.ID),
-		ID:             p.ID,
+		Self:           fmt.Sprintf("%s/rest/api/3/project/%d", baseURL, p.SeqID),
+		ID:             fmt.Sprint(p.SeqID),
 		Key:            p.Key,
 		Name:           p.Name,
 		Description:    p.Description,
