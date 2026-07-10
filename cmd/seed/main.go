@@ -15,6 +15,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/open-jira/open-jira/internal/domain/workflow"
 	"github.com/open-jira/open-jira/internal/store"
 )
 
@@ -114,5 +115,26 @@ func main() {
 		}
 		fmt.Printf("created %d issues in DEMO\n", len(samples))
 	}
+
+	var taskType issue.IssueType
+	if err := s.DB.Where("project_id = ? AND name = ?", demo.ID, "Task").First(&taskType).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		taskType = issue.IssueType{ID: uuid.NewString(), ProjectID: demo.ID, Name: "Task", Icon: "task", Color: "#4BADE8"}
+		if err := s.DB.Create(&taskType).Error; err != nil {
+			log.Fatalf("create issue type: %v", err)
+		}
+		fmt.Println("created issue type Task")
+	} else if err != nil {
+		log.Fatalf("check issue type: %v", err)
+	}
+	if err := s.DB.Model(&issue.Issue{}).Where("project_id = ? AND (type_id IS NULL OR type_id = '')", demo.ID).Update("type_id", taskType.ID).Error; err != nil {
+		log.Fatalf("assign issue type: %v", err)
+	}
+	var todo workflow.WorkflowStatus
+	if err := s.DB.Where("name = ?", "TO DO").First(&todo).Error; err == nil {
+		if uerr := s.DB.Model(&issue.Issue{}).Where("project_id = ? AND (status_id IS NULL OR status_id = '')", demo.ID).Update("status_id", todo.ID).Error; uerr != nil {
+			log.Fatalf("assign status: %v", uerr)
+		}
+	}
+
 	fmt.Println("seed complete")
 }

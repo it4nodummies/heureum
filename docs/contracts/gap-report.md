@@ -2,8 +2,8 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **62**
-- Nel contratto ma mancanti: **659**
+- Nel contratto e implementati (path match): **69**
+- Nel contratto ma mancanti: **652**
 - Implementati ma fuori contratto (estensioni): **78**
 
 ## Mancanti (dal contratto)
@@ -178,7 +178,6 @@
 - `GET /rest/api/3/data-policy` — Get data policy for the workspace
 - `GET /rest/api/3/data-policy/project` — Get data policy for projects
 - `GET /rest/api/3/events` — Get events
-- `GET /rest/api/3/field` — Get fields
 - `GET /rest/api/3/field/search` — Get fields paginated
 - `GET /rest/api/3/field/search/trashed` — Get fields in trash paginated
 - `GET /rest/api/3/field/{fieldId}/association/project` — Get field project associations
@@ -209,12 +208,10 @@
 - `GET /rest/api/3/groups/picker` — Find groups
 - `GET /rest/api/3/groupuserpicker` — Find users and groups
 - `GET /rest/api/3/instance/license` — Get license
-- `GET /rest/api/3/issue/createmeta` — Get create issue metadata
 - `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes` — Get create metadata issue types for a project
 - `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes/{issueTypeId}` — Get create field metadata for a project and issue type id
 - `GET /rest/api/3/issue/limit/report` — Get issue limit report
 - `GET /rest/api/3/issue/picker` — Get issue picker suggestions
-- `GET /rest/api/3/issue/{issueIdOrKey}/editmeta` — Get edit issue metadata
 - `GET /rest/api/3/issue/{issueIdOrKey}/properties` — Get issue property keys
 - `GET /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Get issue property
 - `GET /rest/api/3/issue/{issueIdOrKey}/remotelink` — Get remote issue links
@@ -234,7 +231,6 @@
 - `GET /rest/api/3/issuesecurityschemes/search` — Search issue security schemes
 - `GET /rest/api/3/issuesecurityschemes/{id}` — Get issue security scheme
 - `GET /rest/api/3/issuesecurityschemes/{issueSecuritySchemeId}/members` — Get issue security level members by issue security scheme
-- `GET /rest/api/3/issuetype` — Get all issue types for user
 - `GET /rest/api/3/issuetype/project` — Get issue types for project
 - `GET /rest/api/3/issuetype/{id}` — Get issue type
 - `GET /rest/api/3/issuetype/{id}/alternatives` — Get alternative issue types
@@ -250,7 +246,6 @@
 - `GET /rest/api/3/jql/autocompletedata` — Get field reference data (GET)
 - `GET /rest/api/3/jql/autocompletedata/suggestions` — Get field auto complete suggestions
 - `GET /rest/api/3/jql/function/computation` — Get precomputations (apps)
-- `GET /rest/api/3/label` — Get all labels
 - `GET /rest/api/3/license/approximateLicenseCount` — Get approximate license count
 - `GET /rest/api/3/license/approximateLicenseCount/product/{applicationKey}` — Get approximate application license count
 - `GET /rest/api/3/mypermissions` — Get my permissions
@@ -269,7 +264,6 @@
 - `GET /rest/api/3/plans/plan/{planId}/team` — Get teams in plan paginated
 - `GET /rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}` — Get Atlassian team in plan
 - `GET /rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}` — Get plan-only team
-- `GET /rest/api/3/priority` — Get priorities
 - `GET /rest/api/3/priority/search` — Search priorities
 - `GET /rest/api/3/priority/{id}` — Get priority
 - `GET /rest/api/3/priorityscheme` — Get priority schemes
@@ -307,7 +301,6 @@
 - `GET /rest/api/3/projectvalidate/validProjectKey` — Get valid project key
 - `GET /rest/api/3/projectvalidate/validProjectName` — Get valid project name
 - `GET /rest/api/3/redact/status/{jobId}` — Get redaction status
-- `GET /rest/api/3/resolution` — Get resolutions
 - `GET /rest/api/3/resolution/search` — Search resolutions
 - `GET /rest/api/3/resolution/{id}` — Get resolution
 - `GET /rest/api/3/role` — Get all project roles
