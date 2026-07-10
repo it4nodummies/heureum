@@ -1,37 +1,72 @@
 name: CI
 on:
   push:
-    branches: [master]
+    branches: [master, main]
   pull_request:
-    branches: [master]
+    branches: [master, main]
 jobs:
-  lint:
+  backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
+      - run: go build ./...
       - run: go vet ./...
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
+      - run: go test ./... -count=1
 
-  test:
+  gap-report:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
-      - run: go test ./... -v -count=1
+          go-version-file: go.mod
+      - run: go run ./cmd/gapreport
+      - name: Check gap report is up to date
+        run: |
+          if ! git diff --exit-code docs/contracts/gap-report.md; then
+            echo "::error::docs/contracts/gap-report.md is out of date. Run 'go run ./cmd/gapreport' locally and commit the result."
+            exit 1
+          fi
 
-  build:
+  frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-next
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend-next/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
-      - run: go build ./cmd/...
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend-next/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend-next
+        run: npm ci
+      - name: Install Playwright browsers
+        working-directory: frontend-next
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e tests
+        working-directory: frontend-next
+        run: npm run e2e
+        env:
+          APP_SECRET: ci-secret
