@@ -168,6 +168,46 @@ func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Search implements GET /rest/api/3/project/search, returning a
+// PageBeanProject conformant to the official contract.
+func (h *ProjectHandler) Search(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	startAt, maxResults := v3.ParsePagination(r, 50, 100)
+	f := project.ListFilter{
+		Search:     r.URL.Query().Get("query"),
+		SortKey:    "name",
+		SortDir:    "asc",
+		StartAt:    startAt,
+		MaxResults: maxResults,
+	}
+	rows, total, err := h.svc.ListWithFilters(f, userID)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to search projects."}, nil)
+		return
+	}
+	values := make([]v3.Project, 0, len(rows))
+	for i := range rows {
+		var lead *user.User
+		if rows[i].Lead != nil {
+			lead = &user.User{
+				ID:          rows[i].Lead.ID,
+				DisplayName: rows[i].Lead.DisplayName,
+				Email:       rows[i].Lead.Email,
+				AvatarURL:   rows[i].Lead.AvatarURL,
+				IsActive:    true,
+			}
+		}
+		cat := h.categoryOf(&rows[i].Project)
+		values = append(values, v3.JiraProject(rows[i].Project, lead, cat, h.baseURL))
+	}
+	v3.WritePage(w, http.StatusOK, v3.Page[v3.Project]{
+		StartAt:    startAt,
+		MaxResults: maxResults,
+		Total:      int(total),
+		Values:     values,
+	})
+}
+
 func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`

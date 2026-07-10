@@ -132,6 +132,26 @@ func TestGetProject_ConformsToContract(t *testing.T) {
 	}
 }
 
+func TestProjectSearch_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/project/search?maxResults=10", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/project/search", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("GET /project/search non conforme: %v", err)
+	}
+}
+
 // TestGetProjectByNumericID prova che create -> get-by-numeric-id fa
 // round-trip: creiamo un progetto, leggiamo l'id numerico (seq_id) restituito
 // da POST, e recuperiamo il progetto con GET /project/{id} numerico.
