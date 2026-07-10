@@ -149,3 +149,57 @@ func TestGetIssue_ConformsToContract(t *testing.T) {
 		t.Errorf("GET /issue/{key} non conforme: %v", err)
 	}
 }
+
+func TestUpdateIssue_204(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	key := createIssueViaAPI(t, srv, jwt, "DEMO", "Before")
+	body := `{"fields":{"summary":"After"}}`
+	req, _ := http.NewRequest("PUT", srv.URL+"/rest/api/3/issue/"+key, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 204 {
+		t.Fatalf("PUT status = %d, want 204", res.StatusCode)
+	}
+	greq, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key, nil)
+	greq.Header.Set("Authorization", "Bearer "+jwt)
+	gres, _ := http.DefaultClient.Do(greq)
+	defer gres.Body.Close()
+	var bean struct {
+		Fields struct {
+			Summary string `json:"summary"`
+		} `json:"fields"`
+	}
+	json.NewDecoder(gres.Body).Decode(&bean)
+	if bean.Fields.Summary != "After" {
+		t.Errorf("summary not updated: %q", bean.Fields.Summary)
+	}
+}
+
+func TestDeleteIssue_204(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	key := createIssueViaAPI(t, srv, jwt, "DEMO", "Trash")
+	req, _ := http.NewRequest("DELETE", srv.URL+"/rest/api/3/issue/"+key, nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, _ := http.DefaultClient.Do(req)
+	res.Body.Close()
+	if res.StatusCode != 204 {
+		t.Fatalf("DELETE status = %d, want 204", res.StatusCode)
+	}
+	// verifica 404 dopo delete
+	greq, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key, nil)
+	greq.Header.Set("Authorization", "Bearer "+jwt)
+	gres, _ := http.DefaultClient.Do(greq)
+	gres.Body.Close()
+	if gres.StatusCode != 404 {
+		t.Fatalf("GET after delete = %d, want 404", gres.StatusCode)
+	}
+}

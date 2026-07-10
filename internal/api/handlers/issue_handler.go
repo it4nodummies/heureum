@@ -25,12 +25,23 @@ func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *wor
 	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc, baseURL: baseURL}
 }
 
-// resolveIssue trova un'issue per SeqID numerico (id v3) o per Key.
+// resolveIssue trova un'issue per SeqID numerico (id v3) o per Key. Le issue
+// archiviate (soft-deleted da Delete) sono trattate come inesistenti.
 func (h *IssueHandler) resolveIssue(idOrKey string) (*issue.Issue, error) {
-	if n, err := strconv.ParseInt(idOrKey, 10, 64); err == nil {
-		return h.svc.GetBySeqID(n)
+	var iss *issue.Issue
+	var err error
+	if n, parseErr := strconv.ParseInt(idOrKey, 10, 64); parseErr == nil {
+		iss, err = h.svc.GetBySeqID(n)
+	} else {
+		iss, err = h.svc.GetByKey(idOrKey)
 	}
-	return h.svc.GetByKey(idOrKey)
+	if err != nil {
+		return nil, err
+	}
+	if iss != nil && iss.IsArchived {
+		return nil, nil
+	}
+	return iss, nil
 }
 
 func itoaInt64(n int64) string { return strconv.FormatInt(n, 10) }
@@ -242,29 +253,68 @@ func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusOK, v3.JiraIssue(h.buildIssueInput(iss)))
 }
 
+// Update implementa PUT /rest/api/3/issue/{issueIdOrKey}: accetta il body
+// Jira ufficiale {"fields": {...}} e restituisce 204 senza corpo.
 func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
-	issueKey := r.PathValue("issueKey")
-	var req struct {
-		Title           *string         `json:"title"`
-		DescriptionJSON *string         `json:"description_json"`
-		Priority        *issue.Priority `json:"priority"`
-		AssigneeID      *string         `json:"assignee_id"`
-		StatusID        *string         `json:"status_id"`
-		StoryPoints     *int            `json:"story_points"`
-	}
-	json.NewDecoder(r.Body).Decode(&req)
-	iss, err := h.svc.Update(issueKey, req.Title, req.DescriptionJSON, req.Priority, req.AssigneeID, req.StatusID, req.StoryPoints)
-	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+	iss, err := h.resolveIssue(r.PathValue("issueKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(iss)
+	var req struct {
+		Fields struct {
+			Summary     *string `json:"summary"`
+			Description any     `json:"description"`
+			Assignee    *struct {
+				AccountID string `json:"accountId"`
+			} `json:"assignee"`
+			Priority *struct {
+				ID string `json:"id"`
+			} `json:"priority"`
+		} `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"Invalid request body."}, nil)
+		return
+	}
+	var title, descJSON *string
+	if req.Fields.Summary != nil {
+		title = req.Fields.Summary
+	}
+	if req.Fields.Description != nil {
+		if b, err := json.Marshal(req.Fields.Description); err == nil {
+			s := string(b)
+			descJSON = &s
+		}
+	}
+	var priority *issue.Priority
+	if req.Fields.Priority != nil {
+		if e := priorityEnumForID(req.Fields.Priority.ID); e != "" {
+			p := issue.Priority(e)
+			priority = &p
+		}
+	}
+	var assigneeID *string
+	if req.Fields.Assignee != nil {
+		assigneeID = &req.Fields.Assignee.AccountID
+	}
+	if _, err := h.svc.Update(iss.Key, title, descJSON, priority, assigneeID, nil, nil); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update issue."}, nil)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
+// Delete implementa DELETE /rest/api/3/issue/{issueIdOrKey} restituendo 204
+// senza corpo, o 404 in stile Jira se l'issue non esiste.
 func (h *IssueHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.PathValue("issueKey")); err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+	iss, err := h.resolveIssue(r.PathValue("issueKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
+		return
+	}
+	if err := h.svc.Delete(iss.Key); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to delete issue."}, nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
