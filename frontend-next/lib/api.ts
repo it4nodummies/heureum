@@ -91,7 +91,16 @@ async function apiFetch<T>(
     let msg = `HTTP ${res.status}`;
     try {
       const json = JSON.parse(text);
-      msg = json.error ?? msg;
+      // Formato Jira v3: { errorMessages: string[], errors: Record<string,string> }
+      if (Array.isArray(json.errorMessages) && json.errorMessages.length > 0) {
+        msg = json.errorMessages.join(" ");
+      } else if (json.errors && Object.keys(json.errors).length > 0) {
+        msg = Object.entries(json.errors)
+          .map(([field, err]) => `${field}: ${err}`)
+          .join("; ");
+      } else if (json.error) {
+        msg = json.error; // retrocompatibilità con endpoint non ancora migrati
+      }
     } catch {
       /* ignore */
     }

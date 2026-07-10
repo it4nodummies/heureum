@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Open Jira",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full bg-[#f8f9fc] text-[#1a1f36]">{children}</body>
+      <body className="h-full bg-[#f8f9fc] text-[#1a1f36]">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
