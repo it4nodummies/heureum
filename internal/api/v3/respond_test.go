@@ -80,6 +80,18 @@ func TestWritePage_PartialPageNotLast(t *testing.T) {
 	}
 }
 
+func TestWritePage_NilValuesSerializesAsEmptyArray(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WritePage(rec, 200, Page[string]{Total: 0})
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if string(body["values"]) != "[]" {
+		t.Errorf("values = %s, want [] (Jira never serializes values as null)", body["values"])
+	}
+}
+
 func TestWritePage_StructValues(t *testing.T) {
 	type issue struct {
 		Key     string `json:"key"`

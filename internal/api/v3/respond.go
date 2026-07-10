@@ -46,5 +46,8 @@ type pageBody[T any] struct {
 }
 
 func WritePage[T any](w http.ResponseWriter, status int, p Page[T]) {
+	if p.Values == nil {
+		p.Values = []T{}
+	}
 	WriteJSON(w, status, pageBody[T]{Page: p, IsLast: p.StartAt+len(p.Values) >= p.Total})
 }
