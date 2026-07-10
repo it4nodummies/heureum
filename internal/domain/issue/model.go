@@ -48,6 +48,7 @@ type Issue struct {
 	Environment      string     `gorm:"type:text;default:''" json:"environment"`
 	IsArchived       bool       `gorm:"default:false" json:"is_archived"`
 	Position         float64    `gorm:"not null;default:0" json:"position"`
+	SeqID            int64      `gorm:"column:seq_id;uniqueIndex" json:"seq_id"`
 	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 	Type             *IssueType `gorm:"foreignKey:TypeID" json:"-"`

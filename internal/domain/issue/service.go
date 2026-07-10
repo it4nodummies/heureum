@@ -1,6 +1,7 @@
 package issue
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -34,6 +35,10 @@ func (s *Service) Create(projectKey, projectID, title, description string, prior
 		seq++
 	}
 	key := fmt.Sprintf("%s-%d", projectKey, seq)
+	seqID, err := s.nextSeqID()
+	if err != nil {
+		return nil, err
+	}
 	issue := &Issue{
 		ID:              uuid.New().String(),
 		ProjectID:       projectID,
@@ -44,6 +49,7 @@ func (s *Service) Create(projectKey, projectID, title, description string, prior
 		ParentID:        parentID,
 		TypeID:          typeID,
 		Position:        float64(seq * 1000),
+		SeqID:           seqID,
 	}
 	if err := s.db.Create(issue).Error; err != nil {
 		return nil, err
@@ -58,6 +64,33 @@ func (s *Service) GetByKey(key string) (*Issue, error) {
 		return nil, errors.New("issue not found")
 	}
 	return &issue, nil
+}
+
+func (s *Service) nextSeqID() (int64, error) {
+	var max sql.NullInt64
+	// nota: MAX+1 ha una race teorica sotto create concorrenti; accettabile a questa scala.
+	if err := s.db.Model(&Issue{}).Select("COALESCE(MAX(seq_id), 9999)").Scan(&max).Error; err != nil {
+		return 0, err
+	}
+	return max.Int64 + 1, nil
+}
+
+func (s *Service) GetBySeqID(id int64) (*Issue, error) {
+	var i Issue
+	if err := s.db.First(&i, "seq_id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &i, nil
+}
+
+// GetLabels restituisce i nomi delle label associate a una issue.
+func (s *Service) GetLabels(issueID string) ([]string, error) {
+	var names []string
+	err := s.db.Table("labels").
+		Joins("JOIN issue_labels ON issue_labels.label_id = labels.id").
+		Where("issue_labels.issue_id = ?", issueID).
+		Pluck("labels.name", &names).Error
+	return names, err
 }
 
 func (s *Service) Update(key string, title, descriptionJSON *string, priority *Priority, assigneeID, statusID *string, storyPoints *int) (*Issue, error) {
