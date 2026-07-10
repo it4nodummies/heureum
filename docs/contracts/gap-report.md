@@ -2,9 +2,9 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **56**
-- Nel contratto ma mancanti: **665**
-- Implementati ma fuori contratto (estensioni): **75**
+- Nel contratto e implementati (path match): **62**
+- Nel contratto ma mancanti: **659**
+- Implementati ma fuori contratto (estensioni): **78**
 
 ## Mancanti (dal contratto)
 
@@ -278,8 +278,6 @@
 - `GET /rest/api/3/priorityscheme/{schemeId}/projects` — Get projects by priority scheme
 - `GET /rest/api/3/project-template/live-template` — Gets a custom project template
 - `GET /rest/api/3/project/recent` — Get recent projects
-- `GET /rest/api/3/project/search` — Get projects paginated
-- `GET /rest/api/3/project/type` — Get all project types
 - `GET /rest/api/3/project/type/accessible` — Get licensed project types
 - `GET /rest/api/3/project/type/{projectTypeKey}` — Get project type by key
 - `GET /rest/api/3/project/type/{projectTypeKey}/accessible` — Get accessible project type by key
@@ -303,7 +301,6 @@
 - `GET /rest/api/3/project/{projectKeyOrId}/notificationscheme` — Get project notification scheme
 - `GET /rest/api/3/project/{projectKeyOrId}/permissionscheme` — Get assigned permission scheme
 - `GET /rest/api/3/project/{projectKeyOrId}/securitylevel` — Get project issue security levels
-- `GET /rest/api/3/projectCategory` — Get all project categories
 - `GET /rest/api/3/projectCategory/{id}` — Get project category by ID
 - `GET /rest/api/3/projects/fields` — Get fields for projects
 - `GET /rest/api/3/projectvalidate/key` — Validate project key
@@ -495,12 +492,9 @@
 - `POST /rest/api/3/priorityscheme/mappings` — Suggested priorities for mappings
 - `POST /rest/api/3/project-template` — Create custom project
 - `POST /rest/api/3/project-template/save-template` — Save a custom project template
-- `POST /rest/api/3/project/{projectIdOrKey}/archive` — Archive project
 - `POST /rest/api/3/project/{projectIdOrKey}/avatar2` — Load project avatar
 - `POST /rest/api/3/project/{projectIdOrKey}/delete` — Delete project asynchronously
-- `POST /rest/api/3/project/{projectIdOrKey}/restore` — Restore deleted or archived project
 - `POST /rest/api/3/project/{projectIdOrKey}/role/{id}` — Add actors to project role
-- `POST /rest/api/3/projectCategory` — Create project category
 - `POST /rest/api/3/redact` — Redact
 - `POST /rest/api/3/resolution` — Create resolution
 - `POST /rest/api/3/role` — Create project role
@@ -701,6 +695,8 @@
 - `GET /rest/api/3/notifications`
 - `GET /rest/api/3/notifications/settings`
 - `GET /rest/api/3/notifications/unread-count`
+- `GET /rest/api/3/project/type/business`
+- `GET /rest/api/3/project/type/software`
 - `GET /rest/api/3/project/{}/automation`
 - `GET /rest/api/3/project/{}/board`
 - `GET /rest/api/3/project/{}/calendar`
@@ -720,6 +716,7 @@
 - `GET /rest/api/3/project/{}/workflow`
 - `GET /rest/api/3/users/me`
 - `GET /static/default-avatar.svg`
+- `GET /static/default-project-avatar.svg`
 - `GET /ws/v1/projects/{}/board`
 - `PATCH /rest/api/3/automation/{}`
 - `PATCH /rest/api/3/dashboards/{}`
