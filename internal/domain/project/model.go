@@ -20,6 +20,12 @@ type Project struct {
 	LeadUserID      *string   `gorm:"type:text" json:"lead_user_id,omitempty"`
 	DefaultAssignee string    `gorm:"type:text;default:'unassigned'" json:"default_assignee"`
 	IconURL         string    `gorm:"type:text;default:''" json:"icon_url"`
+	CategoryID      *string   `gorm:"type:text" json:"category_id,omitempty"`
+	AssigneeType    string    `gorm:"type:text;not null;default:'UNASSIGNED'" json:"assignee_type"`
+	IsPrivate       bool      `gorm:"not null;default:false" json:"is_private"`
+	Simplified      bool      `gorm:"not null;default:false" json:"simplified"`
+	Style           string    `gorm:"type:text;not null;default:'classic'" json:"style"`
+	URL             string    `gorm:"type:text;not null;default:''" json:"url"`
 	IsArchived      bool      `gorm:"default:false" json:"is_archived"`
 	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
@@ -59,4 +65,42 @@ type ListFilter struct {
 	SortDir    string // "asc" | "desc"
 	StartAt    int
 	MaxResults int
+}
+
+// ProjectCategory rispecchia la tabella project_categories (migrazione 000002).
+type ProjectCategory struct {
+	ID          string `gorm:"primaryKey;type:text" json:"id"`
+	Name        string `gorm:"type:text;not null" json:"name"`
+	Description string `gorm:"type:text;default:''" json:"description"`
+}
+
+func (ProjectCategory) TableName() string { return "project_categories" }
+
+func TemplateKeyForType(t Type) string {
+	switch t {
+	case TypeKanban:
+		return "com.pyxis.greenhopper.jira:gh-kanban-template"
+	case TypeBusiness:
+		return "com.atlassian.jira-core-project-templates:jira-core-simplified-process-control"
+	default:
+		return "com.pyxis.greenhopper.jira:gh-scrum-template"
+	}
+}
+
+func TypeForTemplateKey(k string) Type {
+	switch k {
+	case "com.pyxis.greenhopper.jira:gh-kanban-template":
+		return TypeKanban
+	case "com.atlassian.jira-core-project-templates:jira-core-simplified-process-control":
+		return TypeBusiness
+	default:
+		return TypeScrum
+	}
+}
+
+func ProjectTypeKeyForType(t Type) string {
+	if t == TypeBusiness {
+		return "business"
+	}
+	return "software"
 }
