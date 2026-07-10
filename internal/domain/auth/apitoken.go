@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/open-jira/open-jira/internal/domain/user"
@@ -27,21 +28,27 @@ func hashToken(plaintext string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// CreateAPIToken generates a token, stores its hash and returns the plaintext
-// (shown to the user only once, the same way Atlassian does).
-func (s *Service) CreateAPIToken(userID, label string) (string, error) {
+// CreateAPIToken generates a token, stores its hash and returns the created
+// record along with the plaintext (shown to the user only once, the same way
+// Atlassian does).
+func (s *Service) CreateAPIToken(userID, label string) (*APIToken, string, error) {
 	raw := make([]byte, 24)
 	if _, err := rand.Read(raw); err != nil {
-		return "", err
+		return nil, "", err
 	}
 	plaintext := "ojt_" + base64.RawURLEncoding.EncodeToString(raw)
 	tok := APIToken{ID: generateID(), UserID: userID, Label: label, TokenHash: hashToken(plaintext)}
 	if err := s.DB.Create(&tok).Error; err != nil {
-		return "", err
+		return nil, "", err
 	}
-	return plaintext, nil
+	return &tok, plaintext, nil
 }
 
+// ErrInvalidToken is returned by VerifyAPIToken whenever the email/token pair
+// cannot be matched to an active user — unknown email, deactivated account,
+// or a token that does not belong to that user. Callers that need to
+// distinguish authentication failures from other errors should test with
+// errors.Is(err, ErrInvalidToken).
 var ErrInvalidToken = errors.New("invalid email or api token")
 
 // VerifyAPIToken implements Jira's Basic auth: email + api token.
@@ -56,6 +63,8 @@ func (s *Service) VerifyAPIToken(email, plaintext string) (string, error) {
 		return "", ErrInvalidToken
 	}
 	now := time.Now()
-	s.DB.Model(&tok).Update("last_used_at", &now)
+	if err := s.DB.Model(&tok).Update("last_used_at", &now).Error; err != nil {
+		log.Printf("auth: update last_used_at: %v", err)
+	}
 	return u.ID, nil
 }

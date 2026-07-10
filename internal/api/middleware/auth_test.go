@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -87,5 +88,49 @@ func TestAuth_UnauthorizedJiraFormat(t *testing.T) {
 	}
 	if len(body.ErrorMessages) == 0 {
 		t.Error("errorMessages must not be empty")
+	}
+}
+
+func TestAuth_MalformedBasicHeader(t *testing.T) {
+	verifyCalled := false
+	mw := Auth("secret", func(string, string) (string, error) {
+		verifyCalled = true
+		return "", errors.New("nope")
+	})
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler must not be reached")
+	}))
+
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{"not base64", "Basic !!!notbase64"},
+		{"base64 without colon", "Basic " + base64.StdEncoding.EncodeToString([]byte("no-colon-here"))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/rest/api/3/myself", nil)
+			req.Header.Set("Authorization", tc.header)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("code = %d, want 401", rec.Code)
+			}
+			var body struct {
+				ErrorMessages []string `json:"errorMessages"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("401 body is not Jira-shaped JSON: %v — body: %s", err, rec.Body.String())
+			}
+			if len(body.ErrorMessages) != 1 ||
+				body.ErrorMessages[0] != "Basic authentication with an invalid email or API token." {
+				t.Errorf("errorMessages = %v, want the invalid-credentials message, not the Bearer one", body.ErrorMessages)
+			}
+		})
+	}
+	if verifyCalled {
+		t.Error("verifier must not be called for malformed Basic headers")
 	}
 }

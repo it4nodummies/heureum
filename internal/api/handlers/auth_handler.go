@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/open-jira/open-jira/internal/api/middleware"
 	v3 "github.com/open-jira/open-jira/internal/api/v3"
@@ -66,11 +67,24 @@ func (h *AuthHandler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Label string `json:"label"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	token, err := h.svc.CreateAPIToken(userID, req.Label)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"Invalid request body."}, nil)
+		return
+	}
+	if len(req.Label) > 255 {
+		v3.WriteError(w, http.StatusBadRequest, nil,
+			map[string]string{"label": "Label must be at most 255 characters."})
+		return
+	}
+	tok, plaintext, err := h.svc.CreateAPIToken(userID, req.Label)
 	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to create API token."}, nil)
 		return
 	}
-	v3.WriteJSON(w, http.StatusCreated, map[string]string{"token": token, "label": req.Label})
+	v3.WriteJSON(w, http.StatusCreated, struct {
+		ID        string    `json:"id"`
+		Label     string    `json:"label"`
+		Token     string    `json:"token"`
+		CreatedAt time.Time `json:"created_at"`
+	}{ID: tok.ID, Label: tok.Label, Token: plaintext, CreatedAt: tok.CreatedAt})
 }

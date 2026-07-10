@@ -35,6 +35,11 @@ func Auth(secret string, verifyBasic BasicVerifier) func(http.Handler) http.Hand
 				}
 				next.ServeHTTP(w, r.WithContext(withUserID(r.Context(), userID)))
 				return
+			} else if strings.HasPrefix(header, "Basic ") {
+				// Basic scheme but undecodable credentials (bad base64 or no
+				// "email:token" separator) — do not fall through to Bearer.
+				unauthorized(w, "Basic authentication with an invalid email or API token.")
+				return
 			}
 
 			parts := strings.SplitN(header, " ", 2)
