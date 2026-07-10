@@ -3,8 +3,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
+
+	"gorm.io/gorm"
 
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
@@ -37,8 +40,12 @@ func main() {
 	}
 	for _, du := range demoUsers {
 		var existing user.User
-		if err := s.DB.Where("email = ?", du.email).First(&existing).Error; err == nil {
+		err := s.DB.Where("email = ?", du.email).First(&existing).Error
+		if err == nil {
 			continue // già presente: seed idempotente
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Fatalf("check user %s: %v", du.email, err)
 		}
 		if _, err := authSvc.Register(du.email, du.username, du.name, du.password); err != nil {
 			log.Fatalf("register %s: %v", du.email, err)
@@ -48,24 +55,30 @@ func main() {
 
 	var admin user.User
 	if err := s.DB.Where("email = ?", "admin@example.com").First(&admin).Error; err != nil {
-		log.Fatal(err)
+		log.Fatalf("load admin user: %v", err)
 	}
 
 	projSvc := project.NewService(s.DB, &admin)
 	var demo *project.Project
-	if p, err := projSvc.GetByKey("DEMO"); err == nil {
-		demo = p
-	} else {
+	var existingProject project.Project
+	switch err := s.DB.Where("key = ?", "DEMO").First(&existingProject).Error; {
+	case err == nil:
+		demo = &existingProject
+	case errors.Is(err, gorm.ErrRecordNotFound):
 		demo, err = projSvc.Create("Demo Project", "DEMO", "Progetto demo con dati di esempio", project.Type("scrum"))
 		if err != nil {
 			log.Fatalf("create project: %v", err)
 		}
 		fmt.Println("created project DEMO")
+	default:
+		log.Fatalf("check project DEMO: %v", err)
 	}
 
 	issueSvc := issue.NewService(s.DB)
 	var count int64
-	s.DB.Model(&issue.Issue{}).Where("project_id = ?", demo.ID).Count(&count)
+	if err := s.DB.Model(&issue.Issue{}).Where("project_id = ?", demo.ID).Count(&count).Error; err != nil {
+		log.Fatalf("count issues: %v", err)
+	}
 	if count == 0 {
 		samples := []struct {
 			title, desc string
