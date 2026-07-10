@@ -38,6 +38,58 @@ export interface Project {
   projectCategory?: ProjectCategoryRef;
 }
 
+export interface ADFNode {
+  type: string;
+  version?: number;
+  text?: string;
+  content?: ADFNode[];
+  attrs?: Record<string, unknown>;
+  marks?: { type: string; attrs?: Record<string, unknown> }[];
+}
+
+export interface IssueTypeRef {
+  id: string;
+  name: string;
+  iconUrl?: string;
+  subtask: boolean;
+}
+
+export interface StatusRef {
+  id: string;
+  name: string;
+  statusCategory: { id: number; key: string; colorName: string; name: string };
+}
+
+export interface PriorityRef {
+  id: string;
+  name: string;
+  iconUrl?: string;
+  statusColor?: string;
+}
+
+export interface IssueFields {
+  summary: string;
+  description: ADFNode | null;
+  issuetype: IssueTypeRef | null;
+  status: StatusRef | null;
+  priority: PriorityRef | null;
+  assignee: JiraUserRef | null;
+  reporter: JiraUserRef | null;
+  labels: string[];
+  created: string;
+  updated: string;
+  duedate?: string;
+  parent?: { id: string; key: string };
+  project?: { id: string; key: string; name: string };
+}
+
+export interface Issue {
+  self: string;
+  id: string;
+  key: string;
+  fields: IssueFields;
+}
+
 export interface PagedResponse<T> {
   startAt: number;
   maxResults: number;
@@ -191,4 +243,48 @@ export const projects = {
   types: () => apiFetch<{ key: string; formattedKey: string }[]>("/rest/api/3/project/type"),
 
   categories: () => apiFetch<ProjectCategoryRef[]>("/rest/api/3/projectCategory"),
+};
+
+// ── Issues ───────────────────────────────────────────────────────────────────
+
+export const issues = {
+  get: (idOrKey: string) => apiFetch<Issue>(`/rest/api/3/issue/${idOrKey}`),
+
+  create: (payload: {
+    projectKey: string;
+    summary: string;
+    issueTypeName?: string;
+    priorityId?: string;
+    description?: ADFNode;
+    labels?: string[];
+  }) =>
+    apiFetch<{ id: string; key: string; self: string }>("/rest/api/3/issue", {
+      method: "POST",
+      body: JSON.stringify({
+        fields: {
+          project: { key: payload.projectKey },
+          summary: payload.summary,
+          issuetype: { name: payload.issueTypeName ?? "Task" },
+          ...(payload.priorityId ? { priority: { id: payload.priorityId } } : {}),
+          ...(payload.description ? { description: payload.description } : {}),
+          ...(payload.labels ? { labels: payload.labels } : {}),
+        },
+      }),
+    }),
+
+  update: (idOrKey: string, fields: Record<string, unknown>) =>
+    apiFetch<void>(`/rest/api/3/issue/${idOrKey}`, {
+      method: "PUT",
+      body: JSON.stringify({ fields }),
+    }),
+
+  del: (idOrKey: string) => apiFetch<void>(`/rest/api/3/issue/${idOrKey}`, { method: "DELETE" }),
+};
+
+// ── Metadata (priorities, issue types, statuses) ────────────────────────────
+
+export const meta = {
+  priorities: () => apiFetch<PriorityRef[]>("/rest/api/3/priority"),
+  issueTypes: () => apiFetch<IssueTypeRef[]>("/rest/api/3/issuetype"),
+  statuses: () => apiFetch<StatusRef[]>("/rest/api/3/status"),
 };
