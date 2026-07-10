@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/open-jira/open-jira/internal/api/middleware"
+	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/auth"
 )
 
@@ -55,4 +57,20 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+// CreateAPIToken creates a personal API token (in real Jira Cloud, these are
+// managed on id.atlassian.com; here they are self-service).
+func (h *AuthHandler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	var req struct {
+		Label string `json:"label"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	token, err := h.svc.CreateAPIToken(userID, req.Label)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to create API token."}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusCreated, map[string]string{"token": token, "label": req.Label})
 }

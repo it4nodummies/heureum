@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/auth"
 )
 
@@ -12,28 +13,51 @@ type contextKey string
 
 const UserIDKey contextKey = "user_id"
 
-func Auth(secret string) func(http.Handler) http.Handler {
+// BasicVerifier validates an email + API token pair and returns the user ID.
+type BasicVerifier func(email, token string) (string, error)
+
+// Auth accepts either "Bearer <jwt>" (frontend session) or
+// "Basic base64(email:api_token)" (API clients, like Jira Cloud).
+func Auth(secret string, verifyBasic BasicVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
 			if header == "" {
-				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+				unauthorized(w, "Authentication required.")
 				return
 			}
+
+			if email, token, ok := r.BasicAuth(); ok {
+				userID, err := verifyBasic(email, token)
+				if err != nil {
+					unauthorized(w, "Basic authentication with an invalid email or API token.")
+					return
+				}
+				next.ServeHTTP(w, r.WithContext(withUserID(r.Context(), userID)))
+				return
+			}
+
 			parts := strings.SplitN(header, " ", 2)
 			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, `{"error":"invalid authorization header"}`, http.StatusUnauthorized)
+				unauthorized(w, "Unsupported Authorization scheme.")
 				return
 			}
 			claims, err := auth.ValidateToken(secret, parts[1])
 			if err != nil {
-				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+				unauthorized(w, "The access token is invalid or expired.")
 				return
 			}
-			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(withUserID(r.Context(), claims.UserID)))
 		})
 	}
+}
+
+func withUserID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, UserIDKey, id)
+}
+
+func unauthorized(w http.ResponseWriter, msg string) {
+	v3.WriteError(w, http.StatusUnauthorized, []string{msg}, nil)
 }
 
 func UserIDFromContext(ctx context.Context) string {

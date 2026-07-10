@@ -10,6 +10,9 @@ import (
 	"github.com/open-jira/open-jira/internal/api/ws"
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
+	"github.com/open-jira/open-jira/internal/domain/automation"
+	"github.com/open-jira/open-jira/internal/domain/calendar"
+	"github.com/open-jira/open-jira/internal/domain/customfield"
 	"github.com/open-jira/open-jira/internal/domain/dashboard"
 	"github.com/open-jira/open-jira/internal/domain/git"
 	"github.com/open-jira/open-jira/internal/domain/issue"
@@ -17,9 +20,6 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/report"
 	"github.com/open-jira/open-jira/internal/domain/search"
-	"github.com/open-jira/open-jira/internal/domain/automation"
-	"github.com/open-jira/open-jira/internal/domain/calendar"
-	"github.com/open-jira/open-jira/internal/domain/customfield"
 	"github.com/open-jira/open-jira/internal/domain/sprint"
 	"github.com/open-jira/open-jira/internal/domain/timeline"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
@@ -81,7 +81,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	mux.HandleFunc("POST /rest/api/3/webhooks/git/{token}", gitH.Webhook)
 
-	authMw := middleware.Auth(cfg.Secret)
+	authMw := middleware.Auth(cfg.Secret, authSvc.VerifyAPIToken)
+	mux.Handle("POST /rest/api/3/auth/api-tokens", authMw(http.HandlerFunc(authH.CreateAPIToken)))
 	mux.Handle("GET /rest/api/3/users/me", authMw(http.HandlerFunc(userH.GetMe)))
 	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMe)))
 	mux.Handle("GET /rest/api/3/users/search", authMw(http.HandlerFunc(userH.SearchUsers)))
