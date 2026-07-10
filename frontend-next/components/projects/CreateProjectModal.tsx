@@ -1,16 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { projects as projectsApi, ProjectType } from "@/lib/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { projects as projectsApi, ProjectTypeKey } from "@/lib/api";
 
 interface Props {
   onClose: () => void;
   onCreated: () => void;
 }
 
-const PROJECT_TYPES: { value: ProjectType; label: string; description: string; icon: React.ReactNode }[] = [
-  {
-    value: "scrum",
+type TemplateKey = "scrum" | "kanban" | "business";
+
+const TEMPLATES: Record<
+  TemplateKey,
+  { projectTypeKey: ProjectTypeKey; projectTemplateKey: string; label: string; description: string; icon: React.ReactNode }
+> = {
+  scrum: {
+    projectTypeKey: "software",
+    projectTemplateKey: "com.pyxis.greenhopper.jira:gh-scrum-template",
     label: "Scrum",
     description: "Sprints, backlog, burndown charts",
     icon: (
@@ -20,8 +27,9 @@ const PROJECT_TYPES: { value: ProjectType; label: string; description: string; i
       </svg>
     ),
   },
-  {
-    value: "kanban",
+  kanban: {
+    projectTypeKey: "software",
+    projectTemplateKey: "com.pyxis.greenhopper.jira:gh-kanban-template",
     label: "Kanban",
     description: "Continuous flow, WIP limits",
     icon: (
@@ -33,8 +41,9 @@ const PROJECT_TYPES: { value: ProjectType; label: string; description: string; i
       </svg>
     ),
   },
-  {
-    value: "business",
+  business: {
+    projectTypeKey: "business",
+    projectTemplateKey: "com.atlassian.jira-core-project-templates:jira-core-simplified-process-control",
     label: "Business",
     description: "Task tracking, no sprints",
     icon: (
@@ -46,17 +55,33 @@ const PROJECT_TYPES: { value: ProjectType; label: string; description: string; i
       </svg>
     ),
   },
-];
+};
+
+const TEMPLATE_ORDER: TemplateKey[] = ["scrum", "kanban", "business"];
 
 export default function CreateProjectModal({ onClose, onCreated }: Props) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<1 | 2>(1);
-  const [type, setType] = useState<ProjectType>("scrum");
+  const [template, setTemplate] = useState<TemplateKey>("scrum");
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [description, setDescription] = useState("");
   const [keyTouched, setKeyTouched] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+
+  const { mutate, isPending, error } = useMutation({
+    mutationFn: () =>
+      projectsApi.create({
+        key,
+        name,
+        description,
+        projectTypeKey: TEMPLATES[template].projectTypeKey,
+        projectTemplateKey: TEMPLATES[template].projectTemplateKey,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      onCreated();
+    },
+  });
 
   function derivedKey(n: string) {
     return n
@@ -70,17 +95,8 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
     if (!keyTouched) setKey(derivedKey(val));
   }
 
-  async function handleCreate() {
-    setError("");
-    setLoading(true);
-    try {
-      await projectsApi.create({ name, key, description, type });
-      onCreated();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to create project");
-    } finally {
-      setLoading(false);
-    }
+  function handleCreate() {
+    mutate();
   }
 
   return (
@@ -112,36 +128,39 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
                 Choose the methodology that fits your team's workflow.
               </p>
               <div className="space-y-2">
-                {PROJECT_TYPES.map((pt) => (
-                  <button
-                    key={pt.value}
-                    onClick={() => setType(pt.value)}
-                    className={`flex items-center gap-4 w-full p-4 rounded-xl border-2 text-left transition-all ${
-                      type === pt.value
-                        ? "border-[#0052cc] bg-[#e8f0fe]"
-                        : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    {pt.icon}
-                    <div>
-                      <p className="text-sm font-semibold text-[#1a1f36]">{pt.label}</p>
-                      <p className="text-xs text-slate-500">{pt.description}</p>
-                    </div>
-                    <div className="ml-auto">
-                      <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                          type === pt.value
-                            ? "border-[#0052cc] bg-[#0052cc]"
-                            : "border-slate-300"
-                        }`}
-                      >
-                        {type === pt.value && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                        )}
+                {TEMPLATE_ORDER.map((tpl) => {
+                  const pt = TEMPLATES[tpl];
+                  return (
+                    <button
+                      key={tpl}
+                      onClick={() => setTemplate(tpl)}
+                      className={`flex items-center gap-4 w-full p-4 rounded-xl border-2 text-left transition-all ${
+                        template === tpl
+                          ? "border-[#0052cc] bg-[#e8f0fe]"
+                          : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {pt.icon}
+                      <div>
+                        <p className="text-sm font-semibold text-[#1a1f36]">{pt.label}</p>
+                        <p className="text-xs text-slate-500">{pt.description}</p>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                      <div className="ml-auto">
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            template === tpl
+                              ? "border-[#0052cc] bg-[#0052cc]"
+                              : "border-slate-300"
+                          }`}
+                        >
+                          {template === tpl && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
               <div className="flex justify-end mt-6">
                 <button
@@ -156,7 +175,7 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
             <>
               {error && (
                 <div className="mb-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg px-4 py-3">
-                  {error}
+                  {error instanceof Error ? error.message : "Failed to create project"}
                 </div>
               )}
               <div className="space-y-4">
@@ -214,10 +233,10 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
                 </button>
                 <button
                   onClick={handleCreate}
-                  disabled={!name || !key || loading}
+                  disabled={!name || !key || isPending}
                   className="px-5 py-2 bg-[#0052cc] hover:bg-[#0065ff] disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
                 >
-                  {loading ? "Creating…" : "Create project"}
+                  {isPending ? "Creating…" : "Create project"}
                 </button>
               </div>
             </>
