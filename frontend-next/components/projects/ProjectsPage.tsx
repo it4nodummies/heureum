@@ -51,6 +51,7 @@ function ProjectActionsMenu({ project, onArchive }: { project: Project; onArchiv
         onClick={() => setOpen((v) => !v)}
         className="p-1.5 rounded-lg text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100"
         title="Actions"
+        aria-label="Project actions"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
           <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
