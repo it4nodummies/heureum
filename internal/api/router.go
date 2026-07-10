@@ -30,7 +30,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	authSvc := auth.NewService(db, cfg.Secret)
 	authH := handlers.NewAuthHandler(authSvc)
-	userH := handlers.NewUserHandler(db)
+	userH := handlers.NewUserHandler(db, cfg.BaseURL)
 	oauthH := handlers.NewOAuthHandler(db, cfg.Secret, cfg.BaseURL)
 	projectSvc := project.NewService(db, nil)
 	wfSvc := workflow.NewService(db)
@@ -84,7 +84,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	authMw := middleware.Auth(cfg.Secret, authSvc.VerifyAPIToken)
 	mux.Handle("POST /rest/api/3/auth/api-tokens", authMw(http.HandlerFunc(authH.CreateAPIToken)))
 	mux.Handle("GET /rest/api/3/users/me", authMw(http.HandlerFunc(userH.GetMe)))
-	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMe)))
+	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMyself)))
 	mux.Handle("GET /rest/api/3/users/search", authMw(http.HandlerFunc(userH.SearchUsers)))
 	mux.Handle("GET /rest/api/3/user", authMw(http.HandlerFunc(userH.GetUser)))
 

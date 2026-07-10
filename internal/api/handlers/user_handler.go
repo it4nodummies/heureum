@@ -7,15 +7,24 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/open-jira/open-jira/internal/api/middleware"
+	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/user"
 )
 
 type UserHandler struct {
-	DB *gorm.DB
+	DB      *gorm.DB
+	BaseURL string
 }
 
-func NewUserHandler(db *gorm.DB) *UserHandler {
-	return &UserHandler{DB: db}
+// NewUserHandler costruisce lo handler. baseURL è opzionale (variadico) per
+// non rompere le chiamate esistenti (es. NewUserHandler(db) nei test);
+// serve solo a GetMyself per costruire i link "self" nel formato Jira v3.
+func NewUserHandler(db *gorm.DB, baseURL ...string) *UserHandler {
+	bu := ""
+	if len(baseURL) > 0 {
+		bu = baseURL[0]
+	}
+	return &UserHandler{DB: db, BaseURL: bu}
 }
 
 func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +40,17 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(u)
+}
+
+// GetMyself risponde a GET /rest/api/3/myself nel formato Jira v3 (schema User).
+func (h *UserHandler) GetMyself(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	var u user.User
+	if err := h.DB.First(&u, "id = ?", userID).Error; err != nil {
+		v3.WriteError(w, http.StatusUnauthorized, []string{"The user does not exist."}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, v3.JiraUser(u, h.BaseURL))
 }
 
 func (h *UserHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
