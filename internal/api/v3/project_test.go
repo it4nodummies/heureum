@@ -51,9 +51,17 @@ func TestJiraProject_WithCategory(t *testing.T) {
 	}
 }
 
+func TestJiraProject_IconURLPreferred(t *testing.T) {
+	p := project.Project{ID: "p3", Key: "IC", Name: "Icon", Type: project.TypeScrum, IconURL: "http://cdn/x.png"}
+	jp := JiraProject(p, nil, nil, "http://h")
+	if jp.AvatarUrls["48x48"] != "http://cdn/x.png" {
+		t.Errorf("expected IconURL to be used for avatar, got %q", jp.AvatarUrls["48x48"])
+	}
+}
+
 func TestJiraProjectType(t *testing.T) {
 	jt := JiraProjectType("software", "http://h")
-	if jt.Key != "software" || jt.Self == "" {
+	if jt.Key != "software" || jt.FormattedKey != "Software" {
 		t.Errorf("unexpected project type: %+v", jt)
 	}
 }

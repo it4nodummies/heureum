@@ -90,7 +90,6 @@ type ProjectType struct {
 	DescriptionI18nKey string `json:"descriptionI18nKey"`
 	Icon               string `json:"icon"`
 	Color              string `json:"color"`
-	Self               string `json:"self,omitempty"`
 }
 
 // projectTypeLabels mappa la chiave del tipo di progetto (come restituita da
@@ -102,12 +101,16 @@ var projectTypeLabels = map[string]string{
 }
 
 // JiraProjectType mappa una projectTypeKey nella forma Jira v3 "ProjectType".
+//
+// Il contratto (components.schemas.ProjectType, additionalProperties:false) non
+// prevede un campo "self": la ProjectType non è una risorsa indirizzabile.
+// baseURL resta nella firma per coerenza con gli altri mapper v3.
 func JiraProjectType(key, baseURL string) ProjectType {
+	_ = baseURL
 	return ProjectType{
 		Key:                key,
 		FormattedKey:       projectTypeLabels[key],
 		DescriptionI18nKey: "jira.project.type." + key + ".description",
 		Color:              "#0052CC",
-		Self:               fmt.Sprintf("%s/rest/api/3/project/type/%s", baseURL, key),
 	}
 }
