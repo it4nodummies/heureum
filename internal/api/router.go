@@ -35,6 +35,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	projectSvc := project.NewService(db, nil)
 	wfSvc := workflow.NewService(db)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, cfg.BaseURL)
+	pcH := handlers.NewProjectCategoryHandler(db, cfg.BaseURL)
 	issueSvc := issue.NewService(db)
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc)
 	commentSvc := issue.NewCommentService(db)
@@ -107,6 +108,24 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/project", authMw(http.HandlerFunc(projectH.List)))
 	mux.Handle("POST /rest/api/3/project", authMw(http.HandlerFunc(projectH.Create)))
 	mux.Handle("GET /rest/api/3/project/search", authMw(http.HandlerFunc(projectH.Search)))
+	mux.Handle("GET /rest/api/3/project/type", authMw(http.HandlerFunc(projectH.ProjectTypes)))
+	// Registered as literal routes (not "/project/type/{projectTypeKey}"):
+	// net/http's ServeMux treats a wildcard here as ambiguous against the many
+	// existing "/project/{key}/<literal>" routes below (members, workflow,
+	// sprints, ...) — same segment depth, opposite literal/wildcard positions —
+	// and panics at startup. The set of valid project type keys is fixed, so
+	// literal routes plus SetPathValue keep ProjectTypeByKey's handler code
+	// (which reads r.PathValue("projectTypeKey")) unchanged.
+	mux.Handle("GET /rest/api/3/project/type/software", authMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.SetPathValue("projectTypeKey", "software")
+		projectH.ProjectTypeByKey(w, r)
+	})))
+	mux.Handle("GET /rest/api/3/project/type/business", authMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.SetPathValue("projectTypeKey", "business")
+		projectH.ProjectTypeByKey(w, r)
+	})))
+	mux.Handle("GET /rest/api/3/projectCategory", authMw(http.HandlerFunc(pcH.List)))
+	mux.Handle("POST /rest/api/3/projectCategory", authMw(http.HandlerFunc(pcH.Create)))
 	mux.Handle("GET /rest/api/3/project/{key}", authMw(http.HandlerFunc(projectH.Get)))
 	mux.Handle("PUT /rest/api/3/project/{key}", authMw(http.HandlerFunc(projectH.Update)))
 	mux.Handle("DELETE /rest/api/3/project/{key}", authMw(http.HandlerFunc(projectH.Delete)))

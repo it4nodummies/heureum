@@ -254,3 +254,77 @@ func TestGetProjectByNumericID(t *testing.T) {
 		t.Errorf("GET /project/{numericId} non conforme: %v", err)
 	}
 }
+
+func TestProjectTypes_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/project/type", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/project/type", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("GET /project/type non conforme: %v", err)
+	}
+}
+
+func TestProjectTypeByKey_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/project/type/software", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/project/type/software", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("GET /project/type/{key} non conforme: %v", err)
+	}
+}
+
+func TestProjectCategories_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	// create one
+	creq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/projectCategory", strings.NewReader(`{"name":"Ops","description":"operations"}`))
+	creq.Header.Set("Authorization", "Bearer "+jwt)
+	creq.Header.Set("Content-Type", "application/json")
+	cres, err := http.DefaultClient.Do(creq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cres.StatusCode != 201 {
+		t.Fatalf("create category status = %d, want 201", cres.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("POST", "/rest/api/3/projectCategory", cres.StatusCode, cres.Header, cres.Body); err != nil {
+		cres.Body.Close()
+		t.Errorf("POST /projectCategory non conforme: %v", err)
+	}
+	cres.Body.Close()
+	// list
+	lreq, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/projectCategory", nil)
+	lreq.Header.Set("Authorization", "Bearer "+jwt)
+	lres, err := http.DefaultClient.Do(lreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lres.Body.Close()
+	if lres.StatusCode != 200 {
+		t.Fatalf("list status = %d", lres.StatusCode)
+	}
+	if err := v.ValidateResponse("GET", "/rest/api/3/projectCategory", lres.StatusCode, lres.Header, lres.Body); err != nil {
+		t.Errorf("GET /projectCategory non conforme: %v", err)
+	}
+}

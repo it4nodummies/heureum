@@ -410,3 +410,23 @@ func (h *ProjectHandler) UnstarProject(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// ProjectTypes implements GET /rest/api/3/project/type, listing the project
+// types supported by this instance.
+func (h *ProjectHandler) ProjectTypes(w http.ResponseWriter, r *http.Request) {
+	types := []v3.ProjectType{
+		v3.JiraProjectType("software", h.baseURL),
+		v3.JiraProjectType("business", h.baseURL),
+	}
+	v3.WriteJSON(w, http.StatusOK, types)
+}
+
+// ProjectTypeByKey implements GET /rest/api/3/project/type/{projectTypeKey}.
+func (h *ProjectHandler) ProjectTypeByKey(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("projectTypeKey")
+	if key != "software" && key != "business" {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project type '" + key + "'."}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, v3.JiraProjectType(key, h.baseURL))
+}
