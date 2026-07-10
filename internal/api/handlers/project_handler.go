@@ -2,61 +2,121 @@ package handlers
 
 import (
 	"encoding/json"
+	"hash/fnv"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/open-jira/open-jira/internal/api/middleware"
+	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/user"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
 type ProjectHandler struct {
-	svc   *project.Service
-	wfSvc *workflow.Service
+	svc     *project.Service
+	wfSvc   *workflow.Service
+	baseURL string
 }
 
-func NewProjectHandler(svc *project.Service, wfSvc *workflow.Service) *ProjectHandler {
-	return &ProjectHandler{svc: svc, wfSvc: wfSvc}
+func NewProjectHandler(svc *project.Service, wfSvc *workflow.Service, baseURL string) *ProjectHandler {
+	return &ProjectHandler{svc: svc, wfSvc: wfSvc, baseURL: baseURL}
+}
+
+// leadOf resolves a project's lead user, returning nil if unset or not found.
+func (h *ProjectHandler) leadOf(p *project.Project) *user.User {
+	if p.LeadUserID == nil {
+		return nil
+	}
+	var u user.User
+	if err := h.svc.DB().First(&u, "id = ?", *p.LeadUserID).Error; err != nil {
+		return nil
+	}
+	return &u
+}
+
+// categoryOf resolves a project's category, returning nil if unset or not found.
+func (h *ProjectHandler) categoryOf(p *project.Project) *project.ProjectCategory {
+	if p.CategoryID == nil {
+		return nil
+	}
+	c, _ := h.svc.GetCategory(*p.CategoryID)
+	return c
+}
+
+// projectNumericID derives a stable int64 from a project's UUID. The Jira v3
+// contract's ProjectIdentifiers schema declares "id" as an int64 (legacy
+// Jira project IDs are numeric), while our internal storage keys projects by
+// UUID. We hash the UUID into a positive int64 so the response conforms to
+// the contract's type without needing a separate numeric column.
+func projectNumericID(uuid string) int64 {
+	hh := fnv.New64a()
+	_, _ = hh.Write([]byte(uuid))
+	return int64(hh.Sum64() &^ (1 << 63))
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name        string       `json:"name"`
-		Key         string       `json:"key"`
-		Description string       `json:"description"`
-		Type        project.Type `json:"type"`
+	var raw struct {
+		Key                string `json:"key"`
+		Name               string `json:"name"`
+		Description        string `json:"description"`
+		ProjectTypeKey     string `json:"projectTypeKey"`
+		ProjectTemplateKey string `json:"projectTemplateKey"`
+		LeadAccountID      string `json:"leadAccountId"`
+		AssigneeType       string `json:"assigneeType"`
+		URL                string `json:"url"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"Invalid request body."}, nil)
 		return
 	}
-	if req.Name == "" || req.Key == "" {
-		http.Error(w, `{"error":"name and key are required"}`, http.StatusBadRequest)
+	fieldErrs := map[string]string{}
+	if raw.Key == "" {
+		fieldErrs["key"] = "You must specify a valid project key."
+	}
+	if raw.Name == "" {
+		fieldErrs["name"] = "You must specify a valid project name."
+	}
+	if len(fieldErrs) > 0 {
+		v3.WriteError(w, http.StatusBadRequest, nil, fieldErrs)
 		return
 	}
-	p, err := h.svc.Create(req.Name, req.Key, req.Description, req.Type)
+	in := project.CreateInput{
+		Key:          raw.Key,
+		Name:         raw.Name,
+		Description:  raw.Description,
+		Type:         project.TypeForTemplateKey(raw.ProjectTemplateKey),
+		AssigneeType: raw.AssigneeType,
+		URL:          raw.URL,
+	}
+	if raw.LeadAccountID != "" {
+		in.LeadUserID = &raw.LeadAccountID
+	}
+	p, err := h.svc.CreateProject(in)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusConflict)
+		v3.WriteError(w, http.StatusBadRequest, []string{err.Error()}, nil)
 		return
 	}
 	if _, err := h.wfSvc.CreateDefaultWorkflow(p.ID); err != nil {
 		log.Printf("failed to create default workflow for project %s: %v", p.Key, err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(p)
+	v3.WriteJSON(w, http.StatusCreated, map[string]any{
+		"self": h.baseURL + "/rest/api/3/project/" + p.ID,
+		"id":   projectNumericID(p.ID),
+		"key":  p.Key,
+	})
 }
 
 func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
-	p, err := h.svc.GetByKey(r.PathValue("key"))
-	if err != nil {
-		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+	key := r.PathValue("key")
+	p, err := h.svc.GetByKey(key)
+	if err != nil || p == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(p)
+	v3.WriteJSON(w, http.StatusOK, v3.JiraProject(*p, h.leadOf(p), h.categoryOf(p), h.baseURL))
 }
 
 // List supports: query, type (comma-sep), orderBy, direction, startAt, maxResults

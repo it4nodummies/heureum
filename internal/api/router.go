@@ -34,7 +34,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	oauthH := handlers.NewOAuthHandler(db, cfg.Secret, cfg.BaseURL)
 	projectSvc := project.NewService(db, nil)
 	wfSvc := workflow.NewService(db)
-	projectH := handlers.NewProjectHandler(projectSvc, wfSvc)
+	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, cfg.BaseURL)
 	issueSvc := issue.NewService(db)
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc)
 	commentSvc := issue.NewCommentService(db)
