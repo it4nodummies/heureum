@@ -4,31 +4,38 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type ProjectType = "scrum" | "kanban" | "business";
+export type ProjectTypeKey = "software" | "business";
 
-export interface LeadInfo {
+export interface JiraUserRef {
+  accountId: string;
+  displayName: string;
+  emailAddress?: string;
+  avatarUrls: Record<string, string>;
+}
+
+export interface ProjectCategoryRef {
+  self?: string;
   id: string;
-  display_name: string;
-  avatar_url: string;
-  email: string;
+  name: string;
+  description: string;
 }
 
 export interface Project {
-  id: string;
-  org_id?: string;
-  name: string;
+  self: string;
+  id: string; // numeric string (seq_id), e.g. "10000"
   key: string;
-  description: string;
-  type: ProjectType;
-  lead_user_id?: string;
-  default_assignee: string;
-  icon_url: string;
-  is_archived: boolean;
-  created_at: string;
-  updated_at: string;
-  // enriched fields
-  lead?: LeadInfo;
-  is_starred: boolean;
+  name: string;
+  description?: string;
+  projectTypeKey: ProjectTypeKey;
+  style: string;
+  simplified: boolean;
+  isPrivate: boolean;
+  archived: boolean;
+  assigneeType?: string;
+  url?: string;
+  avatarUrls: Record<string, string>;
+  lead?: JiraUserRef;
+  projectCategory?: ProjectCategoryRef;
 }
 
 export interface PagedResponse<T> {
@@ -47,15 +54,6 @@ export interface User {
   avatar_url: string;
   is_admin: boolean;
   is_active: boolean;
-}
-
-export interface ListProjectsParams {
-  query?: string;
-  type?: string; // comma-separated types
-  orderBy?: "name" | "key" | "type" | "created_at";
-  direction?: "asc" | "desc";
-  startAt?: number;
-  maxResults?: number;
 }
 
 // ── Core fetch helper ────────────────────────────────────────────────────────
@@ -151,44 +149,46 @@ export const auth = {
 // ── Projects ─────────────────────────────────────────────────────────────────
 
 export const projects = {
-  list: (params: ListProjectsParams = {}): Promise<PagedResponse<Project>> => {
+  search: (params: { query?: string; startAt?: number; maxResults?: number } = {}) => {
     const qs = buildQuery({
       query: params.query,
-      type: params.type,
-      orderBy: params.orderBy,
-      direction: params.direction,
       startAt: params.startAt,
       maxResults: params.maxResults,
     });
-    return apiFetch<PagedResponse<Project>>(`/rest/api/3/project${qs}`);
+    return apiFetch<PagedResponse<Project>>(`/rest/api/3/project/search${qs}`);
   },
 
-  get: (key: string) =>
-    apiFetch<Project>(`/rest/api/3/project/${key}`),
+  get: (idOrKey: string) => apiFetch<Project>(`/rest/api/3/project/${idOrKey}`),
 
   create: (payload: {
-    name: string;
     key: string;
+    name: string;
     description?: string;
-    type: ProjectType;
+    projectTypeKey: ProjectTypeKey;
+    projectTemplateKey: string;
+    assigneeType?: string;
   }) =>
-    apiFetch<Project>("/rest/api/3/project", {
+    apiFetch<{ self: string; id: number; key: string }>("/rest/api/3/project", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
 
-  update: (key: string, payload: { name?: string; description?: string }) =>
-    apiFetch<Project>(`/rest/api/3/project/${key}`, {
+  update: (
+    idOrKey: string,
+    payload: { name?: string; description?: string; assigneeType?: string; url?: string }
+  ) =>
+    apiFetch<Project>(`/rest/api/3/project/${idOrKey}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
 
-  archive: (key: string) =>
-    apiFetch<void>(`/rest/api/3/project/${key}`, { method: "DELETE" }),
+  archive: (idOrKey: string) =>
+    apiFetch<void>(`/rest/api/3/project/${idOrKey}/archive`, { method: "POST" }),
 
-  star: (key: string) =>
-    apiFetch<void>(`/rest/api/3/project/${key}/star`, { method: "PUT" }),
+  restore: (idOrKey: string) =>
+    apiFetch<Project>(`/rest/api/3/project/${idOrKey}/restore`, { method: "POST" }),
 
-  unstar: (key: string) =>
-    apiFetch<void>(`/rest/api/3/project/${key}/star`, { method: "DELETE" }),
+  types: () => apiFetch<{ key: string; formattedKey: string }[]>("/rest/api/3/project/type"),
+
+  categories: () => apiFetch<ProjectCategoryRef[]>("/rest/api/3/projectCategory"),
 };
