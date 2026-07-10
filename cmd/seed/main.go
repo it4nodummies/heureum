@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/open-jira/open-jira/internal/config"
@@ -72,6 +73,22 @@ func main() {
 		fmt.Println("created project DEMO")
 	default:
 		log.Fatalf("check project DEMO: %v", err)
+	}
+
+	var cat project.ProjectCategory
+	if err := s.DB.Where("name = ?", "Demo Apps").First(&cat).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		cat = project.ProjectCategory{ID: uuid.NewString(), Name: "Demo Apps", Description: "Progetti demo"}
+		if err := s.DB.Create(&cat).Error; err != nil {
+			log.Fatalf("create category: %v", err)
+		}
+		fmt.Println("created category Demo Apps")
+	} else if err != nil {
+		log.Fatalf("check category: %v", err)
+	}
+	if err := s.DB.Model(&project.Project{}).Where("key = ?", "DEMO").Updates(map[string]any{
+		"category_id": cat.ID, "lead_user_id": admin.ID, "assignee_type": "PROJECT_LEAD",
+	}).Error; err != nil {
+		log.Fatalf("update DEMO project: %v", err)
 	}
 
 	issueSvc := issue.NewService(s.DB)
