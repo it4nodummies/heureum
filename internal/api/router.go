@@ -74,6 +74,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	calendarSvc := calendar.NewService(db)
 	calendarH := handlers.NewCalendarHandler(calendarSvc)
 
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
 	mux.HandleFunc("POST /rest/api/3/auth/register", authH.Register)
 	mux.HandleFunc("POST /rest/api/3/auth/login", authH.Login)
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/redirect", oauthH.Redirect)
