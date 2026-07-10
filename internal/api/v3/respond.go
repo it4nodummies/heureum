@@ -4,6 +4,7 @@ package v3
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -27,30 +28,23 @@ func WriteError(w http.ResponseWriter, status int, messages []string, fieldError
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("v3: encode response: %v", err)
+	}
 }
 
-type Page struct {
+type Page[T any] struct {
 	StartAt    int `json:"startAt"`
 	MaxResults int `json:"maxResults"`
 	Total      int `json:"total"`
-	Values     any `json:"values"`
+	Values     []T `json:"values"`
 }
 
-type pageBody struct {
-	Page
+type pageBody[T any] struct {
+	Page[T]
 	IsLast bool `json:"isLast"`
 }
 
-func WritePage(w http.ResponseWriter, status int, p Page) {
-	n := 0
-	if vs, ok := p.Values.([]string); ok {
-		n = len(vs)
-	} else if raw, err := json.Marshal(p.Values); err == nil {
-		var arr []json.RawMessage
-		if json.Unmarshal(raw, &arr) == nil {
-			n = len(arr)
-		}
-	}
-	WriteJSON(w, status, pageBody{Page: p, IsLast: p.StartAt+n >= p.Total})
+func WritePage[T any](w http.ResponseWriter, status int, p Page[T]) {
+	WriteJSON(w, status, pageBody[T]{Page: p, IsLast: p.StartAt+len(p.Values) >= p.Total})
 }
