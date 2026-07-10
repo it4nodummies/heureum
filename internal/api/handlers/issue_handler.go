@@ -235,34 +235,11 @@ func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
 		return
 	}
-	h.writeIssueBean(w, http.StatusOK, v3.JiraIssue(h.buildIssueInput(iss)))
-}
-
-// writeIssueBean serializza l'IssueBean rimuovendo dal sotto-oggetto "fields"
-// le chiavi con valore null (es. assignee/reporter/resolution non impostati).
-// Lo schema OpenAPI di "fields" usa additionalProperties:{} senza
-// nullable:true: una chiave presente con valore null (comportamento standard
-// di encoding/json per i puntatori nulli di IssueFields) non è conforme,
-// mentre ometterla del tutto lo è, dato che "fields" è libero.
-func (h *IssueHandler) writeIssueBean(w http.ResponseWriter, status int, bean v3.IssueBean) {
-	b, err := json.Marshal(bean)
-	if err != nil {
-		v3.WriteError(w, http.StatusInternalServerError, []string{"Internal server error."}, nil)
-		return
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(b, &raw); err != nil {
-		v3.WriteError(w, http.StatusInternalServerError, []string{"Internal server error."}, nil)
-		return
-	}
-	if fields, ok := raw["fields"].(map[string]any); ok {
-		for k, v := range fields {
-			if v == nil {
-				delete(fields, k)
-			}
-		}
-	}
-	v3.WriteJSON(w, status, raw)
+	// IssueFields usa omitempty sui campi pointer nilable, quindi i valori null
+	// (assignee/reporter/resolution/description non impostati) vengono omessi:
+	// lo schema di "fields" (additionalProperties:{} senza nullable) accetta la
+	// chiave omessa ma non un null esplicito.
+	v3.WriteJSON(w, http.StatusOK, v3.JiraIssue(h.buildIssueInput(iss)))
 }
 
 func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {

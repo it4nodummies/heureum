@@ -36,13 +36,13 @@ type TimeTracking struct {
 // valida stray keys qui). Nomi di campo Jira ufficiali.
 type IssueFields struct {
 	Summary      string         `json:"summary"`
-	Description  *adf.Node      `json:"description"`
-	IssueType    *IssueTypeRef  `json:"issuetype"`
-	Status       *StatusRef     `json:"status"`
-	Priority     *PriorityRef   `json:"priority"`
-	Assignee     *User          `json:"assignee"`
-	Reporter     *User          `json:"reporter"`
-	Resolution   *ResolutionRef `json:"resolution"`
+	Description  *adf.Node      `json:"description,omitempty"`
+	IssueType    *IssueTypeRef  `json:"issuetype,omitempty"`
+	Status       *StatusRef     `json:"status,omitempty"`
+	Priority     *PriorityRef   `json:"priority,omitempty"`
+	Assignee     *User          `json:"assignee,omitempty"`
+	Reporter     *User          `json:"reporter,omitempty"`
+	Resolution   *ResolutionRef `json:"resolution,omitempty"`
 	Project      *ProjectRef    `json:"project,omitempty"`
 	Parent       *ParentRef     `json:"parent,omitempty"`
 	Labels       []string       `json:"labels"`
