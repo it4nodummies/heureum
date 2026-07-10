@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
+	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -16,7 +18,6 @@ import (
 )
 
 type Validator struct {
-	doc    *openapi3.T
 	router routers.Router
 }
 
@@ -38,7 +39,38 @@ func NewValidator(specPath string) (*Validator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build router: %w", err)
 	}
-	return &Validator{doc: doc, router: router}, nil
+	return &Validator{router: router}, nil
+}
+
+// loadEntry garantisce semantica once-per-key per la cache dei Validator.
+type loadEntry struct {
+	once sync.Once
+	v    *Validator
+	err  error
+}
+
+var cache sync.Map // specPath -> *loadEntry
+
+// Load restituisce un Validator condiviso e cachato per specPath: il parse
+// dello spec (~2.3MB) e la costruzione del router avvengono una sola volta
+// per test binary.
+func Load(specPath string) (*Validator, error) {
+	e, _ := cache.LoadOrStore(specPath, &loadEntry{})
+	entry := e.(*loadEntry)
+	entry.once.Do(func() {
+		entry.v, entry.err = NewValidator(specPath)
+	})
+	return entry.v, entry.err
+}
+
+// MustLoad è Load per i test: fallisce il test se lo spec non carica.
+func MustLoad(tb testing.TB, specPath string) *Validator {
+	tb.Helper()
+	v, err := Load(specPath)
+	if err != nil {
+		tb.Fatalf("load contract spec %s: %v", specPath, err)
+	}
+	return v
 }
 
 // ValidateResponse verifica che (method, path) esista nel contratto e che
@@ -48,6 +80,9 @@ func (v *Validator) ValidateResponse(method, path string, status int, header htt
 	if err != nil {
 		return err
 	}
+	// Header di richiesta vuoto: validiamo solo la risposta e l'auth è
+	// disattivata (NoopAuthenticationFunc), quindi gli header di richiesta
+	// sono irrilevanti.
 	req := &http.Request{Method: method, URL: u, Header: http.Header{}}
 	route, pathParams, err := v.router.FindRoute(req)
 	if err != nil {
@@ -65,11 +100,13 @@ func (v *Validator) ValidateResponse(method, path string, status int, header htt
 		Status: status,
 		Header: header,
 	}
-	input.SetBodyBytes(mustRead(body))
-	return openapi3filter.ValidateResponse(context.Background(), input)
-}
-
-func mustRead(r io.Reader) []byte {
-	b, _ := io.ReadAll(r)
-	return b
+	b, err := io.ReadAll(body)
+	if err != nil {
+		return fmt.Errorf("read response body for %s %s: %w", method, path, err)
+	}
+	input.SetBodyBytes(b)
+	if err := openapi3filter.ValidateResponse(context.Background(), input); err != nil {
+		return fmt.Errorf("response %s %s status=%d: %w", method, path, status, err)
+	}
+	return nil
 }
