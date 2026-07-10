@@ -142,6 +142,48 @@ func (h *ReferenceHandler) EditMeta(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusOK, map[string]any{"fields": map[string]any{}})
 }
 
+// Fields → GET /rest/api/3/field: campi standard di sistema più i custom
+// field del progetto (tabella custom_fields), nel formato FieldDetails
+// (additionalProperties:false — solo le chiavi consentite dallo schema).
+func (h *ReferenceHandler) Fields(w http.ResponseWriter, r *http.Request) {
+	type fieldOut struct {
+		ID         string `json:"id"`
+		Key        string `json:"key"`
+		Name       string `json:"name"`
+		Custom     bool   `json:"custom"`
+		Orderable  bool   `json:"orderable"`
+		Navigable  bool   `json:"navigable"`
+		Searchable bool   `json:"searchable"`
+	}
+	out := []fieldOut{
+		{ID: "summary", Key: "summary", Name: "Summary", Navigable: true, Orderable: true, Searchable: true},
+		{ID: "issuetype", Key: "issuetype", Name: "Issue Type", Navigable: true, Orderable: true, Searchable: true},
+		{ID: "status", Key: "status", Name: "Status", Navigable: true, Searchable: true},
+		{ID: "priority", Key: "priority", Name: "Priority", Navigable: true, Orderable: true, Searchable: true},
+		{ID: "assignee", Key: "assignee", Name: "Assignee", Navigable: true, Orderable: true, Searchable: true},
+		{ID: "labels", Key: "labels", Name: "Labels", Navigable: true, Orderable: true, Searchable: true},
+		{ID: "description", Key: "description", Name: "Description", Navigable: true, Searchable: true},
+	}
+	type cf struct{ ID, Name string }
+	var customs []cf
+	h.db.Table("custom_fields").Select("id, name").Scan(&customs)
+	for _, c := range customs {
+		out = append(out, fieldOut{ID: "customfield_" + c.ID, Key: "customfield_" + c.ID, Name: c.Name, Custom: true, Navigable: true, Orderable: true, Searchable: true})
+	}
+	v3.WriteJSON(w, http.StatusOK, out)
+}
+
+// Labels → GET /rest/api/3/label: PageBeanString con i nomi distinti di label
+// esistenti (tabella labels, colonna name).
+func (h *ReferenceHandler) Labels(w http.ResponseWriter, r *http.Request) {
+	var names []string
+	h.db.Table("labels").Distinct("name").Pluck("name", &names)
+	if names == nil {
+		names = []string{}
+	}
+	v3.WritePage(w, http.StatusOK, v3.Page[string]{StartAt: 0, MaxResults: 1000, Total: len(names), Values: names})
+}
+
 // Resolutions → GET /rest/api/3/resolution.
 func (h *ReferenceHandler) Resolutions(w http.ResponseWriter, r *http.Request) {
 	var rows []resolutionRow

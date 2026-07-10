@@ -66,6 +66,44 @@ func TestResolutions_ConformsToContract(t *testing.T) {
 	}
 }
 
+func TestFields_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/field", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/field", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("GET /field non conforme: %v", err)
+	}
+}
+
+func TestLabels_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/label", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/label", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("GET /label non conforme: %v", err)
+	}
+}
+
 // createIssueViaAPI crea un'issue via POST /rest/api/3/issue e restituisce la
 // Key (es. DEMO-1) dal CreatedIssue restituito.
 func createIssueViaAPI(t *testing.T, srv *httptest.Server, jwt, projectKey, summary string) string {
