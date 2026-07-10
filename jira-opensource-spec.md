@@ -17,14 +17,14 @@ Il sistema deve essere una valida alternativa a Jira Cloud per team software che
 ## 2. Stack Tecnico
 
 ### Backend
-- **Linguaggio**: Go (consigliato per performance e binario singolo) oppure Python (FastAPI)
+- **Linguaggio**: Go (consigliato per performance e binario singolo) 
 - **API**: REST + WebSocket per aggiornamenti real-time
 - **Auth**: JWT + OAuth2 (OIDC — compatibile con Keycloak, Auth0, Forgejo, GitLab)
 - **Task queue**: Redis + worker per automation/notifiche async
 - **Search**: PostgreSQL full-text search (base); opzionale Elasticsearch/Meilisearch per ricerca avanzata
 
 ### Frontend
-- **Framework**: React (TypeScript) + Vite
+- **Framework**: React (TypeScript) + Next
 - **UI**: shadcn/ui o Radix UI + Tailwind CSS
 - **State management**: TanStack Query (React Query) + Zustand
 - **Drag & drop**: dnd-kit

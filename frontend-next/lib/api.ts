@@ -1,4 +1,6 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+// In Docker: NEXT_PUBLIC_API_URL is "" → fetch uses relative URLs → nginx proxies
+// Local dev:  set NEXT_PUBLIC_API_URL=http://localhost:8080 in .env.local
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

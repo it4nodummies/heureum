@@ -1,20 +1,98 @@
-version: '3.8'
+name: open-jira
+
 services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: openjira
+      POSTGRES_USER:     openjira
       POSTGRES_PASSWORD: openjira
-      POSTGRES_DB: openjira
-    ports:
-      - "5432:5432"
+      POSTGRES_DB:       openjira
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U openjira"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test:     ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+
+  # ── Backend ─────────────────────────────────────────────────────────────────
+
+  api:
+    build:
+      context:    ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_PORT:     "8080"
+      APP_ENV:      "${APP_ENV:-development}"
+      APP_SECRET:   "${APP_SECRET:?APP_SECRET is required — set it in .env}"
+      APP_BASE_URL: "${APP_BASE_URL:-http://localhost}"
+      DB_DRIVER:    postgres
+      DB_DSN:       "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
+      REDIS_URL:    "redis://redis:6379/0"
     ports:
-      - "6379:6379"
+      - "8080:8080"   # exposed for direct curl / debug
+
+  worker:
+    build:
+      context:    ../..
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_SECRET: "${APP_SECRET:?APP_SECRET is required — set it in .env}"
+      APP_ENV:    "${APP_ENV:-development}"
+      DB_DRIVER:  postgres
+      DB_DSN:     "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
+      REDIS_URL:  "redis://redis:6379/0"
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context:    ../..
+      dockerfile: Dockerfile.frontend-next
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # Server-side: used by Next.js rewrites inside Docker network
+      API_URL: "http://api:8080"
+
+  # ── Reverse proxy ────────────────────────────────────────────────────────────
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - frontend
+    ports:
+      - "${APP_PORT:-80}:80"
+    volumes:
+      - ../../nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
   pgdata:
