@@ -144,7 +144,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	mux.Handle("GET /rest/api/3/project/{key}/issues", authMw(http.HandlerFunc(issueH.List)))
 	mux.Handle("POST /rest/api/3/issue", authMw(http.HandlerFunc(issueH.Create)))
+	// Literal segment "createmeta" registered ahead of the "{issueKey}"
+	// wildcard below: Go 1.22+ ServeMux resolves the more specific literal
+	// route first, so this does not collide with GET /issue/{issueKey}.
+	mux.Handle("GET /rest/api/3/issue/createmeta", authMw(http.HandlerFunc(refH.CreateMeta)))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}", authMw(http.HandlerFunc(issueH.Get)))
+	mux.Handle("GET /rest/api/3/issue/{issueKey}/editmeta", authMw(http.HandlerFunc(refH.EditMeta)))
 	mux.Handle("PUT /rest/api/3/issue/{issueKey}", authMw(http.HandlerFunc(issueH.Update)))
 	mux.Handle("DELETE /rest/api/3/issue/{issueKey}", authMw(http.HandlerFunc(issueH.Delete)))
 	mux.Handle("POST /rest/api/3/issue/{issueKey}/labels", authMw(http.HandlerFunc(issueH.AddLabel)))

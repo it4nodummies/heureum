@@ -127,6 +127,21 @@ var defaultResolutions = []struct {
 	{"5", "Done", "Work has been completed."},
 }
 
+// CreateMeta → GET /rest/api/3/issue/createmeta: forma minima conforme allo
+// schema IssueCreateMetadata ({expand, projects}, additionalProperties:false).
+// Non popoliamo ancora projects/issuetypes/fields per-progetto: un array vuoto
+// resta valido secondo lo schema (nessuna proprietà è required).
+func (h *ReferenceHandler) CreateMeta(w http.ResponseWriter, r *http.Request) {
+	v3.WriteJSON(w, http.StatusOK, map[string]any{"projects": []any{}})
+}
+
+// EditMeta → GET /rest/api/3/issue/{issueIdOrKey}/editmeta: forma minima
+// conforme allo schema IssueUpdateMetadata ({fields}, additionalProperties
+// permissivo). fields vuoto resta valido: nessuna proprietà è required.
+func (h *ReferenceHandler) EditMeta(w http.ResponseWriter, r *http.Request) {
+	v3.WriteJSON(w, http.StatusOK, map[string]any{"fields": map[string]any{}})
+}
+
 // Resolutions → GET /rest/api/3/resolution.
 func (h *ReferenceHandler) Resolutions(w http.ResponseWriter, r *http.Request) {
 	var rows []resolutionRow

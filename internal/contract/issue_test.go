@@ -239,3 +239,44 @@ func TestDeleteIssue_204(t *testing.T) {
 		t.Fatalf("GET after delete = %d, want 404", gres.StatusCode)
 	}
 }
+
+func TestCreateMeta_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/createmeta", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/issue/createmeta", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("createmeta non conforme: %v", err)
+	}
+}
+
+func TestEditMeta_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	key := createIssueViaAPI(t, srv, jwt, "DEMO", "x")
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key+"/editmeta", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/issue/"+key+"/editmeta", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("editmeta non conforme: %v", err)
+	}
+}
