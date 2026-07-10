@@ -1,0 +1,750 @@
+# Gap report — endpoint vs OpenAPI ufficiale
+
+> Generato da `go run ./cmd/gapreport`. Non modificare a mano.
+
+- Nel contratto e implementati (path match): **56**
+- Nel contratto ma mancanti: **665**
+- Implementati ma fuori contratto (estensioni): **72**
+
+## Mancanti (dal contratto)
+
+- `DELETE /rest/agile/1.0/board/{boardId}` — Delete board
+- `DELETE /rest/agile/1.0/board/{boardId}/properties/{propertyKey}` — Delete board property
+- `DELETE /rest/agile/1.0/sprint/{sprintId}` — Delete sprint
+- `DELETE /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Delete property
+- `DELETE /rest/api/3/comment/{commentId}/properties/{propertyKey}` — Delete comment property
+- `DELETE /rest/api/3/component/{id}` — Delete component
+- `DELETE /rest/api/3/config/fieldschemes/fields` — Remove fields associated with field schemes
+- `DELETE /rest/api/3/config/fieldschemes/fields/parameters` — Remove field parameters
+- `DELETE /rest/api/3/config/fieldschemes/{id}` — Delete a field scheme
+- `DELETE /rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}` — Delete dashboard item property
+- `DELETE /rest/api/3/field/association` — Remove associations
+- `DELETE /rest/api/3/field/{fieldId}/context/{contextId}` — Delete custom field context
+- `DELETE /rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}` — Delete custom field options (context)
+- `DELETE /rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}/issue` — Replace custom field options
+- `DELETE /rest/api/3/field/{fieldKey}/option/{optionId}` — Delete issue field option
+- `DELETE /rest/api/3/field/{fieldKey}/option/{optionId}/issue` — Replace issue field option
+- `DELETE /rest/api/3/field/{id}` — Delete custom field
+- `DELETE /rest/api/3/fieldconfiguration/{id}` — Delete field configuration
+- `DELETE /rest/api/3/fieldconfigurationscheme/{id}` — Delete field configuration scheme
+- `DELETE /rest/api/3/filter/{id}/columns` — Reset columns
+- `DELETE /rest/api/3/filter/{id}/permission/{permissionId}` — Delete share permission
+- `DELETE /rest/api/3/group` — Remove group
+- `DELETE /rest/api/3/group/user` — Remove user from group
+- `DELETE /rest/api/3/issue/properties/{propertyKey}` — Bulk delete issue property
+- `DELETE /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Delete issue property
+- `DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink` — Delete remote issue link by global ID
+- `DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}` — Delete remote issue link by ID
+- `DELETE /rest/api/3/issue/{issueIdOrKey}/votes` — Delete vote
+- `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog` — Bulk delete worklogs
+- `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` — Delete worklog
+- `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}` — Delete worklog property
+- `DELETE /rest/api/3/issueLinkType/{issueLinkTypeId}` — Delete issue link type
+- `DELETE /rest/api/3/issuesecurityschemes/{schemeId}` — Delete issue security scheme
+- `DELETE /rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}` — Remove issue security level
+- `DELETE /rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}/member/{memberId}` — Remove member from issue security level
+- `DELETE /rest/api/3/issuetype/{id}` — Delete issue type
+- `DELETE /rest/api/3/issuetype/{issueTypeId}/properties/{propertyKey}` — Delete issue type property
+- `DELETE /rest/api/3/issuetypescheme/{issueTypeSchemeId}` — Delete issue type scheme
+- `DELETE /rest/api/3/issuetypescheme/{issueTypeSchemeId}/issuetype/{issueTypeId}` — Remove issue type from issue type scheme
+- `DELETE /rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}` — Delete issue type screen scheme
+- `DELETE /rest/api/3/mypreferences` — Delete preference
+- `DELETE /rest/api/3/notificationscheme/{notificationSchemeId}` — Delete notification scheme
+- `DELETE /rest/api/3/notificationscheme/{notificationSchemeId}/notification/{notificationId}` — Remove notification from notification scheme
+- `DELETE /rest/api/3/permissionscheme/{schemeId}` — Delete permission scheme
+- `DELETE /rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}` — Delete permission scheme grant
+- `DELETE /rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}` — Remove Atlassian team from plan
+- `DELETE /rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}` — Delete plan-only team
+- `DELETE /rest/api/3/priority/{id}` — Delete priority
+- `DELETE /rest/api/3/priorityscheme/{schemeId}` — Delete priority scheme
+- `DELETE /rest/api/3/project-template/remove-template` — Deletes a custom project template
+- `DELETE /rest/api/3/project/{projectIdOrKey}/avatar/{id}` — Delete project avatar
+- `DELETE /rest/api/3/project/{projectIdOrKey}/classification-level/default` — Remove the default data classification level from a project
+- `DELETE /rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}` — Delete project property
+- `DELETE /rest/api/3/project/{projectIdOrKey}/role/{id}` — Delete actors from project role
+- `DELETE /rest/api/3/projectCategory/{id}` — Delete project category
+- `DELETE /rest/api/3/resolution/{id}` — Delete resolution
+- `DELETE /rest/api/3/role/{id}` — Delete project role
+- `DELETE /rest/api/3/role/{id}/actors` — Delete default actors from project role
+- `DELETE /rest/api/3/screens/{screenId}` — Delete screen
+- `DELETE /rest/api/3/screens/{screenId}/tabs/{tabId}` — Delete screen tab
+- `DELETE /rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}` — Remove screen tab field
+- `DELETE /rest/api/3/screenscheme/{screenSchemeId}` — Delete screen scheme
+- `DELETE /rest/api/3/statuses` — Bulk delete Statuses
+- `DELETE /rest/api/3/uiModifications/{uiModificationId}` — Delete UI modification
+- `DELETE /rest/api/3/universal_avatar/type/{type}/owner/{owningObjectId}/avatar/{id}` — Delete avatar
+- `DELETE /rest/api/3/user` — Delete user
+- `DELETE /rest/api/3/user/columns` — Reset user default columns
+- `DELETE /rest/api/3/user/properties/{propertyKey}` — Delete user property
+- `DELETE /rest/api/3/version/{id}` — Delete version
+- `DELETE /rest/api/3/version/{versionId}/relatedwork/{relatedWorkId}` — Delete related work
+- `DELETE /rest/api/3/webhook` — Delete webhooks by ID
+- `DELETE /rest/api/3/workflow/{entityId}` — Delete inactive workflow
+- `DELETE /rest/api/3/workflowscheme/{id}` — Delete workflow scheme
+- `DELETE /rest/api/3/workflowscheme/{id}/default` — Delete default workflow
+- `DELETE /rest/api/3/workflowscheme/{id}/draft` — Delete draft workflow scheme
+- `DELETE /rest/api/3/workflowscheme/{id}/draft/default` — Delete draft default workflow
+- `DELETE /rest/api/3/workflowscheme/{id}/draft/issuetype/{issueType}` — Delete workflow for issue type in draft workflow scheme
+- `DELETE /rest/api/3/workflowscheme/{id}/draft/workflow` — Delete issue types for workflow in draft workflow scheme
+- `DELETE /rest/api/3/workflowscheme/{id}/issuetype/{issueType}` — Delete workflow for issue type in workflow scheme
+- `DELETE /rest/api/3/workflowscheme/{id}/workflow` — Delete issue types for workflow in workflow scheme
+- `DELETE /rest/atlassian-connect/1/addons/{addonKey}/properties/{propertyKey}` — Delete app property
+- `DELETE /rest/atlassian-connect/1/app/module/dynamic` — Remove modules
+- `DELETE /rest/builds/0.1/bulkByProperties` — Delete builds by Property
+- `DELETE /rest/builds/0.1/pipelines/{pipelineId}/builds/{buildNumber}` — Delete a build by key
+- `DELETE /rest/deployments/0.1/bulkByProperties` — Delete deployments by Property
+- `DELETE /rest/deployments/0.1/pipelines/{pipelineId}/environments/{environmentId}/deployments/{deploymentSequenceNumber}` — Delete a deployment by key
+- `DELETE /rest/devinfo/0.10/bulkByProperties` — Delete development information by properties
+- `DELETE /rest/devinfo/0.10/repository/{repositoryId}` — Delete repository
+- `DELETE /rest/devinfo/0.10/repository/{repositoryId}/{entityType}/{entityId}` — Delete development information entity
+- `DELETE /rest/devopscomponents/1.0/bulkByProperties` — Delete DevOps Components by Property
+- `DELETE /rest/devopscomponents/1.0/devopscomponents/{componentId}` — Delete a Component by ID
+- `DELETE /rest/featureflags/0.1/bulkByProperties` — Delete Feature Flags by Property
+- `DELETE /rest/featureflags/0.1/flag/{featureFlagId}` — Delete a Feature Flag by ID
+- `DELETE /rest/forge/1/app/properties/{propertyKey}` — Delete app property (Forge)
+- `DELETE /rest/operations/1.0/bulkByProperties` — Delete Incidents or Review by Property
+- `DELETE /rest/operations/1.0/incidents/{incidentId}` — Delete a Incident by ID
+- `DELETE /rest/operations/1.0/linkedWorkspaces/bulk` — Delete Operations Workpaces by Id
+- `DELETE /rest/operations/1.0/post-incident-reviews/{reviewId}` — Delete a Review by ID
+- `DELETE /rest/remotelinks/1.0/bulkByProperties` — Delete Remote Links by Property
+- `DELETE /rest/remotelinks/1.0/remotelink/{remoteLinkId}` — Delete a Remote Link by ID
+- `DELETE /rest/security/1.0/bulkByProperties` — Delete Vulnerabilities by Property
+- `DELETE /rest/security/1.0/linkedWorkspaces/bulk` — Delete linked Security Workspaces
+- `DELETE /rest/security/1.0/vulnerability/{vulnerabilityId}` — Delete a Vulnerability by ID
+- `GET /rest/agile/1.0/board` — Get all boards
+- `GET /rest/agile/1.0/board/filter/{filterId}` — Get board by filter id
+- `GET /rest/agile/1.0/board/{boardId}` — Get board
+- `GET /rest/agile/1.0/board/{boardId}/backlog` — Get issues for backlog
+- `GET /rest/agile/1.0/board/{boardId}/configuration` — Get configuration
+- `GET /rest/agile/1.0/board/{boardId}/epic` — Get epics
+- `GET /rest/agile/1.0/board/{boardId}/epic/none/issue` — Get issues without epic for board
+- `GET /rest/agile/1.0/board/{boardId}/epic/{epicId}/issue` — Get board issues for epic
+- `GET /rest/agile/1.0/board/{boardId}/features` — Get features for board
+- `GET /rest/agile/1.0/board/{boardId}/issue` — Get issues for board
+- `GET /rest/agile/1.0/board/{boardId}/project` — Get projects
+- `GET /rest/agile/1.0/board/{boardId}/project/full` — Get projects full
+- `GET /rest/agile/1.0/board/{boardId}/properties` — Get board property keys
+- `GET /rest/agile/1.0/board/{boardId}/properties/{propertyKey}` — Get board property
+- `GET /rest/agile/1.0/board/{boardId}/quickfilter` — Get all quick filters
+- `GET /rest/agile/1.0/board/{boardId}/quickfilter/{quickFilterId}` — Get quick filter
+- `GET /rest/agile/1.0/board/{boardId}/reports` — Get reports for board
+- `GET /rest/agile/1.0/board/{boardId}/sprint` — Get all sprints
+- `GET /rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue` — Get board issues for sprint
+- `GET /rest/agile/1.0/board/{boardId}/version` — Get all versions
+- `GET /rest/agile/1.0/epic/none/issue` — Get issues without epic
+- `GET /rest/agile/1.0/epic/{epicIdOrKey}` — Get epic
+- `GET /rest/agile/1.0/epic/{epicIdOrKey}/issue` — Get issues for epic
+- `GET /rest/agile/1.0/issue/{issueIdOrKey}` — Get issue
+- `GET /rest/agile/1.0/issue/{issueIdOrKey}/estimation` — Get issue estimation for board
+- `GET /rest/agile/1.0/sprint/{sprintId}` — Get sprint
+- `GET /rest/agile/1.0/sprint/{sprintId}/issue` — Get issues for sprint
+- `GET /rest/agile/1.0/sprint/{sprintId}/properties` — Get properties keys
+- `GET /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Get property
+- `GET /rest/api/3/announcementBanner` — Get announcement banner configuration
+- `GET /rest/api/3/app/field/{fieldIdOrKey}/context/configuration` — Get custom field configurations
+- `GET /rest/api/3/application-properties` — Get application property
+- `GET /rest/api/3/application-properties/advanced-settings` — Get advanced settings
+- `GET /rest/api/3/applicationrole` — Get all application roles
+- `GET /rest/api/3/applicationrole/{key}` — Get application role
+- `GET /rest/api/3/attachment/thumbnail/{id}` — Get attachment thumbnail
+- `GET /rest/api/3/attachment/{id}/expand/human` — Get all metadata for an expanded attachment
+- `GET /rest/api/3/attachment/{id}/expand/raw` — Get contents metadata for an expanded attachment
+- `GET /rest/api/3/auditing/record` — Get audit records
+- `GET /rest/api/3/avatar/{type}/system` — Get system avatars by type
+- `GET /rest/api/3/bulk/issues/fields` — Get bulk editable fields
+- `GET /rest/api/3/bulk/issues/transition` — Get available transitions
+- `GET /rest/api/3/bulk/queue/{taskId}` — Get bulk issue operation progress
+- `GET /rest/api/3/classification-levels` — Get all classification levels
+- `GET /rest/api/3/comment/{commentId}/properties` — Get comment property keys
+- `GET /rest/api/3/comment/{commentId}/properties/{propertyKey}` — Get comment property
+- `GET /rest/api/3/component` — Find components for projects
+- `GET /rest/api/3/component/{id}` — Get component
+- `GET /rest/api/3/component/{id}/relatedIssueCounts` — Get component issues count
+- `GET /rest/api/3/config/fieldschemes` — Get field schemes
+- `GET /rest/api/3/config/fieldschemes/projects` — Get projects with field schemes
+- `GET /rest/api/3/config/fieldschemes/{id}` — Get field scheme
+- `GET /rest/api/3/config/fieldschemes/{id}/fields` — Search field scheme fields
+- `GET /rest/api/3/config/fieldschemes/{id}/fields/{fieldId}/parameters` — Get field parameters
+- `GET /rest/api/3/config/fieldschemes/{id}/projects` — Search field scheme projects
+- `GET /rest/api/3/configuration` — Get global settings
+- `GET /rest/api/3/configuration/timetracking` — Get selected time tracking provider
+- `GET /rest/api/3/configuration/timetracking/list` — Get all time tracking providers
+- `GET /rest/api/3/configuration/timetracking/options` — Get time tracking settings
+- `GET /rest/api/3/customFieldOption/{id}` — Get custom field option
+- `GET /rest/api/3/dashboard/gadgets` — Get available gadgets
+- `GET /rest/api/3/dashboard/{dashboardId}/gadget` — Get gadgets
+- `GET /rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties` — Get dashboard item property keys
+- `GET /rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}` — Get dashboard item property
+- `GET /rest/api/3/data-policy` — Get data policy for the workspace
+- `GET /rest/api/3/data-policy/project` — Get data policy for projects
+- `GET /rest/api/3/events` — Get events
+- `GET /rest/api/3/field` — Get fields
+- `GET /rest/api/3/field/search` — Get fields paginated
+- `GET /rest/api/3/field/search/trashed` — Get fields in trash paginated
+- `GET /rest/api/3/field/{fieldId}/association/project` — Get field project associations
+- `GET /rest/api/3/field/{fieldId}/context` — Get custom field contexts
+- `GET /rest/api/3/field/{fieldId}/context/defaultValue` — Get custom field contexts default values
+- `GET /rest/api/3/field/{fieldId}/context/defaultValues` — Get default values for a custom field grouped by context and issue type
+- `GET /rest/api/3/field/{fieldId}/context/issuetypemapping` — Get issue types for custom field context
+- `GET /rest/api/3/field/{fieldId}/context/projectmapping` — Get project mappings for custom field context
+- `GET /rest/api/3/field/{fieldId}/context/{contextId}/option` — Get custom field options (context)
+- `GET /rest/api/3/field/{fieldId}/contexts` — Get contexts for a field
+- `GET /rest/api/3/field/{fieldId}/screens` — Get screens for a field
+- `GET /rest/api/3/field/{fieldKey}/option` — Get all issue field options
+- `GET /rest/api/3/field/{fieldKey}/option/suggestions/edit` — Get selectable issue field options
+- `GET /rest/api/3/field/{fieldKey}/option/suggestions/search` — Get visible issue field options
+- `GET /rest/api/3/field/{fieldKey}/option/{optionId}` — Get issue field option
+- `GET /rest/api/3/fieldconfiguration` — Get all field configurations
+- `GET /rest/api/3/fieldconfiguration/{id}/fields` — Get field configuration items
+- `GET /rest/api/3/fieldconfigurationscheme` — Get all field configuration schemes
+- `GET /rest/api/3/fieldconfigurationscheme/mapping` — Get field configuration issue type items
+- `GET /rest/api/3/fieldconfigurationscheme/project` — Get field configuration schemes for projects
+- `GET /rest/api/3/filter/defaultShareScope` — Get default share scope
+- `GET /rest/api/3/filter/{id}/columns` — Get columns
+- `GET /rest/api/3/filter/{id}/permission` — Get share permissions
+- `GET /rest/api/3/filter/{id}/permission/{permissionId}` — Get share permission
+- `GET /rest/api/3/group` — Get group
+- `GET /rest/api/3/group/bulk` — Bulk get groups
+- `GET /rest/api/3/group/member` — Get users from group
+- `GET /rest/api/3/groups/picker` — Find groups
+- `GET /rest/api/3/groupuserpicker` — Find users and groups
+- `GET /rest/api/3/instance/license` — Get license
+- `GET /rest/api/3/issue/createmeta` — Get create issue metadata
+- `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes` — Get create metadata issue types for a project
+- `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes/{issueTypeId}` — Get create field metadata for a project and issue type id
+- `GET /rest/api/3/issue/limit/report` — Get issue limit report
+- `GET /rest/api/3/issue/picker` — Get issue picker suggestions
+- `GET /rest/api/3/issue/{issueIdOrKey}/editmeta` — Get edit issue metadata
+- `GET /rest/api/3/issue/{issueIdOrKey}/properties` — Get issue property keys
+- `GET /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Get issue property
+- `GET /rest/api/3/issue/{issueIdOrKey}/remotelink` — Get remote issue links
+- `GET /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}` — Get remote issue link by ID
+- `GET /rest/api/3/issue/{issueIdOrKey}/transitions` — Get transitions
+- `GET /rest/api/3/issue/{issueIdOrKey}/votes` — Get votes
+- `GET /rest/api/3/issue/{issueIdOrKey}/worklog` — Get issue worklogs
+- `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` — Get worklog
+- `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties` — Get worklog property keys
+- `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}` — Get worklog property
+- `GET /rest/api/3/issueLinkType` — Get issue link types
+- `GET /rest/api/3/issueLinkType/{issueLinkTypeId}` — Get issue link type
+- `GET /rest/api/3/issuesecurityschemes` — Get issue security schemes
+- `GET /rest/api/3/issuesecurityschemes/level` — Get issue security levels
+- `GET /rest/api/3/issuesecurityschemes/level/member` — Get issue security level members
+- `GET /rest/api/3/issuesecurityschemes/project` — Get projects using issue security schemes
+- `GET /rest/api/3/issuesecurityschemes/search` — Search issue security schemes
+- `GET /rest/api/3/issuesecurityschemes/{id}` — Get issue security scheme
+- `GET /rest/api/3/issuesecurityschemes/{issueSecuritySchemeId}/members` — Get issue security level members by issue security scheme
+- `GET /rest/api/3/issuetype` — Get all issue types for user
+- `GET /rest/api/3/issuetype/project` — Get issue types for project
+- `GET /rest/api/3/issuetype/{id}` — Get issue type
+- `GET /rest/api/3/issuetype/{id}/alternatives` — Get alternative issue types
+- `GET /rest/api/3/issuetype/{issueTypeId}/properties` — Get issue type property keys
+- `GET /rest/api/3/issuetype/{issueTypeId}/properties/{propertyKey}` — Get issue type property
+- `GET /rest/api/3/issuetypescheme` — Get all issue type schemes
+- `GET /rest/api/3/issuetypescheme/mapping` — Get issue type scheme items
+- `GET /rest/api/3/issuetypescheme/project` — Get issue type schemes for projects
+- `GET /rest/api/3/issuetypescreenscheme` — Get issue type screen schemes
+- `GET /rest/api/3/issuetypescreenscheme/mapping` — Get issue type screen scheme items
+- `GET /rest/api/3/issuetypescreenscheme/project` — Get issue type screen schemes for projects
+- `GET /rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/project` — Get issue type screen scheme projects
+- `GET /rest/api/3/jql/autocompletedata` — Get field reference data (GET)
+- `GET /rest/api/3/jql/autocompletedata/suggestions` — Get field auto complete suggestions
+- `GET /rest/api/3/jql/function/computation` — Get precomputations (apps)
+- `GET /rest/api/3/label` — Get all labels
+- `GET /rest/api/3/license/approximateLicenseCount` — Get approximate license count
+- `GET /rest/api/3/license/approximateLicenseCount/product/{applicationKey}` — Get approximate application license count
+- `GET /rest/api/3/mypermissions` — Get my permissions
+- `GET /rest/api/3/mypreferences` — Get preference
+- `GET /rest/api/3/mypreferences/locale` — Get locale
+- `GET /rest/api/3/notificationscheme` — Get notification schemes paginated
+- `GET /rest/api/3/notificationscheme/project` — Get projects using notification schemes paginated
+- `GET /rest/api/3/notificationscheme/{id}` — Get notification scheme
+- `GET /rest/api/3/permissions` — Get all permissions
+- `GET /rest/api/3/permissionscheme` — Get all permission schemes
+- `GET /rest/api/3/permissionscheme/{schemeId}` — Get permission scheme
+- `GET /rest/api/3/permissionscheme/{schemeId}/permission` — Get permission scheme grants
+- `GET /rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}` — Get permission scheme grant
+- `GET /rest/api/3/plans/plan` — Get plans paginated
+- `GET /rest/api/3/plans/plan/{planId}` — Get plan
+- `GET /rest/api/3/plans/plan/{planId}/team` — Get teams in plan paginated
+- `GET /rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}` — Get Atlassian team in plan
+- `GET /rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}` — Get plan-only team
+- `GET /rest/api/3/priority` — Get priorities
+- `GET /rest/api/3/priority/search` — Search priorities
+- `GET /rest/api/3/priority/{id}` — Get priority
+- `GET /rest/api/3/priorityscheme` — Get priority schemes
+- `GET /rest/api/3/priorityscheme/priorities/available` — Get available priorities by priority scheme
+- `GET /rest/api/3/priorityscheme/{schemeId}/priorities` — Get priorities by priority scheme
+- `GET /rest/api/3/priorityscheme/{schemeId}/projects` — Get projects by priority scheme
+- `GET /rest/api/3/project-template/live-template` — Gets a custom project template
+- `GET /rest/api/3/project/recent` — Get recent projects
+- `GET /rest/api/3/project/search` — Get projects paginated
+- `GET /rest/api/3/project/type` — Get all project types
+- `GET /rest/api/3/project/type/accessible` — Get licensed project types
+- `GET /rest/api/3/project/type/{projectTypeKey}` — Get project type by key
+- `GET /rest/api/3/project/type/{projectTypeKey}/accessible` — Get accessible project type by key
+- `GET /rest/api/3/project/{projectIdOrKey}/avatars` — Get all project avatars
+- `GET /rest/api/3/project/{projectIdOrKey}/classification-config` — Get the classification configuration for a project
+- `GET /rest/api/3/project/{projectIdOrKey}/classification-level/default` — Get the default data classification level of a project
+- `GET /rest/api/3/project/{projectIdOrKey}/component` — Get project components paginated
+- `GET /rest/api/3/project/{projectIdOrKey}/components` — Get project components
+- `GET /rest/api/3/project/{projectIdOrKey}/features` — Get project features
+- `GET /rest/api/3/project/{projectIdOrKey}/properties` — Get project property keys
+- `GET /rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}` — Get project property
+- `GET /rest/api/3/project/{projectIdOrKey}/role` — Get project roles for project
+- `GET /rest/api/3/project/{projectIdOrKey}/role/{id}` — Get project role for project
+- `GET /rest/api/3/project/{projectIdOrKey}/roledetails` — Get project role details
+- `GET /rest/api/3/project/{projectIdOrKey}/statuses` — Get all statuses for project
+- `GET /rest/api/3/project/{projectIdOrKey}/version` — Get project versions paginated
+- `GET /rest/api/3/project/{projectIdOrKey}/versions` — Get project versions
+- `GET /rest/api/3/project/{projectId}/email` — Get project's sender email
+- `GET /rest/api/3/project/{projectId}/hierarchy` — Get project issue type hierarchy
+- `GET /rest/api/3/project/{projectKeyOrId}/issuesecuritylevelscheme` — Get project issue security scheme
+- `GET /rest/api/3/project/{projectKeyOrId}/notificationscheme` — Get project notification scheme
+- `GET /rest/api/3/project/{projectKeyOrId}/permissionscheme` — Get assigned permission scheme
+- `GET /rest/api/3/project/{projectKeyOrId}/securitylevel` — Get project issue security levels
+- `GET /rest/api/3/projectCategory` — Get all project categories
+- `GET /rest/api/3/projectCategory/{id}` — Get project category by ID
+- `GET /rest/api/3/projects/fields` — Get fields for projects
+- `GET /rest/api/3/projectvalidate/key` — Validate project key
+- `GET /rest/api/3/projectvalidate/validProjectKey` — Get valid project key
+- `GET /rest/api/3/projectvalidate/validProjectName` — Get valid project name
+- `GET /rest/api/3/redact/status/{jobId}` — Get redaction status
+- `GET /rest/api/3/resolution` — Get resolutions
+- `GET /rest/api/3/resolution/search` — Search resolutions
+- `GET /rest/api/3/resolution/{id}` — Get resolution
+- `GET /rest/api/3/role` — Get all project roles
+- `GET /rest/api/3/role/{id}` — Get project role by ID
+- `GET /rest/api/3/role/{id}/actors` — Get default actors for project role
+- `GET /rest/api/3/screens` — Get screens
+- `GET /rest/api/3/screens/tabs` — Get bulk screen tabs
+- `GET /rest/api/3/screens/{screenId}/availableFields` — Get available screen fields
+- `GET /rest/api/3/screens/{screenId}/tabs` — Get all screen tabs
+- `GET /rest/api/3/screens/{screenId}/tabs/{tabId}/fields` — Get all screen tab fields
+- `GET /rest/api/3/screenscheme` — Get screen schemes
+- `GET /rest/api/3/securitylevel/{id}` — Get issue security level
+- `GET /rest/api/3/serverInfo` — Get Jira instance info
+- `GET /rest/api/3/settings/columns` — Get issue navigator default columns
+- `GET /rest/api/3/statuscategory` — Get all status categories
+- `GET /rest/api/3/statuscategory/{idOrKey}` — Get status category
+- `GET /rest/api/3/statuses` — Bulk get statuses
+- `GET /rest/api/3/statuses/byNames` — Bulk get statuses by name
+- `GET /rest/api/3/statuses/search` — Search statuses paginated
+- `GET /rest/api/3/statuses/{statusId}/project/{projectId}/issueTypeUsages` — Get issue type usages by status and project
+- `GET /rest/api/3/statuses/{statusId}/projectUsages` — Get project usages by status
+- `GET /rest/api/3/statuses/{statusId}/workflowUsages` — Get workflow usages by status
+- `GET /rest/api/3/task/{taskId}` — Get task
+- `GET /rest/api/3/uiModifications` — Get UI modifications
+- `GET /rest/api/3/universal_avatar/type/{type}/owner/{entityId}` — Get avatars
+- `GET /rest/api/3/universal_avatar/view/type/{type}` — Get avatar image by type
+- `GET /rest/api/3/universal_avatar/view/type/{type}/avatar/{id}` — Get avatar image by ID
+- `GET /rest/api/3/universal_avatar/view/type/{type}/owner/{entityId}` — Get avatar image by owner
+- `GET /rest/api/3/user/assignable/multiProjectSearch` — Find users assignable to projects
+- `GET /rest/api/3/user/assignable/search` — Find users assignable to issues
+- `GET /rest/api/3/user/bulk` — Bulk get users
+- `GET /rest/api/3/user/bulk/migration` — Get account IDs for users
+- `GET /rest/api/3/user/columns` — Get user default columns
+- `GET /rest/api/3/user/email` — Get user email
+- `GET /rest/api/3/user/email/bulk` — Get user email bulk
+- `GET /rest/api/3/user/groups` — Get user groups
+- `GET /rest/api/3/user/permission/search` — Find users with permissions
+- `GET /rest/api/3/user/picker` — Find users for picker
+- `GET /rest/api/3/user/properties` — Get user property keys
+- `GET /rest/api/3/user/properties/{propertyKey}` — Get user property
+- `GET /rest/api/3/user/search` — Find users
+- `GET /rest/api/3/user/search/query` — Find users by query
+- `GET /rest/api/3/user/search/query/key` — Find user keys by query
+- `GET /rest/api/3/user/viewissue/search` — Find users with browse permission
+- `GET /rest/api/3/users` — Get all users default
+- `GET /rest/api/3/version/{id}` — Get version
+- `GET /rest/api/3/version/{id}/relatedIssueCounts` — Get version's related issues count
+- `GET /rest/api/3/version/{id}/relatedwork` — Get related work
+- `GET /rest/api/3/version/{id}/unresolvedIssueCount` — Get version's unresolved issues count
+- `GET /rest/api/3/webhook` — Get dynamic webhooks for app
+- `GET /rest/api/3/webhook/failed` — Get failed webhooks
+- `GET /rest/api/3/workflow/rule/config` — Get workflow transition rule configurations
+- `GET /rest/api/3/workflow/{workflowId}/project/{projectId}/issueTypeUsages` — Get issue types in a project that are using a given workflow
+- `GET /rest/api/3/workflow/{workflowId}/projectUsages` — Get projects using a given workflow
+- `GET /rest/api/3/workflow/{workflowId}/workflowSchemes` — Get workflow schemes which are using a given workflow
+- `GET /rest/api/3/workflows/capabilities` — Get available workflow capabilities
+- `GET /rest/api/3/workflows/defaultEditor` — Get the user's default workflow editor
+- `GET /rest/api/3/workflows/search` — Search workflows
+- `GET /rest/api/3/workflowscheme` — Get all workflow schemes
+- `GET /rest/api/3/workflowscheme/project` — Get workflow scheme project associations
+- `GET /rest/api/3/workflowscheme/{id}` — Get workflow scheme
+- `GET /rest/api/3/workflowscheme/{id}/default` — Get default workflow
+- `GET /rest/api/3/workflowscheme/{id}/draft` — Get draft workflow scheme
+- `GET /rest/api/3/workflowscheme/{id}/draft/default` — Get draft default workflow
+- `GET /rest/api/3/workflowscheme/{id}/draft/issuetype/{issueType}` — Get workflow for issue type in draft workflow scheme
+- `GET /rest/api/3/workflowscheme/{id}/draft/workflow` — Get issue types for workflows in draft workflow scheme
+- `GET /rest/api/3/workflowscheme/{id}/issuetype/{issueType}` — Get workflow for issue type in workflow scheme
+- `GET /rest/api/3/workflowscheme/{id}/workflow` — Get issue types for workflows in workflow scheme
+- `GET /rest/api/3/workflowscheme/{workflowSchemeId}/projectUsages` — Get projects which are using a given workflow scheme
+- `GET /rest/api/3/worklog/deleted` — Get IDs of deleted worklogs
+- `GET /rest/api/3/worklog/updated` — Get IDs of updated worklogs
+- `GET /rest/atlassian-connect/1/addons/{addonKey}/properties` — Get app properties
+- `GET /rest/atlassian-connect/1/addons/{addonKey}/properties/{propertyKey}` — Get app property
+- `GET /rest/atlassian-connect/1/app/module/dynamic` — Get modules
+- `GET /rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task` — Get Connect issue field migration task
+- `GET /rest/atlassian-connect/1/service-registry` — Retrieve the attributes of service registries
+- `GET /rest/builds/0.1/pipelines/{pipelineId}/builds/{buildNumber}` — Get a build by key
+- `GET /rest/deployments/0.1/pipelines/{pipelineId}/environments/{environmentId}/deployments/{deploymentSequenceNumber}` — Get a deployment by key
+- `GET /rest/deployments/0.1/pipelines/{pipelineId}/environments/{environmentId}/deployments/{deploymentSequenceNumber}/gating-status` — Get deployment gating status by key
+- `GET /rest/devinfo/0.10/existsByProperties` — Check if data exists for the supplied properties
+- `GET /rest/devinfo/0.10/repository/{repositoryId}` — Get repository
+- `GET /rest/devopscomponents/1.0/devopscomponents/{componentId}` — Get a Component by ID
+- `GET /rest/featureflags/0.1/flag/{featureFlagId}` — Get a Feature Flag by ID
+- `GET /rest/forge/1/app/properties` — Get app property keys (Forge)
+- `GET /rest/forge/1/app/properties/{propertyKey}` — Get app property (Forge)
+- `GET /rest/operations/1.0/incidents/{incidentId}` — Get a Incident by ID
+- `GET /rest/operations/1.0/linkedWorkspaces` — Get all Operations Workspace IDs or a specific Operations Workspace by ID
+- `GET /rest/operations/1.0/post-incident-reviews/{reviewId}` — Get a Review by ID
+- `GET /rest/remotelinks/1.0/remotelink/{remoteLinkId}` — Get a Remote Link by ID
+- `GET /rest/security/1.0/linkedWorkspaces` — Get linked Security Workspaces
+- `GET /rest/security/1.0/linkedWorkspaces/{workspaceId}` — Get a linked Security Workspace by ID
+- `GET /rest/security/1.0/vulnerability/{vulnerabilityId}` — Get a Vulnerability by ID
+- `GET /rest/software/1.0/board/{boardId}/backlog` — Get issues for backlog (enhanced)
+- `GET /rest/software/1.0/board/{boardId}/backlog/approximate-count` — Get approximate issue count for backlog
+- `GET /rest/software/1.0/board/{boardId}/epic/none/issue` — Get issues without epic for board (enhanced)
+- `GET /rest/software/1.0/board/{boardId}/epic/{epicId}/issue` — Get board issues for epic (enhanced)
+- `GET /rest/software/1.0/board/{boardId}/issue` — Get issues for board (enhanced)
+- `GET /rest/software/1.0/board/{boardId}/issue/approximate-count` — Get approximate issue count for board
+- `GET /rest/software/1.0/board/{boardId}/sprint/{sprintId}/issue` — Get board issues for sprint (enhanced)
+- `GET /rest/software/1.0/epic/none/issue` — Get issues without epic (enhanced)
+- `GET /rest/software/1.0/epic/{epicIdOrKey}/issue` — Get issues for epic (enhanced)
+- `GET /rest/software/1.0/sprint/{sprintId}/issue` — Get issues for sprint (enhanced)
+- `POST /rest/agile/1.0/backlog/issue` — Move issues to backlog
+- `POST /rest/agile/1.0/backlog/{boardId}/issue` — Move issues to backlog for board
+- `POST /rest/agile/1.0/board` — Create board
+- `POST /rest/agile/1.0/board/{boardId}/issue` — Move issues to board
+- `POST /rest/agile/1.0/epic/none/issue` — Remove issues from epic
+- `POST /rest/agile/1.0/epic/{epicIdOrKey}` — Partially update epic
+- `POST /rest/agile/1.0/epic/{epicIdOrKey}/issue` — Move issues to epic
+- `POST /rest/agile/1.0/sprint` — Create sprint
+- `POST /rest/agile/1.0/sprint/{sprintId}` — Partially update sprint
+- `POST /rest/agile/1.0/sprint/{sprintId}/issue` — Move issues to sprint and rank
+- `POST /rest/agile/1.0/sprint/{sprintId}/swap` — Swap sprint
+- `POST /rest/api/3/app/field/context/configuration/list` — Bulk get custom field configurations
+- `POST /rest/api/3/app/field/value` — Update custom fields
+- `POST /rest/api/3/bulk/issues/delete` — Bulk delete issues
+- `POST /rest/api/3/bulk/issues/fields` — Bulk edit issues
+- `POST /rest/api/3/bulk/issues/move` — Bulk move issues
+- `POST /rest/api/3/bulk/issues/transition` — Bulk transition issue statuses
+- `POST /rest/api/3/bulk/issues/unwatch` — Bulk unwatch issues
+- `POST /rest/api/3/bulk/issues/watch` — Bulk watch issues
+- `POST /rest/api/3/changelog/bulkfetch` — Bulk fetch changelogs
+- `POST /rest/api/3/component` — Create component
+- `POST /rest/api/3/config/fieldschemes` — Create field scheme
+- `POST /rest/api/3/config/fieldschemes/{id}/clone` — Clone field scheme
+- `POST /rest/api/3/expression/analyse` — Analyse Jira expression
+- `POST /rest/api/3/expression/eval` — Currently being removed. Evaluate Jira expression
+- `POST /rest/api/3/expression/evaluate` — Evaluate Jira expression using enhanced search API
+- `POST /rest/api/3/field` — Create custom field
+- `POST /rest/api/3/field/{fieldId}/context` — Create custom field context
+- `POST /rest/api/3/field/{fieldId}/context/mapping` — Get custom field contexts for projects and issue types
+- `POST /rest/api/3/field/{fieldId}/context/{contextId}/issuetype/remove` — Remove issue types from context
+- `POST /rest/api/3/field/{fieldId}/context/{contextId}/option` — Create custom field options (context)
+- `POST /rest/api/3/field/{fieldId}/context/{contextId}/project/remove` — Remove custom field context from projects
+- `POST /rest/api/3/field/{fieldKey}/option` — Create issue field option
+- `POST /rest/api/3/field/{id}/restore` — Restore custom field from trash
+- `POST /rest/api/3/field/{id}/trash` — Move custom field to trash
+- `POST /rest/api/3/fieldconfiguration` — Create field configuration
+- `POST /rest/api/3/fieldconfigurationscheme` — Create field configuration scheme
+- `POST /rest/api/3/fieldconfigurationscheme/{id}/mapping/delete` — Remove issue types from field configuration scheme
+- `POST /rest/api/3/filter/{id}/permission` — Add share permission
+- `POST /rest/api/3/forge/panel/action/bulk/async` — Bulk pin or unpin issue panel to projects
+- `POST /rest/api/3/group` — Create group
+- `POST /rest/api/3/group/user` — Add user to group
+- `POST /rest/api/3/issue/archive` — Archive issue(s) by JQL
+- `POST /rest/api/3/issue/bulk` — Bulk create issue
+- `POST /rest/api/3/issue/bulkfetch` — Bulk fetch issues
+- `POST /rest/api/3/issue/properties` — Bulk set issues properties by list
+- `POST /rest/api/3/issue/properties/multi` — Bulk set issue properties by issue
+- `POST /rest/api/3/issue/watching` — Get is watching issue bulk
+- `POST /rest/api/3/issue/{issueIdOrKey}/changelog/list` — Get changelogs by IDs
+- `POST /rest/api/3/issue/{issueIdOrKey}/notify` — Send notification for issue
+- `POST /rest/api/3/issue/{issueIdOrKey}/remotelink` — Create or update remote issue link
+- `POST /rest/api/3/issue/{issueIdOrKey}/votes` — Add vote
+- `POST /rest/api/3/issue/{issueIdOrKey}/worklog` — Add worklog
+- `POST /rest/api/3/issue/{issueIdOrKey}/worklog/move` — Bulk move worklogs
+- `POST /rest/api/3/issueLinkType` — Create issue link type
+- `POST /rest/api/3/issuesecurityschemes` — Create issue security scheme
+- `POST /rest/api/3/issuetype` — Create issue type
+- `POST /rest/api/3/issuetype/{id}/avatar2` — Load issue type avatar
+- `POST /rest/api/3/issuetypescheme` — Create issue type scheme
+- `POST /rest/api/3/issuetypescreenscheme` — Create issue type screen scheme
+- `POST /rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/mapping/remove` — Remove mappings from issue type screen scheme
+- `POST /rest/api/3/jql/autocompletedata` — Get field reference data (POST)
+- `POST /rest/api/3/jql/function/computation` — Update precomputations (apps)
+- `POST /rest/api/3/jql/function/computation/search` — Get precomputations by ID (apps)
+- `POST /rest/api/3/jql/match` — Check issues against JQL
+- `POST /rest/api/3/jql/parse` — Parse JQL query
+- `POST /rest/api/3/jql/pdcleaner` — Convert user identifiers to account IDs in JQL queries
+- `POST /rest/api/3/jql/sanitize` — Sanitize JQL queries
+- `POST /rest/api/3/notificationscheme` — Create notification scheme
+- `POST /rest/api/3/permissions/check` — Get bulk permissions
+- `POST /rest/api/3/permissions/project` — Get permitted projects
+- `POST /rest/api/3/permissionscheme` — Create permission scheme
+- `POST /rest/api/3/permissionscheme/{schemeId}/permission` — Create permission grant
+- `POST /rest/api/3/plans/plan` — Create plan
+- `POST /rest/api/3/plans/plan/{planId}/duplicate` — Duplicate plan
+- `POST /rest/api/3/plans/plan/{planId}/team/atlassian` — Add Atlassian team to plan
+- `POST /rest/api/3/plans/plan/{planId}/team/planonly` — Create plan-only team
+- `POST /rest/api/3/priority` — Create priority
+- `POST /rest/api/3/priorityscheme` — Create priority scheme
+- `POST /rest/api/3/priorityscheme/mappings` — Suggested priorities for mappings
+- `POST /rest/api/3/project-template` — Create custom project
+- `POST /rest/api/3/project-template/save-template` — Save a custom project template
+- `POST /rest/api/3/project/{projectIdOrKey}/archive` — Archive project
+- `POST /rest/api/3/project/{projectIdOrKey}/avatar2` — Load project avatar
+- `POST /rest/api/3/project/{projectIdOrKey}/delete` — Delete project asynchronously
+- `POST /rest/api/3/project/{projectIdOrKey}/restore` — Restore deleted or archived project
+- `POST /rest/api/3/project/{projectIdOrKey}/role/{id}` — Add actors to project role
+- `POST /rest/api/3/projectCategory` — Create project category
+- `POST /rest/api/3/redact` — Redact
+- `POST /rest/api/3/resolution` — Create resolution
+- `POST /rest/api/3/role` — Create project role
+- `POST /rest/api/3/role/{id}` — Partial update project role
+- `POST /rest/api/3/role/{id}/actors` — Add default actors to project role
+- `POST /rest/api/3/screens` — Create screen
+- `POST /rest/api/3/screens/addToDefault/{fieldId}` — Add field to default screen
+- `POST /rest/api/3/screens/{screenId}/tabs` — Create screen tab
+- `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields` — Add screen tab field
+- `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}/move` — Move screen tab field
+- `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/move/{pos}` — Move screen tab
+- `POST /rest/api/3/screenscheme` — Create screen scheme
+- `POST /rest/api/3/search/approximate-count` — Count issues using JQL
+- `POST /rest/api/3/search/jql` — Search for issues using JQL enhanced search (POST)
+- `POST /rest/api/3/statuses` — Bulk create statuses
+- `POST /rest/api/3/task/{taskId}/cancel` — Cancel task
+- `POST /rest/api/3/uiModifications` — Create UI modification
+- `POST /rest/api/3/universal_avatar/type/{type}/owner/{entityId}` — Load avatar
+- `POST /rest/api/3/user` — Create user
+- `POST /rest/api/3/version` — Create version
+- `POST /rest/api/3/version/{id}/move` — Move version
+- `POST /rest/api/3/version/{id}/relatedwork` — Create related work
+- `POST /rest/api/3/version/{id}/removeAndSwap` — Delete and replace version
+- `POST /rest/api/3/webhook` — Register dynamic webhooks
+- `POST /rest/api/3/workflow/history` — Read workflow version from history
+- `POST /rest/api/3/workflow/history/list` — List workflow history entries
+- `POST /rest/api/3/workflows` — Bulk get workflows
+- `POST /rest/api/3/workflows/create` — Bulk create workflows
+- `POST /rest/api/3/workflows/create/validation` — Validate create workflows
+- `POST /rest/api/3/workflows/preview` — Preview workflow
+- `POST /rest/api/3/workflows/update` — Bulk update workflows
+- `POST /rest/api/3/workflows/update/validation` — Validate update workflows
+- `POST /rest/api/3/workflowscheme` — Create workflow scheme
+- `POST /rest/api/3/workflowscheme/project/switch` — Switch workflow scheme for project
+- `POST /rest/api/3/workflowscheme/read` — Bulk get workflow schemes
+- `POST /rest/api/3/workflowscheme/update` — Update workflow scheme
+- `POST /rest/api/3/workflowscheme/update/mappings` — Get required status mappings for workflow scheme update
+- `POST /rest/api/3/workflowscheme/{id}/createdraft` — Create draft workflow scheme
+- `POST /rest/api/3/workflowscheme/{id}/draft/publish` — Publish draft workflow scheme
+- `POST /rest/api/3/worklog/list` — Get worklogs
+- `POST /rest/atlassian-connect/1/app/module/dynamic` — Register modules
+- `POST /rest/atlassian-connect/1/migration/workflow/rule/search` — Get workflow transition rule configurations
+- `POST /rest/atlassian-connect/1/migration/{connectKey}/{jiraIssueFieldsKey}/task` — Submit Connect issue field migration task
+- `POST /rest/builds/0.1/bulk` — Submit build data
+- `POST /rest/deployments/0.1/bulk` — Submit deployment data
+- `POST /rest/devinfo/0.10/bulk` — Store development information
+- `POST /rest/devopscomponents/1.0/bulk` — Submit DevOps Components
+- `POST /rest/featureflags/0.1/bulk` — Submit Feature Flag data
+- `POST /rest/internal/api/latest/worklog/bulk` — Get worklogs by issue id and worklog id
+- `POST /rest/operations/1.0/bulk` — Submit Incident or Review data
+- `POST /rest/operations/1.0/linkedWorkspaces/bulk` — Submit Operations Workspace Ids
+- `POST /rest/remotelinks/1.0/bulk` — Submit Remote Link data
+- `POST /rest/security/1.0/bulk` — Submit Vulnerability data
+- `POST /rest/security/1.0/linkedWorkspaces/bulk` — Submit Security Workspaces to link
+- `PUT /rest/agile/1.0/board/{boardId}/features` — Toggle features
+- `PUT /rest/agile/1.0/board/{boardId}/properties/{propertyKey}` — Set board property
+- `PUT /rest/agile/1.0/epic/{epicIdOrKey}/rank` — Rank epics
+- `PUT /rest/agile/1.0/issue/rank` — Rank issues
+- `PUT /rest/agile/1.0/issue/{issueIdOrKey}/estimation` — Estimate issue for board
+- `PUT /rest/agile/1.0/sprint/{sprintId}` — Update sprint
+- `PUT /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Set property
+- `PUT /rest/api/3/announcementBanner` — Update announcement banner configuration
+- `PUT /rest/api/3/app/field/{fieldIdOrKey}/context/configuration` — Update custom field configurations
+- `PUT /rest/api/3/app/field/{fieldIdOrKey}/value` — Update custom field value
+- `PUT /rest/api/3/application-properties/{id}` — Set application property
+- `PUT /rest/api/3/comment/{commentId}/properties/{propertyKey}` — Set comment property
+- `PUT /rest/api/3/component/{id}` — Update component
+- `PUT /rest/api/3/config/fieldschemes/fields` — Update fields associated with field schemes
+- `PUT /rest/api/3/config/fieldschemes/fields/parameters` — Update field parameters
+- `PUT /rest/api/3/config/fieldschemes/projects` — Associate projects to field schemes
+- `PUT /rest/api/3/config/fieldschemes/{id}` — Update field scheme
+- `PUT /rest/api/3/configuration/timetracking` — Select time tracking provider
+- `PUT /rest/api/3/configuration/timetracking/options` — Set time tracking settings
+- `PUT /rest/api/3/dashboard/bulk/edit` — Bulk edit dashboards
+- `PUT /rest/api/3/dashboard/{dashboardId}/gadget/{gadgetId}` — Update gadget on dashboard
+- `PUT /rest/api/3/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}` — Set dashboard item property
+- `PUT /rest/api/3/field/association` — Create associations
+- `PUT /rest/api/3/field/{fieldId}` — Update custom field
+- `PUT /rest/api/3/field/{fieldId}/context/defaultValue` — Set custom field contexts default values
+- `PUT /rest/api/3/field/{fieldId}/context/{contextId}` — Update custom field context
+- `PUT /rest/api/3/field/{fieldId}/context/{contextId}/issuetype` — Add issue types to context
+- `PUT /rest/api/3/field/{fieldId}/context/{contextId}/option` — Update custom field options (context)
+- `PUT /rest/api/3/field/{fieldId}/context/{contextId}/option/move` — Reorder custom field options (context)
+- `PUT /rest/api/3/field/{fieldId}/context/{contextId}/project` — Assign custom field context to projects
+- `PUT /rest/api/3/field/{fieldKey}/option/{optionId}` — Update issue field option
+- `PUT /rest/api/3/fieldconfiguration/{id}` — Update field configuration
+- `PUT /rest/api/3/fieldconfiguration/{id}/fields` — Update field configuration items
+- `PUT /rest/api/3/fieldconfigurationscheme/project` — Assign field configuration scheme to project
+- `PUT /rest/api/3/fieldconfigurationscheme/{id}` — Update field configuration scheme
+- `PUT /rest/api/3/fieldconfigurationscheme/{id}/mapping` — Assign issue types to field configurations
+- `PUT /rest/api/3/filter/defaultShareScope` — Set default share scope
+- `PUT /rest/api/3/filter/{id}/columns` — Set columns
+- `PUT /rest/api/3/issue/archive` — Archive issue(s) by issue ID/key
+- `PUT /rest/api/3/issue/properties/{propertyKey}` — Bulk set issue property
+- `PUT /rest/api/3/issue/unarchive` — Unarchive issue(s) by issue keys/ID
+- `PUT /rest/api/3/issue/{issueIdOrKey}/assignee` — Assign issue
+- `PUT /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Set issue property
+- `PUT /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}` — Update remote issue link by ID
+- `PUT /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` — Update worklog
+- `PUT /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}` — Set worklog property
+- `PUT /rest/api/3/issueLinkType/{issueLinkTypeId}` — Update issue link type
+- `PUT /rest/api/3/issues/archive/export` — Export archived issue(s)
+- `PUT /rest/api/3/issuesecurityschemes/level/default` — Set default issue security levels
+- `PUT /rest/api/3/issuesecurityschemes/project` — Associate security scheme to project
+- `PUT /rest/api/3/issuesecurityschemes/{id}` — Update issue security scheme
+- `PUT /rest/api/3/issuesecurityschemes/{schemeId}/level` — Add issue security levels
+- `PUT /rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}` — Update issue security level
+- `PUT /rest/api/3/issuesecurityschemes/{schemeId}/level/{levelId}/member` — Add issue security level members
+- `PUT /rest/api/3/issuetype/{id}` — Update issue type
+- `PUT /rest/api/3/issuetype/{issueTypeId}/properties/{propertyKey}` — Set issue type property
+- `PUT /rest/api/3/issuetypescheme/project` — Assign issue type scheme to project
+- `PUT /rest/api/3/issuetypescheme/{issueTypeSchemeId}` — Update issue type scheme
+- `PUT /rest/api/3/issuetypescheme/{issueTypeSchemeId}/issuetype` — Add issue types to issue type scheme
+- `PUT /rest/api/3/issuetypescheme/{issueTypeSchemeId}/issuetype/move` — Change order of issue types
+- `PUT /rest/api/3/issuetypescreenscheme/project` — Assign issue type screen scheme to project
+- `PUT /rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}` — Update issue type screen scheme
+- `PUT /rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/mapping` — Append mappings to issue type screen scheme
+- `PUT /rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/mapping/default` — Update issue type screen scheme default screen scheme
+- `PUT /rest/api/3/mypreferences` — Set preference
+- `PUT /rest/api/3/mypreferences/locale` — Set locale
+- `PUT /rest/api/3/notificationscheme/{id}` — Update notification scheme
+- `PUT /rest/api/3/notificationscheme/{id}/notification` — Add notifications to notification scheme
+- `PUT /rest/api/3/permissionscheme/{schemeId}` — Update permission scheme
+- `PUT /rest/api/3/plans/plan/{planId}` — Update plan
+- `PUT /rest/api/3/plans/plan/{planId}/archive` — Archive plan
+- `PUT /rest/api/3/plans/plan/{planId}/team/atlassian/{atlassianTeamId}` — Update Atlassian team in plan
+- `PUT /rest/api/3/plans/plan/{planId}/team/planonly/{planOnlyTeamId}` — Update plan-only team
+- `PUT /rest/api/3/plans/plan/{planId}/trash` — Trash plan
+- `PUT /rest/api/3/priority/default` — Set default priority
+- `PUT /rest/api/3/priority/move` — Move priorities
+- `PUT /rest/api/3/priority/{id}` — Update priority
+- `PUT /rest/api/3/priorityscheme/{schemeId}` — Update priority scheme
+- `PUT /rest/api/3/project-template/edit-template` — Edit a custom project template
+- `PUT /rest/api/3/project/{projectIdOrKey}/avatar` — Set project avatar
+- `PUT /rest/api/3/project/{projectIdOrKey}/classification-level/default` — Update the default data classification level of a project
+- `PUT /rest/api/3/project/{projectIdOrKey}/features/{featureKey}` — Set project feature state
+- `PUT /rest/api/3/project/{projectIdOrKey}/properties/{propertyKey}` — Set project property
+- `PUT /rest/api/3/project/{projectIdOrKey}/role/{id}` — Set actors for project role
+- `PUT /rest/api/3/project/{projectId}/email` — Set project's sender email
+- `PUT /rest/api/3/project/{projectKeyOrId}/permissionscheme` — Assign permission scheme
+- `PUT /rest/api/3/projectCategory/{id}` — Update project category
+- `PUT /rest/api/3/resolution/default` — Set default resolution
+- `PUT /rest/api/3/resolution/move` — Move resolutions
+- `PUT /rest/api/3/resolution/{id}` — Update resolution
+- `PUT /rest/api/3/role/{id}` — Fully update project role
+- `PUT /rest/api/3/screens/{screenId}` — Update screen
+- `PUT /rest/api/3/screens/{screenId}/tabs/{tabId}` — Update screen tab
+- `PUT /rest/api/3/screenscheme/{screenSchemeId}` — Update screen scheme
+- `PUT /rest/api/3/settings/columns` — Set issue navigator default columns
+- `PUT /rest/api/3/statuses` — Bulk update statuses
+- `PUT /rest/api/3/uiModifications/{uiModificationId}` — Update UI modification
+- `PUT /rest/api/3/user/columns` — Set user default columns
+- `PUT /rest/api/3/user/properties/{propertyKey}` — Set user property
+- `PUT /rest/api/3/version/{id}` — Update version
+- `PUT /rest/api/3/version/{id}/mergeto/{moveIssuesTo}` — Merge versions
+- `PUT /rest/api/3/version/{id}/relatedwork` — Update related work
+- `PUT /rest/api/3/webhook/refresh` — Extend webhook life
+- `PUT /rest/api/3/workflow/rule/config` — Update workflow transition rule configurations
+- `PUT /rest/api/3/workflow/rule/config/delete` — Delete workflow transition rule configurations
+- `PUT /rest/api/3/workflowscheme/project` — Assign workflow scheme to project
+- `PUT /rest/api/3/workflowscheme/{id}` — Classic update workflow scheme
+- `PUT /rest/api/3/workflowscheme/{id}/default` — Update default workflow
+- `PUT /rest/api/3/workflowscheme/{id}/draft` — Update draft workflow scheme
+- `PUT /rest/api/3/workflowscheme/{id}/draft/default` — Update draft default workflow
+- `PUT /rest/api/3/workflowscheme/{id}/draft/issuetype/{issueType}` — Set workflow for issue type in draft workflow scheme
+- `PUT /rest/api/3/workflowscheme/{id}/draft/workflow` — Set issue types for workflow in workflow scheme
+- `PUT /rest/api/3/workflowscheme/{id}/issuetype/{issueType}` — Set workflow for issue type in workflow scheme
+- `PUT /rest/api/3/workflowscheme/{id}/workflow` — Set issue types for workflow in workflow scheme
+- `PUT /rest/atlassian-connect/1/addons/{addonKey}/properties/{propertyKey}` — Set app property
+- `PUT /rest/atlassian-connect/1/migration/field` — Bulk update custom field value
+- `PUT /rest/atlassian-connect/1/migration/properties/{entityType}` — Bulk update entity properties
+- `PUT /rest/forge/1/app/properties/{propertyKey}` — Set app property (Forge)
+
+## Estensioni fuori contratto
+
+- `DELETE /rest/api/3/automation/{}`
+- `DELETE /rest/api/3/custom-fields/options/{}`
+- `DELETE /rest/api/3/custom-fields/{}`
+- `DELETE /rest/api/3/dashboards/{}`
+- `DELETE /rest/api/3/dashboards/{}/widgets/{}`
+- `DELETE /rest/api/3/filters/{}`
+- `DELETE /rest/api/3/project/{}/git/providers`
+- `DELETE /rest/api/3/project/{}/members/{}`
+- `DELETE /rest/api/3/project/{}/star`
+- `DELETE /rest/api/3/project/{}/workflow/statuses/{}`
+- `GET /rest/api/3/auth/oauth/{}/callback`
+- `GET /rest/api/3/auth/oauth/{}/redirect`
+- `GET /rest/api/3/automation/{}`
+- `GET /rest/api/3/automation/{}/runs`
+- `GET /rest/api/3/custom-fields/{}/options`
+- `GET /rest/api/3/dashboards`
+- `GET /rest/api/3/dashboards/{}`
+- `GET /rest/api/3/filters`
+- `GET /rest/api/3/filters/{}`
+- `GET /rest/api/3/issue/{}/custom-values`
+- `GET /rest/api/3/issue/{}/git`
+- `GET /rest/api/3/notifications`
+- `GET /rest/api/3/notifications/settings`
+- `GET /rest/api/3/notifications/unread-count`
+- `GET /rest/api/3/project/{}/automation`
+- `GET /rest/api/3/project/{}/board`
+- `GET /rest/api/3/project/{}/calendar`
+- `GET /rest/api/3/project/{}/custom-fields`
+- `GET /rest/api/3/project/{}/git/providers`
+- `GET /rest/api/3/project/{}/issues`
+- `GET /rest/api/3/project/{}/issues/export`
+- `GET /rest/api/3/project/{}/members`
+- `GET /rest/api/3/project/{}/reports/burndown`
+- `GET /rest/api/3/project/{}/reports/burnup`
+- `GET /rest/api/3/project/{}/reports/cfd`
+- `GET /rest/api/3/project/{}/reports/velocity`
+- `GET /rest/api/3/project/{}/sprints`
+- `GET /rest/api/3/project/{}/sprints/{}`
+- `GET /rest/api/3/project/{}/summary`
+- `GET /rest/api/3/project/{}/timeline`
+- `GET /rest/api/3/project/{}/workflow`
+- `GET /rest/api/3/users/me`
+- `GET /ws/v1/projects/{}/board`
+- `PATCH /rest/api/3/automation/{}`
+- `PATCH /rest/api/3/dashboards/{}`
+- `PATCH /rest/api/3/notifications/read-all`
+- `PATCH /rest/api/3/notifications/settings`
+- `PATCH /rest/api/3/notifications/{}/read`
+- `PATCH /rest/api/3/project/{}/sprints/{}`
+- `PATCH /rest/api/3/project/{}/workflow/statuses/{}`
+- `POST /rest/api/3/auth/login`
+- `POST /rest/api/3/auth/register`
+- `POST /rest/api/3/automation/{}/execute`
+- `POST /rest/api/3/custom-fields/{}/options`
+- `POST /rest/api/3/dashboards`
+- `POST /rest/api/3/dashboards/{}/widgets`
+- `POST /rest/api/3/filters`
+- `POST /rest/api/3/issue/{}/labels`
+- `POST /rest/api/3/issues/rank`
+- `POST /rest/api/3/project/{}/automation`
+- `POST /rest/api/3/project/{}/custom-fields`
+- `POST /rest/api/3/project/{}/git/providers`
+- `POST /rest/api/3/project/{}/invites`
+- `POST /rest/api/3/project/{}/members`
+- `POST /rest/api/3/project/{}/sprints`
+- `POST /rest/api/3/project/{}/sprints/{}/complete`
+- `POST /rest/api/3/project/{}/sprints/{}/start`
+- `POST /rest/api/3/project/{}/workflow/statuses`
+- `POST /rest/api/3/project/{}/workflow/transitions`
+- `POST /rest/api/3/webhooks/git/{}`
+- `PUT /rest/api/3/issue/{}/custom-values/{}`
+- `PUT /rest/api/3/project/{}/star`
