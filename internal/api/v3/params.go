@@ -7,6 +7,7 @@ import (
 )
 
 // ParsePagination legge startAt/maxResults con default e cap in stile Jira.
+// Esempio: ParsePagination(r, 50, 100) — default 50, cap 100.
 func ParsePagination(r *http.Request, defaultMax, capMax int) (startAt, maxResults int) {
 	q := r.URL.Query()
 	startAt, _ = strconv.Atoi(q.Get("startAt"))
@@ -43,10 +44,10 @@ func ParseExpand(r *http.Request) Expand {
 func (e Expand) Has(name string) bool { return e.items[name] }
 func (e Expand) String() string       { return e.raw }
 
-// Fields modella il query param fields: lista di campi da includere,
-// con prefisso "-" per escludere. Assenza del parametro = tutti i campi.
+// Fields modella il query param fields. Lo zero value (nessun parametro)
+// include tutti i campi, come Jira.
 type Fields struct {
-	all      bool
+	limited  bool // true = solo i campi elencati in include
 	include  map[string]bool
 	excluded map[string]bool
 }
@@ -54,17 +55,18 @@ type Fields struct {
 func ParseFields(r *http.Request) Fields {
 	raw := r.URL.Query().Get("fields")
 	if raw == "" {
-		return Fields{all: true}
+		return Fields{}
 	}
 	f := Fields{include: map[string]bool{}, excluded: map[string]bool{}}
+	f.limited = true
 	for _, part := range strings.Split(raw, ",") {
 		p := strings.TrimSpace(part)
 		switch {
 		case p == "":
 		case p == "*all" || p == "*navigable":
-			f.all = true
+			f.limited = false
 		case strings.HasPrefix(p, "-"):
-			f.excluded[p[1:]] = true
+			f.excluded[strings.TrimSpace(p[1:])] = true
 		default:
 			f.include[p] = true
 		}
@@ -76,5 +78,8 @@ func (f Fields) Include(name string) bool {
 	if f.excluded[name] {
 		return false
 	}
-	return f.all || f.include[name]
+	if !f.limited {
+		return true
+	}
+	return f.include[name]
 }
