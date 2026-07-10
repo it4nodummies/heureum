@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **56**
 - Nel contratto ma mancanti: **665**
-- Implementati ma fuori contratto (estensioni): **72**
+- Implementati ma fuori contratto (estensioni): **73**
 
 ## Mancanti (dal contratto)
 
@@ -726,6 +726,7 @@
 - `PATCH /rest/api/3/notifications/{}/read`
 - `PATCH /rest/api/3/project/{}/sprints/{}`
 - `PATCH /rest/api/3/project/{}/workflow/statuses/{}`
+- `POST /rest/api/3/auth/api-tokens`
 - `POST /rest/api/3/auth/login`
 - `POST /rest/api/3/auth/register`
 - `POST /rest/api/3/automation/{}/execute`
