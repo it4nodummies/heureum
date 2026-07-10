@@ -155,6 +155,59 @@ func TestProjectSearch_ConformsToContract(t *testing.T) {
 // TestGetProjectByNumericID prova che create -> get-by-numeric-id fa
 // round-trip: creiamo un progetto, leggiamo l'id numerico (seq_id) restituito
 // da POST, e recuperiamo il progetto con GET /project/{id} numerico.
+func TestUpdateProject_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "UPD", "Before")
+	req, _ := http.NewRequest("PUT", srv.URL+"/rest/api/3/project/UPD", strings.NewReader(`{"name":"After","description":"changed"}`))
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("PUT", "/rest/api/3/project/UPD", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("PUT /project non conforme: %v", err)
+	}
+}
+
+func TestArchiveThenRestoreProject(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "ARC", "Arc")
+
+	areq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/project/ARC/archive", nil)
+	areq.Header.Set("Authorization", "Bearer "+jwt)
+	ares, err := http.DefaultClient.Do(areq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ares.Body.Close()
+	if ares.StatusCode != 204 {
+		t.Fatalf("archive status = %d, want 204", ares.StatusCode)
+	}
+
+	rreq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/project/ARC/restore", nil)
+	rreq.Header.Set("Authorization", "Bearer "+jwt)
+	rres, err := http.DefaultClient.Do(rreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rres.Body.Close()
+	if rres.StatusCode != 200 {
+		t.Fatalf("restore status = %d, want 200", rres.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("POST", "/rest/api/3/project/ARC/restore", rres.StatusCode, rres.Header, rres.Body); err != nil {
+		t.Errorf("POST /project/{key}/restore non conforme: %v", err)
+	}
+}
+
 func TestGetProjectByNumericID(t *testing.T) {
 	srv, authSvc := newTestServer(t)
 	jwt := registerAndLogin(t, authSvc)

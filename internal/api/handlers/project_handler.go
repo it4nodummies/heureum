@@ -123,6 +123,23 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusOK, v3.JiraProject(*p, h.leadOf(p), h.categoryOf(p), h.baseURL))
 }
 
+// resolveKey maps a {projectIdOrKey} path segment (numeric seq_id or project
+// key) to the canonical project key, mirroring Get's lookup rule.
+func (h *ProjectHandler) resolveKey(idOrKey string) (string, bool) {
+	if n, err := strconv.ParseInt(idOrKey, 10, 64); err == nil {
+		p, err := h.svc.GetBySeqID(n)
+		if err != nil || p == nil {
+			return "", false
+		}
+		return p.Key, true
+	}
+	p, err := h.svc.GetByKey(idOrKey)
+	if err != nil || p == nil {
+		return "", false
+	}
+	return p.Key, true
+}
+
 // List supports: query, type (comma-sep), orderBy, direction, startAt, maxResults
 func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -209,18 +226,91 @@ func (h *ProjectHandler) Search(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-	json.NewDecoder(r.Body).Decode(&req)
-	p, err := h.svc.Update(r.PathValue("key"), req.Name, req.Description)
-	if err != nil {
-		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+	idOrKey := r.PathValue("key")
+	key, ok := h.resolveKey(idOrKey)
+	if !ok {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key or id '" + idOrKey + "'."}, nil)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(p)
+	var req struct {
+		Name         *string `json:"name"`
+		Description  *string `json:"description"`
+		AssigneeType *string `json:"assigneeType"`
+		URL          *string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"Invalid request body."}, nil)
+		return
+	}
+	cur, err := h.svc.GetByKey(key)
+	if err != nil || cur == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
+		return
+	}
+	name, desc := cur.Name, cur.Description
+	if req.Name != nil {
+		name = *req.Name
+	}
+	if req.Description != nil {
+		desc = *req.Description
+	}
+	if _, err := h.svc.Update(key, name, desc); err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
+		return
+	}
+	updates := map[string]any{}
+	if req.AssigneeType != nil {
+		updates["assignee_type"] = *req.AssigneeType
+	}
+	if req.URL != nil {
+		updates["url"] = *req.URL
+	}
+	if len(updates) > 0 {
+		h.svc.DB().Model(&project.Project{}).Where("key = ?", key).Updates(updates)
+	}
+	p, err := h.svc.GetByKey(key)
+	if err != nil || p == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, v3.JiraProject(*p, h.leadOf(p), h.categoryOf(p), h.baseURL))
+}
+
+// Archive implements POST /rest/api/3/project/{key}/archive: marks the
+// project as archived and returns 204 with no body.
+func (h *ProjectHandler) Archive(w http.ResponseWriter, r *http.Request) {
+	idOrKey := r.PathValue("key")
+	key, ok := h.resolveKey(idOrKey)
+	if !ok {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key or id '" + idOrKey + "'."}, nil)
+		return
+	}
+	if err := h.svc.Archive(key); err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Restore implements POST /rest/api/3/project/{key}/restore: clears the
+// archived flag and returns the resulting Project.
+func (h *ProjectHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	idOrKey := r.PathValue("key")
+	key, ok := h.resolveKey(idOrKey)
+	if !ok {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key or id '" + idOrKey + "'."}, nil)
+		return
+	}
+	if err := h.svc.Restore(key); err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
+		return
+	}
+	p, err := h.svc.GetByKey(key)
+	if err != nil || p == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + key + "'."}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, v3.JiraProject(*p, h.leadOf(p), h.categoryOf(p), h.baseURL))
 }
 
 func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
