@@ -154,7 +154,28 @@ func TestUpdateIssue_204(t *testing.T) {
 	srv, authSvc := newTestServer(t)
 	jwt := registerAndLogin(t, authSvc)
 	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
-	key := createIssueViaAPI(t, srv, jwt, "DEMO", "Before")
+	// Crea con una priorità esplicita per verificare che l'update parziale
+	// (solo summary) preservi i campi non toccati.
+	cbody := `{"fields":{"project":{"key":"DEMO"},"summary":"Before","issuetype":{"name":"Task"},"priority":{"id":"2"}}}`
+	creq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/issue", strings.NewReader(cbody))
+	creq.Header.Set("Authorization", "Bearer "+jwt)
+	creq.Header.Set("Content-Type", "application/json")
+	cres, err := http.DefaultClient.Do(creq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cres.StatusCode != 201 {
+		b, _ := io.ReadAll(cres.Body)
+		cres.Body.Close()
+		t.Fatalf("create issue status = %d: %s", cres.StatusCode, b)
+	}
+	var created struct {
+		Key string `json:"key"`
+	}
+	json.NewDecoder(cres.Body).Decode(&created)
+	cres.Body.Close()
+	key := created.Key
+
 	body := `{"fields":{"summary":"After"}}`
 	req, _ := http.NewRequest("PUT", srv.URL+"/rest/api/3/issue/"+key, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+jwt)
@@ -169,16 +190,25 @@ func TestUpdateIssue_204(t *testing.T) {
 	}
 	greq, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key, nil)
 	greq.Header.Set("Authorization", "Bearer "+jwt)
-	gres, _ := http.DefaultClient.Do(greq)
+	gres, err := http.DefaultClient.Do(greq)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer gres.Body.Close()
 	var bean struct {
 		Fields struct {
-			Summary string `json:"summary"`
+			Summary  string `json:"summary"`
+			Priority struct {
+				ID string `json:"id"`
+			} `json:"priority"`
 		} `json:"fields"`
 	}
 	json.NewDecoder(gres.Body).Decode(&bean)
 	if bean.Fields.Summary != "After" {
 		t.Errorf("summary not updated: %q", bean.Fields.Summary)
+	}
+	if bean.Fields.Priority.ID != "2" {
+		t.Errorf("partial update did not preserve priority: got %q, want %q", bean.Fields.Priority.ID, "2")
 	}
 }
 
@@ -189,7 +219,10 @@ func TestDeleteIssue_204(t *testing.T) {
 	key := createIssueViaAPI(t, srv, jwt, "DEMO", "Trash")
 	req, _ := http.NewRequest("DELETE", srv.URL+"/rest/api/3/issue/"+key, nil)
 	req.Header.Set("Authorization", "Bearer "+jwt)
-	res, _ := http.DefaultClient.Do(req)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	res.Body.Close()
 	if res.StatusCode != 204 {
 		t.Fatalf("DELETE status = %d, want 204", res.StatusCode)
@@ -197,7 +230,10 @@ func TestDeleteIssue_204(t *testing.T) {
 	// verifica 404 dopo delete
 	greq, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key, nil)
 	greq.Header.Set("Authorization", "Bearer "+jwt)
-	gres, _ := http.DefaultClient.Do(greq)
+	gres, err := http.DefaultClient.Do(greq)
+	if err != nil {
+		t.Fatal(err)
+	}
 	gres.Body.Close()
 	if gres.StatusCode != 404 {
 		t.Fatalf("GET after delete = %d, want 404", gres.StatusCode)
