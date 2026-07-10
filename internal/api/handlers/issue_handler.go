@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
+	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/user"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
@@ -15,10 +18,73 @@ type IssueHandler struct {
 	svc        *issue.Service
 	projectSvc *project.Service
 	wfSvc      *workflow.Service
+	baseURL    string
 }
 
-func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *workflow.Service) *IssueHandler {
-	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc}
+func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *workflow.Service, baseURL string) *IssueHandler {
+	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc, baseURL: baseURL}
+}
+
+// resolveIssue trova un'issue per SeqID numerico (id v3) o per Key.
+func (h *IssueHandler) resolveIssue(idOrKey string) (*issue.Issue, error) {
+	if n, err := strconv.ParseInt(idOrKey, 10, 64); err == nil {
+		return h.svc.GetBySeqID(n)
+	}
+	return h.svc.GetByKey(idOrKey)
+}
+
+func itoaInt64(n int64) string { return strconv.FormatInt(n, 10) }
+
+// buildIssueInput arricchisce un'issue di dominio con le entità collegate
+// (assignee, reporter, tipo, stato, progetto, parent, label) necessarie a
+// costruire un v3.IssueBean completo tramite v3.JiraIssue.
+func (h *IssueHandler) buildIssueInput(iss *issue.Issue) v3.IssueInput {
+	in := v3.IssueInput{Issue: *iss, BaseURL: h.baseURL}
+	db := h.svc.DB()
+	if iss.AssigneeID != nil {
+		var u user.User
+		if db.First(&u, "id = ?", *iss.AssigneeID).Error == nil {
+			in.Assignee = &u
+		}
+	}
+	if iss.ReporterID != nil {
+		var u user.User
+		if db.First(&u, "id = ?", *iss.ReporterID).Error == nil {
+			in.Reporter = &u
+		}
+	}
+	if iss.TypeID != nil {
+		var it issue.IssueType
+		if db.First(&it, "id = ?", *iss.TypeID).Error == nil {
+			in.IssueType = &it
+		}
+	}
+	if iss.StatusID != nil {
+		var st workflow.WorkflowStatus
+		if db.First(&st, "id = ?", *iss.StatusID).Error == nil {
+			s := v3.JiraStatus(st.ID, st.Name, string(st.Category), h.baseURL)
+			in.Status = &s
+		}
+	}
+	var p project.Project
+	if db.First(&p, "id = ?", iss.ProjectID).Error == nil {
+		in.Project = &v3.ProjectRef{Self: h.baseURL + "/rest/api/3/project/" + itoaInt64(p.SeqID), ID: itoaInt64(p.SeqID), Key: p.Key, Name: p.Name}
+	}
+	if iss.ParentID != nil {
+		var parent issue.Issue
+		if db.First(&parent, "id = ?", *iss.ParentID).Error == nil {
+			in.Parent = &v3.ParentRef{ID: itoaInt64(parent.SeqID), Key: parent.Key, Self: h.baseURL + "/rest/api/3/issue/" + itoaInt64(parent.SeqID)}
+		}
+	}
+	labels, _ := h.svc.GetLabels(iss.ID)
+	in.Labels = labels
+	return in
+}
+
+// priorityEnumForID mappa gli ID di priorità Jira standard (1..5) all'enum
+// interno usato da issue.Priority.
+func priorityEnumForID(id string) string {
+	return map[string]string{"1": "highest", "2": "high", "3": "medium", "4": "low", "5": "lowest"}[id]
 }
 
 func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
@@ -60,60 +126,88 @@ func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	wr.Flush()
 }
 
+// Create implementa POST /rest/api/3/issue: accetta il body Jira ufficiale
+// {"fields": {...}} e restituisce 201 con lo shape CreatedIssue.
 func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
-	projectKey := r.PathValue("key")
 	var req struct {
-		ProjectKey  string         `json:"project_key"`
-		ProjectID   string         `json:"project_id"`
-		Title       string         `json:"title"`
-		Description string         `json:"description"`
-		Priority    issue.Priority `json:"priority"`
-		ParentID    *string        `json:"parent_id"`
-		TypeID      *string        `json:"type_id"`
+		Fields struct {
+			Project struct {
+				Key string `json:"key"`
+				ID  string `json:"id"`
+			} `json:"project"`
+			Summary     string `json:"summary"`
+			Description any    `json:"description"`
+			IssueType   struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"issuetype"`
+			Priority struct {
+				ID string `json:"id"`
+			} `json:"priority"`
+			Parent struct {
+				Key string `json:"key"`
+			} `json:"parent"`
+			Labels []string `json:"labels"`
+		} `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		v3.WriteError(w, http.StatusBadRequest, []string{"Invalid request body."}, nil)
 		return
 	}
-	if req.Title == "" {
-		http.Error(w, `{"error":"title is required"}`, http.StatusBadRequest)
+
+	fe := map[string]string{}
+	if req.Fields.Summary == "" {
+		fe["summary"] = "You must specify a summary of the issue."
+	}
+	if req.Fields.Project.Key == "" && req.Fields.Project.ID == "" {
+		fe["project"] = "You must specify a valid project."
+	}
+	if len(fe) > 0 {
+		v3.WriteError(w, http.StatusBadRequest, nil, fe)
 		return
 	}
-	if req.Priority == "" {
-		req.Priority = issue.PriorityMedium
+
+	var proj *project.Project
+	var err error
+	if req.Fields.Project.Key != "" {
+		proj, err = h.projectSvc.GetByKey(req.Fields.Project.Key)
+	} else {
+		proj, err = h.projectSvc.GetByID(req.Fields.Project.ID)
 	}
-	if projectKey == "" {
-		projectKey = req.ProjectKey
-	}
-	projectID := req.ProjectID
-	if projectKey == "" && projectID == "" {
-		http.Error(w, `{"error":"project_key or project_id is required"}`, http.StatusBadRequest)
+	if err != nil || proj == nil {
+		v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"project": "The project does not exist."})
 		return
 	}
-	if projectID == "" {
-		p, err := h.projectSvc.GetByKey(projectKey)
-		if err != nil {
-			http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
-			return
+
+	descJSON := ""
+	if req.Fields.Description != nil {
+		if b, err := json.Marshal(req.Fields.Description); err == nil {
+			descJSON = string(b)
 		}
-		projectID = p.ID
 	}
-	if projectKey == "" {
-		p, err := h.projectSvc.GetByID(projectID)
-		if err != nil {
-			http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
-			return
+	priority := issue.PriorityMedium
+	if e := priorityEnumForID(req.Fields.Priority.ID); e != "" {
+		priority = issue.Priority(e)
+	}
+	var parentID *string
+	if req.Fields.Parent.Key != "" {
+		if parent, perr := h.svc.GetByKey(req.Fields.Parent.Key); perr == nil && parent != nil {
+			parentID = &parent.ID
 		}
-		projectKey = p.Key
 	}
-	iss, err := h.svc.Create(projectKey, projectID, req.Title, req.Description, req.Priority, req.ParentID, req.TypeID)
+	var typeID *string
+	if req.Fields.IssueType.ID != "" {
+		typeID = &req.Fields.IssueType.ID
+	}
+
+	iss, err := h.svc.Create(proj.Key, proj.ID, req.Fields.Summary, descJSON, priority, parentID, typeID)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		v3.WriteError(w, http.StatusBadRequest, []string{err.Error()}, nil)
 		return
 	}
+	// Mantiene l'auto-assegnazione dello status "todo" dal workflow del progetto.
 	if h.wfSvc != nil {
-		wf, wfErr := h.wfSvc.GetWorkflow(projectID)
-		if wfErr == nil {
+		if wf, wfErr := h.wfSvc.GetWorkflow(proj.ID); wfErr == nil {
 			for _, status := range wf.Statuses {
 				if status.Category == workflow.CategoryTodo {
 					iss, _ = h.svc.Update(iss.Key, nil, nil, nil, nil, &status.ID, nil)
@@ -122,19 +216,53 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(iss)
+	for _, name := range req.Fields.Labels {
+		_, _ = h.svc.AddLabel(iss.ID, proj.ID, name, "")
+	}
+
+	v3.WriteJSON(w, http.StatusCreated, map[string]any{
+		"id":   itoaInt64(iss.SeqID),
+		"key":  iss.Key,
+		"self": h.baseURL + "/rest/api/3/issue/" + itoaInt64(iss.SeqID),
+	})
 }
 
+// Get implementa GET /rest/api/3/issue/{issueKey} restituendo l'IssueBean v3
+// ufficiale. Accetta sia la Key (es. DEMO-1) sia il SeqID numerico.
 func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.svc.GetByKey(r.PathValue("issueKey"))
-	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+	iss, err := h.resolveIssue(r.PathValue("issueKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(iss)
+	h.writeIssueBean(w, http.StatusOK, v3.JiraIssue(h.buildIssueInput(iss)))
+}
+
+// writeIssueBean serializza l'IssueBean rimuovendo dal sotto-oggetto "fields"
+// le chiavi con valore null (es. assignee/reporter/resolution non impostati).
+// Lo schema OpenAPI di "fields" usa additionalProperties:{} senza
+// nullable:true: una chiave presente con valore null (comportamento standard
+// di encoding/json per i puntatori nulli di IssueFields) non è conforme,
+// mentre ometterla del tutto lo è, dato che "fields" è libero.
+func (h *IssueHandler) writeIssueBean(w http.ResponseWriter, status int, bean v3.IssueBean) {
+	b, err := json.Marshal(bean)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Internal server error."}, nil)
+		return
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Internal server error."}, nil)
+		return
+	}
+	if fields, ok := raw["fields"].(map[string]any); ok {
+		for k, v := range fields {
+			if v == nil {
+				delete(fields, k)
+			}
+		}
+	}
+	v3.WriteJSON(w, status, raw)
 }
 
 func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
