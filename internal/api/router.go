@@ -74,6 +74,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	timelineH := handlers.NewTimelineHandler(timelineSvc)
 	calendarSvc := calendar.NewService(db)
 	calendarH := handlers.NewCalendarHandler(calendarSvc)
+	refH := handlers.NewReferenceHandler(db, cfg.BaseURL)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -176,8 +177,14 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.DeleteStatus)))
 	mux.Handle("POST /rest/api/3/project/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.AddTransition)))
 	mux.Handle("POST /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.TransitionIssue)))
-	mux.Handle("GET /rest/api/3/status", authMw(http.HandlerFunc(wfH.ListStatuses)))
+	// /status (collezione) è servito da ReferenceHandler per rispettare lo
+	// schema v3 StatusDetails (statusCategory come oggetto {self,id,key,colorName,name});
+	// il vecchio wfH.ListStatuses restituiva la forma di dominio grezza (workflow_id,category,...).
+	mux.Handle("GET /rest/api/3/status", authMw(http.HandlerFunc(refH.Statuses)))
 	mux.Handle("GET /rest/api/3/status/{idOrName}", authMw(http.HandlerFunc(wfH.GetStatus)))
+	mux.Handle("GET /rest/api/3/priority", authMw(http.HandlerFunc(refH.Priorities)))
+	mux.Handle("GET /rest/api/3/issuetype", authMw(http.HandlerFunc(refH.IssueTypes)))
+	mux.Handle("GET /rest/api/3/resolution", authMw(http.HandlerFunc(refH.Resolutions)))
 	mux.Handle("GET /rest/api/3/workflow/search", authMw(http.HandlerFunc(wfH.SearchWorkflows)))
 
 	mux.Handle("GET /rest/api/3/project/{key}/sprints", authMw(http.HandlerFunc(sprintH.List)))
