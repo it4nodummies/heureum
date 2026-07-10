@@ -47,6 +47,40 @@ func TestCreateProjectDuplicateKey(t *testing.T) {
 	}
 }
 
+func TestCreateProjectWithInput(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+	p, err := svc.CreateProject(CreateInput{Key: "NEW", Name: "New Project", Description: "d", Type: TypeKanban, AssigneeType: "PROJECT_LEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Key != "NEW" || p.Type != TypeKanban || p.AssigneeType != "PROJECT_LEAD" {
+		t.Errorf("unexpected: %+v", p)
+	}
+}
+
+func TestArchiveThenRestore(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+	if _, err := svc.CreateProject(CreateInput{Key: "ARC", Name: "Arc", Type: TypeScrum}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Archive("ARC"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := svc.GetByKey("ARC")
+	if !got.IsArchived {
+		t.Fatal("expected archived")
+	}
+	if err := svc.Restore("ARC"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = svc.GetByKey("ARC")
+	if got.IsArchived {
+		t.Error("expected restored")
+	}
+}
+
 func TestListProjectsSkipsArchived(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewService(db, &user.User{ID: uuid.New().String()})

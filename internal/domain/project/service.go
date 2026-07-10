@@ -44,6 +44,68 @@ func (s *Service) Create(name, key, description string, pType Type) (*Project, e
 	return p, nil
 }
 
+// CreateInput holds the parameters accepted by CreateProject.
+type CreateInput struct {
+	Key          string
+	Name         string
+	Description  string
+	Type         Type
+	LeadUserID   *string
+	CategoryID   *string
+	AssigneeType string
+	URL          string
+}
+
+// CreateProject creates a project from a structured input, allowing callers
+// to set fields (category, assignee type, URL, ...) not covered by Create.
+func (s *Service) CreateProject(in CreateInput) (*Project, error) {
+	if in.Key == "" || in.Name == "" {
+		return nil, errors.New("key and name are required")
+	}
+	if in.Type == "" {
+		in.Type = TypeScrum
+	}
+	if in.AssigneeType == "" {
+		in.AssigneeType = "UNASSIGNED"
+	}
+	p := &Project{
+		ID:           uuid.New().String(),
+		Key:          strings.ToUpper(in.Key),
+		Name:         in.Name,
+		Description:  in.Description,
+		Type:         in.Type,
+		LeadUserID:   in.LeadUserID,
+		CategoryID:   in.CategoryID,
+		AssigneeType: in.AssigneeType,
+		Style:        "classic",
+		URL:          in.URL,
+	}
+	if err := s.db.Create(p).Error; err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// Restore un-archives a project identified by key.
+func (s *Service) Restore(key string) error {
+	return s.db.Model(&Project{}).Where("key = ?", strings.ToUpper(key)).Update("is_archived", false).Error
+}
+
+// GetCategory fetches a ProjectCategory by ID, returning (nil, nil) if id is empty or not found.
+func (s *Service) GetCategory(id string) (*ProjectCategory, error) {
+	if id == "" {
+		return nil, nil
+	}
+	var c ProjectCategory
+	if err := s.db.First(&c, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &c, nil
+}
+
 func (s *Service) GetByKey(key string) (*Project, error) {
 	var p Project
 	if err := s.db.Where("key = ?", strings.ToUpper(key)).First(&p).Error; err != nil {
