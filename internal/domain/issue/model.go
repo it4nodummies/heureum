@@ -1,7 +1,6 @@
 package issue
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -52,130 +51,6 @@ type Issue struct {
 	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 	Type             *IssueType `gorm:"foreignKey:TypeID" json:"-"`
-}
-
-type JiraIssueFields struct {
-	Summary     string     `json:"summary"`
-	Description string     `json:"description,omitempty"`
-	IssueType   *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"issuetype,omitempty"`
-	Priority *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"priority,omitempty"`
-	Status *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"status,omitempty"`
-	Assignee *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-	} `json:"assignee,omitempty"`
-	Reporter *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-	} `json:"reporter,omitempty"`
-	Resolution *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"resolution,omitempty"`
-	Project *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-		Key  string `json:"key"`
-		Name string `json:"name"`
-	} `json:"project,omitempty"`
-	Parent *struct {
-		Self string `json:"self"`
-		ID   string `json:"id"`
-		Key  string `json:"key"`
-	} `json:"parent,omitempty"`
-	Labels       []string  `json:"labels,omitempty"`
-	StoryPoints  *int      `json:"customfield_10016,omitempty"`
-	TimeEstimate *int      `json:"timeestimate,omitempty"`
-	TimeSpent    *int      `json:"timespent,omitempty"`
-	DueDate      *time.Time `json:"duedate,omitempty"`
-	Created      time.Time  `json:"created"`
-	Updated      time.Time  `json:"updated"`
-}
-
-type JiraIssueResponse struct {
-	ID      string           `json:"id"`
-	Key     string           `json:"key"`
-	Self    string           `json:"self"`
-	Expand  string           `json:"expand,omitempty"`
-	Fields  JiraIssueFields  `json:"fields"`
-}
-
-func (iss *Issue) ToJiraResponse(baseURL string) JiraIssueResponse {
-	resp := JiraIssueResponse{
-		ID:   iss.ID,
-		Key:  iss.Key,
-		Self: fmt.Sprintf("%s/rest/api/3/issue/%s", baseURL, iss.Key),
-		Fields: JiraIssueFields{
-			Summary:     iss.Title,
-			Description: iss.DescriptionJSON,
-			Created:     iss.CreatedAt,
-			Updated:     iss.UpdatedAt,
-		},
-	}
-	if iss.StoryPoints > 0 {
-		sp := iss.StoryPoints
-		resp.Fields.StoryPoints = &sp
-	}
-	if iss.OriginalEstimate > 0 {
-		resp.Fields.TimeEstimate = &iss.OriginalEstimate
-	}
-	if iss.TimeSpent > 0 {
-		resp.Fields.TimeSpent = &iss.TimeSpent
-	}
-	if iss.DueDate != nil {
-		resp.Fields.DueDate = iss.DueDate
-	}
-	if iss.Priority != "" {
-		resp.Fields.Priority = &struct {
-			Self string `json:"self"`
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		}{ID: string(iss.Priority), Name: string(iss.Priority)}
-	}
-	if iss.StatusID != nil {
-		resp.Fields.Status = &struct {
-			Self string `json:"self"`
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		}{ID: *iss.StatusID}
-	}
-	if iss.TypeID != nil {
-		name := *iss.TypeID
-		if iss.Type != nil {
-			name = iss.Type.Name
-		}
-		resp.Fields.IssueType = &struct {
-			Self string `json:"self"`
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		}{ID: *iss.TypeID, Name: name}
-	}
-	if iss.AssigneeID != nil && *iss.AssigneeID != "" {
-		resp.Fields.Assignee = &struct {
-			Self string `json:"self"`
-			ID   string `json:"id"`
-		}{ID: *iss.AssigneeID}
-	}
-	if iss.ReporterID != nil && *iss.ReporterID != "" {
-		resp.Fields.Reporter = &struct {
-			Self string `json:"self"`
-			ID   string `json:"id"`
-		}{ID: *iss.ReporterID}
-	}
-	return resp
 }
 
 type Label struct {
