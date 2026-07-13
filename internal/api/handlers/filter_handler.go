@@ -60,7 +60,10 @@ func (h *FilterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to create filter"}, nil)
 		return
 	}
-	v3.WriteJSON(w, http.StatusCreated, h.toFilter(f))
+	// Il contratto Jira Cloud per POST /rest/api/3/filter risponde 200 (non
+	// 201): a differenza di /issue o /project, la creazione di un filtro non
+	// è modellata come risorsa REST "Created" nello spec ufficiale.
+	v3.WriteJSON(w, http.StatusOK, h.toFilter(f))
 }
 
 func (h *FilterHandler) Get(w http.ResponseWriter, r *http.Request) {
