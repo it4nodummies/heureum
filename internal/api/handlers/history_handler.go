@@ -1,61 +1,80 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
+	"strconv"
 
+	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/user"
 	"gorm.io/gorm"
 )
 
-type HistoryEntry struct {
-	ID           string  `json:"id"`
-	IssueID      string  `json:"issue_id"`
-	ActorID      *string `json:"actor_id,omitempty"`
-	ActorName    string  `json:"actor_name"`
-	FieldName    string  `json:"field_name"`
-	OldValue     string  `json:"old_value"`
-	NewValue     string  `json:"new_value"`
-	CreatedAt    string  `json:"created_at"`
-}
-
+// HistoryHandler serve l'endpoint Jira v3 del changelog di un issue.
 type HistoryHandler struct {
 	db       *gorm.DB
 	issueSvc *issue.Service
+	baseURL  string
 }
 
-func NewHistoryHandler(db *gorm.DB, issueSvc *issue.Service) *HistoryHandler {
-	return &HistoryHandler{db: db, issueSvc: issueSvc}
+func NewHistoryHandler(db *gorm.DB, issueSvc *issue.Service, baseURL string) *HistoryHandler {
+	return &HistoryHandler{db: db, issueSvc: issueSvc, baseURL: baseURL}
 }
 
-func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.issueSvc.GetByKey(r.PathValue("issueKey"))
+// resolve trova l'issue dal path param issueKey, provando prima come ID
+// numerico sequenziale e poi come key (es. "DEMO-1").
+func (h *HistoryHandler) resolve(r *http.Request) *issue.Issue {
+	k := r.PathValue("issueKey")
+	if n, err := strconv.ParseInt(k, 10, 64); err == nil {
+		if iss, err := h.issueSvc.GetBySeqID(n); err == nil {
+			return iss
+		}
+		return nil
+	}
+	iss, err := h.issueSvc.GetByKey(k)
 	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+		return nil
+	}
+	return iss
+}
+
+// GetHistory restituisce il changelog dell'issue come PageBeanChangelog.
+func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
+	iss := h.resolve(r)
+	if iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"issue not found"}, nil)
 		return
 	}
 	history, _ := h.issueSvc.GetHistory(iss.ID)
 
-	entries := make([]HistoryEntry, 0, len(history))
+	values := make([]v3.Changelog, 0, len(history))
 	for _, item := range history {
-		entry := HistoryEntry{
-			ID:        item.ID,
-			IssueID:   item.IssueID,
-			ActorID:   item.ActorID,
-			FieldName: item.FieldName,
-			OldValue:  item.OldValue,
-			NewValue:  item.NewValue,
-			CreatedAt: item.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		cl := v3.Changelog{
+			ID:      item.ID,
+			Created: v3.JiraTime(item.CreatedAt),
+			Items: []v3.ChangeItem{
+				{
+					Field:      item.FieldName,
+					Fieldtype:  "jira",
+					FromString: item.OldValue,
+					ToString:   item.NewValue,
+				},
+			},
 		}
 		if item.ActorID != nil && *item.ActorID != "" {
 			var u user.User
 			if err := h.db.Where("id = ?", *item.ActorID).First(&u).Error; err == nil {
-				entry.ActorName = u.Username
+				ju := v3.JiraUser(u, h.baseURL)
+				cl.Author = &ju
 			}
 		}
-		entries = append(entries, entry)
+		values = append(values, cl)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+
+	v3.WritePage(w, http.StatusOK, v3.Page[v3.Changelog]{
+		StartAt:    0,
+		MaxResults: len(values),
+		Total:      len(values),
+		Values:     values,
+	})
 }

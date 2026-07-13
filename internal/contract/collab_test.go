@@ -241,6 +241,27 @@ func TestWatchers_ConformsToContract(t *testing.T) {
 	}
 }
 
+func TestChangelog_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	key := createIssueViaAPI(t, srv, jwt, "DEMO", "History")
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key+"/changelog", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/issue/"+key+"/changelog", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("GET changelog non conforme: %v", err)
+	}
+}
+
 func TestCreateIssueLink_Status(t *testing.T) {
 	srv, authSvc := newTestServer(t)
 	jwt := registerAndLogin(t, authSvc)

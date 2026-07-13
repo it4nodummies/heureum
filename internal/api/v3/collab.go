@@ -106,3 +106,22 @@ func LinkTypeForName(name string) string {
 func LinkedIssue(id, key, self, summary, status string) LinkedIssueRef {
 	return LinkedIssueRef{ID: id, Key: key, Self: self, Fields: map[string]any{"summary": summary, "status": map[string]any{"name": status}}}
 }
+
+// ChangeItem è lo schema v3 ChangeDetails (additionalProperties:false).
+type ChangeItem struct {
+	Field      string `json:"field"`
+	FieldID    string `json:"fieldId,omitempty"`
+	Fieldtype  string `json:"fieldtype"`
+	From       string `json:"from,omitempty"`
+	FromString string `json:"fromString,omitempty"`
+	To         string `json:"to,omitempty"`
+	ToString   string `json:"toString,omitempty"`
+}
+
+// Changelog è lo schema v3 Changelog (additionalProperties:false).
+type Changelog struct {
+	ID      string       `json:"id"`
+	Author  *User        `json:"author,omitempty"`
+	Created string       `json:"created"`
+	Items   []ChangeItem `json:"items"`
+}
