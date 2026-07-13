@@ -3,6 +3,7 @@ package v3
 import (
 	"fmt"
 
+	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/user"
 )
 
@@ -124,4 +125,34 @@ type Changelog struct {
 	Author  *User        `json:"author,omitempty"`
 	Created string       `json:"created"`
 	Items   []ChangeItem `json:"items"`
+}
+
+// RemoteLinkObject è lo schema v3 RemoteObject (additionalProperties:true,
+// required: title, url). Solo i campi che usiamo sono mappati.
+type RemoteLinkObject struct {
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Summary string `json:"summary,omitempty"`
+}
+
+// RemoteLink è lo schema v3 RemoteIssueLink (additionalProperties:false).
+// Il campo "id" (integer, opzionale nello schema) è deliberatamente omesso:
+// il nostro identificatore interno è un UUID, non un intero, e "id" non è
+// tra i campi required — ometterlo resta conforme allo schema ed evita la
+// conversione UUID -> int.
+type RemoteLink struct {
+	Self         string           `json:"self"`
+	GlobalID     string           `json:"globalId,omitempty"`
+	Relationship string           `json:"relationship,omitempty"`
+	Object       RemoteLinkObject `json:"object"`
+}
+
+// JiraRemoteLink mappa un issue.RemoteLink nella forma Jira v3.
+func JiraRemoteLink(rl issue.RemoteLink, baseURL string) RemoteLink {
+	return RemoteLink{
+		Self:         fmt.Sprintf("%s/rest/api/3/issue/%s/remotelink/%s", baseURL, rl.IssueID, rl.ID),
+		GlobalID:     rl.GlobalID,
+		Relationship: rl.Relationship,
+		Object:       RemoteLinkObject{URL: rl.URL, Title: rl.Title, Summary: rl.Summary},
+	}
 }

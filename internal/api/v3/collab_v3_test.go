@@ -2,8 +2,10 @@ package v3
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/user"
 )
 
@@ -100,5 +102,50 @@ func TestLinkTypeForName_RoundTrips(t *testing.T) {
 		if lt.Name != name {
 			t.Errorf("JiraLinkType(%q).Name = %q, want %q", internal, lt.Name, name)
 		}
+	}
+}
+
+func TestJiraRemoteLink(t *testing.T) {
+	rl := issue.RemoteLink{
+		ID:           "link-1",
+		IssueID:      "issue-1",
+		GlobalID:     "system=http://acme.com&id=1",
+		URL:          "https://acme.com/ticket/1",
+		Title:        "Ticket 1",
+		Summary:      "Support ticket",
+		Relationship: "causes",
+	}
+
+	out := JiraRemoteLink(rl, "https://example.com")
+
+	if out.Self != "https://example.com/rest/api/3/issue/issue-1/remotelink/link-1" {
+		t.Errorf("Self = %q", out.Self)
+	}
+	if out.GlobalID != "system=http://acme.com&id=1" {
+		t.Errorf("GlobalID = %q", out.GlobalID)
+	}
+	if out.Relationship != "causes" {
+		t.Errorf("Relationship = %q", out.Relationship)
+	}
+	if out.Object.URL != "https://acme.com/ticket/1" {
+		t.Errorf("Object.URL = %q", out.Object.URL)
+	}
+	if out.Object.Title != "Ticket 1" {
+		t.Errorf("Object.Title = %q", out.Object.Title)
+	}
+	if out.Object.Summary != "Support ticket" {
+		t.Errorf("Object.Summary = %q", out.Object.Summary)
+	}
+}
+
+func TestJiraRemoteLink_OmitsIDField(t *testing.T) {
+	rl := issue.RemoteLink{ID: "link-1", IssueID: "issue-1", URL: "https://acme.com", Title: "T"}
+
+	b, err := json.Marshal(JiraRemoteLink(rl, "https://example.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), `"id"`) {
+		t.Errorf("marshaled RemoteLink contains an \"id\" field, want it omitted: %s", b)
 	}
 }

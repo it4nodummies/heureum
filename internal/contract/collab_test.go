@@ -262,6 +262,114 @@ func TestChangelog_ConformsToContract(t *testing.T) {
 	}
 }
 
+func TestRemoteLink_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	key := createIssueViaAPI(t, srv, jwt, "DEMO", "Has remote links")
+
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+
+	body := `{"object":{"url":"https://acme.com/ticket/1","title":"Ticket 1"},"globalId":"system=http://acme.com&id=1","relationship":"causes"}`
+	postReq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/issue/"+key+"/remotelink", strings.NewReader(body))
+	postReq.Header.Set("Authorization", "Bearer "+jwt)
+	postReq.Header.Set("Content-Type", "application/json")
+	postRes, err := http.DefaultClient.Do(postReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer postRes.Body.Close()
+	if postRes.StatusCode != 201 {
+		b, _ := io.ReadAll(postRes.Body)
+		t.Fatalf("POST remotelink status = %d: %s", postRes.StatusCode, b)
+	}
+	postBody, err := io.ReadAll(postRes.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.ValidateResponse("POST", "/rest/api/3/issue/"+key+"/remotelink", postRes.StatusCode, postRes.Header, strings.NewReader(string(postBody))); err != nil {
+		t.Errorf("POST remotelink non conforme: %v", err)
+	}
+	var created struct {
+		Self string `json:"self"`
+	}
+	if err := json.Unmarshal(postBody, &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Self == "" {
+		t.Error("self = empty, want a URL")
+	}
+
+	getReq, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key+"/remotelink", nil)
+	getReq.Header.Set("Authorization", "Bearer "+jwt)
+	getRes, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getRes.Body.Close()
+	if getRes.StatusCode != 200 {
+		b, _ := io.ReadAll(getRes.Body)
+		t.Fatalf("GET remotelink status = %d: %s", getRes.StatusCode, b)
+	}
+	getBody, err := io.ReadAll(getRes.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.ValidateResponse("GET", "/rest/api/3/issue/"+key+"/remotelink", getRes.StatusCode, getRes.Header, strings.NewReader(string(getBody))); err != nil {
+		t.Errorf("GET remotelink non conforme: %v", err)
+	}
+	var links []struct {
+		Self         string `json:"self"`
+		GlobalID     string `json:"globalId"`
+		Relationship string `json:"relationship"`
+		Object       struct {
+			URL   string `json:"url"`
+			Title string `json:"title"`
+		} `json:"object"`
+	}
+	if err := json.Unmarshal(getBody, &links); err != nil {
+		t.Fatal(err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("GET remotelink len = %d, want 1", len(links))
+	}
+	if links[0].Object.URL != "https://acme.com/ticket/1" {
+		t.Errorf("Object.URL = %q", links[0].Object.URL)
+	}
+	if links[0].Relationship != "causes" {
+		t.Errorf("Relationship = %q", links[0].Relationship)
+	}
+
+	// The self URL for the created link is of the form
+	// .../remotelink/{id}; extract {id} to exercise DELETE.
+	idx := strings.LastIndex(created.Self, "/")
+	linkID := created.Self[idx+1:]
+	delReq, _ := http.NewRequest("DELETE", srv.URL+"/rest/api/3/issue/"+key+"/remotelink/"+linkID, nil)
+	delReq.Header.Set("Authorization", "Bearer "+jwt)
+	delRes, err := http.DefaultClient.Do(delReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer delRes.Body.Close()
+	if delRes.StatusCode != 204 {
+		b, _ := io.ReadAll(delRes.Body)
+		t.Fatalf("DELETE remotelink status = %d: %s", delRes.StatusCode, b)
+	}
+
+	getRes2, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getRes2.Body.Close()
+	var links2 []any
+	if err := json.NewDecoder(getRes2.Body).Decode(&links2); err != nil {
+		t.Fatal(err)
+	}
+	if len(links2) != 0 {
+		t.Errorf("GET remotelink after DELETE len = %d, want 0", len(links2))
+	}
+}
+
 func TestCreateIssueLink_Status(t *testing.T) {
 	srv, authSvc := newTestServer(t)
 	jwt := registerAndLogin(t, authSvc)
