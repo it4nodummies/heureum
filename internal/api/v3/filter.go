@@ -1,6 +1,9 @@
 package v3
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 // Filter è lo schema del contratto Jira per un filtro salvato.
 type Filter struct {
@@ -49,7 +52,7 @@ func JiraFilter(in FilterInput) Filter {
 		Owner:            in.Owner,
 		JQL:              in.JQL,
 		ViewURL:          fmt.Sprintf("%s/issues/?filter=%s", in.BaseURL, in.ID),
-		SearchURL:        fmt.Sprintf("%s/rest/api/3/search?jql=%s", in.BaseURL, in.ID),
+		SearchURL:        fmt.Sprintf("%s/rest/api/3/search?jql=%s", in.BaseURL, url.QueryEscape(in.JQL)),
 		Favourite:        in.Favourite,
 		SharePermissions: []any{},
 		EditPermissions:  []any{},

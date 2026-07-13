@@ -89,7 +89,7 @@ func AutocompleteData() JQLReferenceData {
 			field("labels", "Labels", false, eq),
 			field("summary", "Summary", true, txt),
 			field("text", "Text", false, txt),
-			field("resolution", "Resolution", false, []string{"is", "is not"}),
+			field("resolution", "Resolution", false, append([]string{"is", "is not"}, eq...)),
 			field("created", "Created", true, []string{"=", "!=", ">", ">=", "<", "<="}),
 			field("updated", "Updated", true, []string{"=", "!=", ">", ">=", "<", "<="}),
 			field("key", "Key", true, eq),

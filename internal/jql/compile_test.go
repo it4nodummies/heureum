@@ -141,3 +141,28 @@ func TestCompile_UnknownProject(t *testing.T) {
 		t.Error("atteso errore per progetto inesistente")
 	}
 }
+
+func TestCompile_ResolutionByName(t *testing.T) {
+	c := compile(t, `resolution = Done`)
+	if !strings.Contains(c.Where, "resolution_id IN (SELECT id FROM resolutions WHERE name = ?)") {
+		t.Errorf("where: %q", c.Where)
+	}
+	if len(c.Args) != 1 || c.Args[0] != "Done" {
+		t.Errorf("args: %v", c.Args)
+	}
+
+	c2 := compile(t, `resolution IS EMPTY`)
+	if c2.Where != "resolution_id IS NULL" {
+		t.Errorf("where: %q", c2.Where)
+	}
+}
+
+func TestCompile_LabelsNotIn(t *testing.T) {
+	c := compile(t, `labels NOT IN (a, b)`)
+	if !strings.HasPrefix(c.Where, "NOT (") {
+		t.Errorf("where dovrebbe iniziare con NOT (: %q", c.Where)
+	}
+	if len(c.Args) != 2 {
+		t.Errorf("args: %v", c.Args)
+	}
+}

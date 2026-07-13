@@ -55,7 +55,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)
 	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc)
 	searchSvc := search.NewService(db)
-	searchH := handlers.NewSearchHandler(searchSvc, issueH, cfg.BaseURL)
+	searchH := handlers.NewSearchHandler(searchSvc, issueH)
 	filterSvc := search.NewFilterService(db)
 	filterH := handlers.NewFilterHandler(filterSvc, db, cfg.BaseURL)
 	reportSvc := report.NewService(db)

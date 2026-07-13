@@ -110,8 +110,10 @@ func compileClause(c *Clause, r Resolver) (string, []any, error) {
 	case "priority":
 		return priorityClause(c)
 	case "resolution":
-		// solo IS EMPTY / IS NOT EMPTY (risolte vs non risolte)
-		return nullableClause("resolution_id", c)
+		if c.IsEmpty {
+			return nullableClause("resolution_id", c)
+		}
+		return nameSubqueryClause("resolution_id", "resolutions", c)
 	case "labels":
 		return labelsClause(c)
 	case "summary":
@@ -252,6 +254,14 @@ func labelsClause(c *Clause) (string, []any, error) {
 			args = append(args, v)
 		}
 		return "(" + strings.Join(clauses, " OR ") + ")", args, nil
+	case "NOT IN":
+		clauses := make([]string, 0, len(c.Values))
+		args := make([]any, 0, len(c.Values))
+		for _, v := range c.Values {
+			clauses = append(clauses, sub)
+			args = append(args, v)
+		}
+		return "NOT (" + strings.Join(clauses, " OR ") + ")", args, nil
 	default:
 		return "", nil, fmt.Errorf("operatore %q non valido per labels", c.Op)
 	}

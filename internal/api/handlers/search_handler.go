@@ -17,13 +17,12 @@ import (
 // REST API v3: /search/jql (token-paginato), /search (legacy, offset-paginato)
 // e /search/approximate-count.
 type SearchHandler struct {
-	svc     *search.Service
-	issueH  *IssueHandler // riusa buildIssueInput per costruire gli IssueBean
-	baseURL string
+	svc    *search.Service
+	issueH *IssueHandler // riusa buildIssueInput per costruire gli IssueBean
 }
 
-func NewSearchHandler(svc *search.Service, issueH *IssueHandler, baseURL string) *SearchHandler {
-	return &SearchHandler{svc: svc, issueH: issueH, baseURL: baseURL}
+func NewSearchHandler(svc *search.Service, issueH *IssueHandler) *SearchHandler {
+	return &SearchHandler{svc: svc, issueH: issueH}
 }
 
 // jqlBody è il corpo condiviso da tutti gli endpoint di ricerca, letto sia dal
@@ -119,6 +118,9 @@ func (h *SearchHandler) SearchLegacy(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
+	if b.StartAt < 0 {
+		b.StartAt = 0
+	}
 	limit := clampMax(b.MaxResults, 50, 100)
 	uid := middleware.UserIDFromContext(r.Context())
 	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), b.StartAt, limit)
@@ -138,8 +140,8 @@ func (h *SearchHandler) SearchLegacy(w http.ResponseWriter, r *http.Request) {
 
 // ApproximateCount gestisce POST /rest/api/3/search/approximate-count.
 func (h *SearchHandler) ApproximateCount(w http.ResponseWriter, r *http.Request) {
-	var b jqlBody
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+	b, err := h.readParams(r)
+	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
