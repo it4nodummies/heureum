@@ -57,9 +57,16 @@ func ParseFields(r *http.Request) Fields {
 	if raw == "" {
 		return Fields{}
 	}
+	return newFields(strings.Split(raw, ","))
+}
+
+// newFields costruisce un Fields a partire da una lista esplicita di token
+// (già separati, non ancora un raw comma-separated). Condivisa da
+// ParseFields (query param) e ParseFieldsFromList (body POST /search).
+func newFields(list []string) Fields {
 	f := Fields{include: map[string]bool{}, excluded: map[string]bool{}}
 	f.limited = true
-	for _, part := range strings.Split(raw, ",") {
+	for _, part := range list {
 		p := strings.TrimSpace(part)
 		switch {
 		case p == "":
@@ -82,4 +89,10 @@ func (f Fields) Include(name string) bool {
 		return true
 	}
 	return f.include[name]
+}
+
+// includeAll indica se la selezione copre tutti i campi: Fields vuoto
+// (nessun parametro) o esplicitamente "*all"/"*navigable".
+func (f Fields) includeAll() bool {
+	return !f.limited
 }
