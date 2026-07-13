@@ -1,6 +1,6 @@
 # Stato del progetto — punto di ripresa
 
-> Aggiornato: 2026-07-11. Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
+> Aggiornato: 2026-07-11 (dopo Round 3). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
 
 ## Obiettivo
 
@@ -13,7 +13,7 @@ Clone open source di Jira con **API drop-in compatibile con Jira Cloud REST API 
 
 ## Branch e stato git
 
-- Branch di lavoro: `feat/frontend-next` (NON ancora pushato — il remote `origin` è un Forgejo self-hosted `http://192.168.1.58:3000`, spesso non raggiungibile).
+- Branch di lavoro: `feat/frontend-next` (pushato su `origin`, un Forgejo self-hosted `http://192.168.1.58:3000` a volte non raggiungibile — se il push fallisce, riprovare quando torna su).
 - Master: `master`.
 
 ## Round completati
@@ -21,16 +21,19 @@ Clone open source di Jira con **API drop-in compatibile con Jira Cloud REST API 
 - **Round 0 — Fondamenta** ✅: piattaforma v3 (errori/paginazione/expand/fields), package ADF, auth Basic+API token, harness contract test (kin-openapi), gap report tool, seed demo, CI GitHub Actions, Playwright. Primo endpoint certificato: `GET /rest/api/3/myself`.
 - **Round 1 — Progetti** ✅ (piano: `docs/superpowers/plans/2026-07-10-round-1-progetti.md`): `GET/POST /project`, `GET/PUT/DELETE /project/{idOrKey}`, `/project/search`, `/project/type`, `/projectCategory`, archive/restore. **Id numerici tipo Jira (`seq_id` da 10000)**, UUID resta PK interna, `GET` risolve id-o-key. UI: lista, creazione con template, impostazioni.
 - **Round 2 — Issue core** ✅ (piano: `docs/superpowers/plans/2026-07-10-round-2-issue-core.md`): `GET/POST/PUT/DELETE /issue`, `/issue/createmeta`, `/issue/{id}/editmeta`, `/priority`, `/issuetype`, `/status`, `/resolution`, `/field`, `/label`. Issue con `seq_id` (10001+), `description` in ADF, assignee/reporter utenti v3, status con `statusCategory`. UI: vista issue (`/jira/browse/{key}`) con rendering ADF, edit inline summary, modale creazione.
+- **Round 3 — Collaborazione** ✅ (piano: `docs/superpowers/plans/2026-07-11-round-3-collaborazione.md`): commenti ADF con @menzioni (`GET/POST /issue/{idOrKey}/comment`, `GET/PUT/DELETE .../comment/{id}`, `POST /comment/list`), worklog/time tracking (`GET/POST/DELETE /issue/{idOrKey}/worklog`), voti (`.../votes`), watchers (`.../watchers`, riscritti conformi), issue link (`POST /issueLink` + `GET/DELETE /issueLink/{linkId}`), changelog (`GET /issue/{idOrKey}/changelog` → PageBeanChangelog), remote link (`GET/POST/DELETE .../remotelink`, Delete scoped per issue). Timestamp Jira RFC3339 con offset `:` (`v3.JiraTime`). Nuovi mapping in `internal/api/v3/collab.go` (Votes/Watchers/IssueLinkV3/Changelog/RemoteLink) + `comment.go`/`worklog.go`. Migrazioni 000008-000010. UI: sezione Commenti + toggle watch/vote nella vista issue. E2E `collaboration.spec.ts` (8/8 suite verde).
 
-Gap report attuale: **69 endpoint path-match conformi** su ~500 del contratto.
+Gap report attuale: **78 endpoint path-match conformi** su ~500 del contratto.
 
-## Prossimo: Round 3 — Collaborazione (DA PIANIFICARE)
+## Prossimo: Round 4 — Ricerca & JQL (DA PIANIFICARE)
 
-Dalla roadmap: commenti ADF con @menzioni, allegati, watchers, voti, issue links, remote links, changelog/history, time tracking; UI integrata nella vista issue. Il piano NON è ancora scritto — va creato con la skill `superpowers:writing-plans` come per i round 1 e 2, poi eseguito con `superpowers:subagent-driven-development`.
+Dalla roadmap: motore di ricerca issue con JQL (parser + valutatore), `GET/POST /search`, `/search/jql`, filtri salvati (`/filter`, `/filter/{id}`, `/filter/favourite`), autocomplete JQL (`/jql/autocompletedata`), sfondo per board/backlog. Il piano NON è ancora scritto — va creato con `superpowers:writing-plans` come per i round precedenti, poi eseguito con `superpowers:subagent-driven-development`.
 
-Endpoint v3 rilevanti da allineare (verificare in `docs/contracts/jira-platform-v3.json`): `GET/POST /issue/{idOrKey}/comment`, `GET/PUT/DELETE .../comment/{id}`, `/issue/{idOrKey}/watchers`, `/issue/{idOrKey}/votes`, `/issueLink`, `/issue/{idOrKey}/remotelink`, `/issue/{idOrKey}/changelog`, `/issue/{idOrKey}/worklog`.
+Endpoint v3 rilevanti da allineare (verificare in `docs/contracts/jira-platform-v3.json`): `POST /search` (deprecato ma diffuso), `GET/POST /search/jql`, `POST /search/approximate-count`, `/filter`, `/filter/{id}`, `/filter/favourite`, `/filter/my`, `/jql/autocompletedata`, `/jql/parse`.
 
-Riusare: `internal/api/v3` (WriteJSON/WriteError/WritePage, JiraUser, JiraIssue, ADF), pattern `seq_id`, harness `internal/contract` (MustLoad, newTestServer, registerAndLogin, createProjectViaAPI, createIssueViaAPI). Commenti/worklog useranno ADF e datetime Jira (`v3.JiraTime`).
+Riusare: `internal/api/v3` (WriteJSON/WriteError/WritePage, JiraIssue, ParsePagination), pattern `seq_id`, harness `internal/contract`. La ricerca deve restituire pagine di issue nello stesso shape della `GET /issue` (fields/expand). Attenzione: JQL è la feature più grande della roadmap — valutare un parser dedicato in un package `internal/jql`.
+
+Nota: **allegati** rinviati dal Round 3 (richiedono storage file) — riprenderli in un round dedicato o insieme alla ricerca se serve.
 
 ## Follow-up aperti (non bloccanti)
 
