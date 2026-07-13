@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/open-jira/open-jira/internal/api/middleware"
 	v3 "github.com/open-jira/open-jira/internal/api/v3"
@@ -12,24 +11,10 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/user"
 )
 
-// rfc3339 formatta i timestamp con offset separato da ":" (es. "+00:00"),
-// come richiesto dal pattern "date-time" del contratto Jira v3 per Comment
-// (a differenza di v3.JiraTime, usato altrove, che produce "+0000" senza
-// ":" e non è validato in modo stretto sugli altri schemi).
-func rfc3339(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format("2006-01-02T15:04:05.000-07:00")
-}
-
-// toComment costruisce la v3.Comment di risposta correggendo i timestamp
-// prodotti da v3.JiraComment nel formato richiesto dal contratto.
+// toComment costruisce la v3.Comment di risposta. I timestamp conformi al
+// contratto sono prodotti da v3.JiraTime (offset RFC3339 con ":").
 func (h *CommentHandler) toComment(c issue.Comment, author *user.User) v3.Comment {
-	jc := v3.JiraComment(c, author, author, h.baseURL)
-	jc.Created = rfc3339(c.CreatedAt)
-	jc.Updated = rfc3339(c.UpdatedAt)
-	return jc
+	return v3.JiraComment(c, author, author, h.baseURL)
 }
 
 type CommentHandler struct {
