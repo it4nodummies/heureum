@@ -77,15 +77,27 @@ func (h *CommentHandler) List(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to get comments"}, nil)
 		return
 	}
-	out := make([]v3.Comment, 0, len(comments))
-	for _, c := range comments {
+	total := len(comments)
+	// Default e cap a 100, come la GET comments di Jira Cloud.
+	startAt, maxResults := v3.ParsePagination(r, 100, 100)
+	lo := startAt
+	if lo > total {
+		lo = total
+	}
+	hi := lo + maxResults
+	if hi > total {
+		hi = total
+	}
+	window := comments[lo:hi]
+	out := make([]v3.Comment, 0, len(window))
+	for _, c := range window {
 		author := h.author(&c)
 		out = append(out, h.toComment(c, author))
 	}
 	v3.WriteJSON(w, http.StatusOK, v3.PageOfComments{
-		StartAt:    0,
-		MaxResults: len(out),
-		Total:      len(out),
+		StartAt:    startAt,
+		MaxResults: maxResults,
+		Total:      total,
 		Comments:   out,
 	})
 }
@@ -160,9 +172,10 @@ func (h *CommentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListByIDs è un'estensione non-standard (POST /comment/list) usata dal
-// frontend per risolvere in batch i commenti citati altrove; non fa parte
-// del contratto Jira v3, quindi non emette la forma v3.Comment.
+// ListByIDs implementa POST /rest/api/3/comment/list, che fa parte del
+// contratto Jira v3 (schema IssueCommentListRequestBean). Deviazione nota:
+// il nostro request body usa ID stringa ("ids") anziché gli ID numerici
+// dello schema ufficiale; la risposta è comunque una PageOfComments.
 func (h *CommentHandler) ListByIDs(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs []string `json:"ids"`
