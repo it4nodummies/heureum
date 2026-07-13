@@ -174,8 +174,8 @@ func TestLex_OperatorsAndKeywords(t *testing.T) {
 	if toks[2].Kind != TokLParen {
 		t.Errorf("( atteso, %+v", toks[2])
 	}
-	if toks[5].Kind != TokRParen {
-		t.Errorf(") atteso, %+v", toks[5])
+	if toks[6].Kind != TokRParen {
+		t.Errorf(") atteso, %+v", toks[6])
 	}
 }
 
