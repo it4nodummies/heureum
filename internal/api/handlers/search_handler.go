@@ -3,187 +3,182 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/open-jira/open-jira/internal/api/middleware"
+	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/search"
 )
 
+// SearchHandler implementa gli endpoint di ricerca JQL conformi a Jira Cloud
+// REST API v3: /search/jql (token-paginato), /search (legacy, offset-paginato)
+// e /search/approximate-count.
 type SearchHandler struct {
 	svc     *search.Service
-	filters *search.FilterService
+	issueH  *IssueHandler // riusa buildIssueInput per costruire gli IssueBean
+	baseURL string
 }
 
-func NewSearchHandler(svc *search.Service, filters *search.FilterService) *SearchHandler {
-	return &SearchHandler{svc: svc, filters: filters}
+func NewSearchHandler(svc *search.Service, issueH *IssueHandler, baseURL string) *SearchHandler {
+	return &SearchHandler{svc: svc, issueH: issueH, baseURL: baseURL}
 }
 
-func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("q")
-	issues, err := h.svc.Search(query)
+// jqlBody è il corpo condiviso da tutti gli endpoint di ricerca, letto sia dal
+// body JSON (POST) sia dalla query string (GET).
+type jqlBody struct {
+	JQL           string   `json:"jql"`
+	MaxResults    int      `json:"maxResults"`
+	NextPageToken string   `json:"nextPageToken"`
+	StartAt       int      `json:"startAt"`
+	Fields        []string `json:"fields"`
+}
+
+// readParams estrae jql/fields/maxResults/nextPageToken/startAt dal POST
+// (body JSON) o dal GET (query string).
+func (h *SearchHandler) readParams(r *http.Request) (jqlBody, error) {
+	var b jqlBody
+	if r.Method == http.MethodPost {
+		if r.Body == nil {
+			return b, nil
+		}
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			return b, err
+		}
+		return b, nil
+	}
+	q := r.URL.Query()
+	b.JQL = q.Get("jql")
+	b.NextPageToken = q.Get("nextPageToken")
+	if v := q.Get("fields"); v != "" {
+		b.Fields = splitCSV(v)
+	}
+	if v := q.Get("maxResults"); v != "" {
+		if n, err := parseIntSafe(v); err == nil {
+			b.MaxResults = n
+		}
+	}
+	if v := q.Get("startAt"); v != "" {
+		if n, err := parseIntSafe(v); err == nil {
+			b.StartAt = n
+		}
+	}
+	return b, nil
+}
+
+// renderIssues costruisce gli IssueBean con proiezione dei fields richiesti.
+func (h *SearchHandler) renderIssues(issues []issue.Issue, fields []string) ([]map[string]any, error) {
+	f := v3.ParseFieldsFromList(fields)
+	out := make([]map[string]any, 0, len(issues))
+	for i := range issues {
+		bean := v3.JiraIssue(h.issueH.buildIssueInput(&issues[i]))
+		m, err := v3.ProjectIssue(bean, f)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// SearchJQL gestisce GET/POST /rest/api/3/search/jql (token-paginato).
+func (h *SearchHandler) SearchJQL(w http.ResponseWriter, r *http.Request) {
+	b, err := h.readParams(r)
 	if err != nil {
-		http.Error(w, `{"error":"search failed"}`, http.StatusInternalServerError)
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
-	if issues == nil {
-		issues = []issue.Issue{}
+	offset, err := v3.DecodeCursor(b.NextPageToken)
+	if err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid nextPageToken"}, nil)
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(issues)
+	limit := clampMax(b.MaxResults, 50, 100)
+	uid := middleware.UserIDFromContext(r.Context())
+	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), offset, limit)
+	if err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid JQL: " + err.Error()}, nil)
+		return
+	}
+	items, err := h.renderIssues(res.Issues, b.Fields)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"render error"}, nil)
+		return
+	}
+	isLast := offset+len(res.Issues) >= res.Total
+	out := v3.SearchAndReconcileResults{Issues: items, IsLast: isLast}
+	if !isLast {
+		out.NextPageToken = v3.EncodeCursor(offset + limit)
+	}
+	v3.WriteJSON(w, http.StatusOK, out)
 }
 
-func (h *SearchHandler) SearchPost(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		JQL        string `json:"jql"`
-		StartAt    int    `json:"startAt"`
-		MaxResults int    `json:"maxResults"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
-	}
-	issues, err := h.svc.Search(req.JQL)
+// SearchLegacy gestisce GET/POST /rest/api/3/search (offset-paginato).
+func (h *SearchHandler) SearchLegacy(w http.ResponseWriter, r *http.Request) {
+	b, err := h.readParams(r)
 	if err != nil {
-		http.Error(w, `{"error":"search failed"}`, http.StatusInternalServerError)
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
-	if issues == nil {
-		issues = []issue.Issue{}
+	limit := clampMax(b.MaxResults, 50, 100)
+	uid := middleware.UserIDFromContext(r.Context())
+	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), b.StartAt, limit)
+	if err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid JQL: " + err.Error()}, nil)
+		return
 	}
-	if req.MaxResults <= 0 {
-		req.MaxResults = 50
+	items, err := h.renderIssues(res.Issues, b.Fields)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"render error"}, nil)
+		return
 	}
-	if req.StartAt > len(issues) {
-		req.StartAt = len(issues)
-	}
-	end := req.StartAt + req.MaxResults
-	if end > len(issues) {
-		end = len(issues)
-	}
-	paginated := issues[req.StartAt:end]
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"issues":     paginated,
-		"total":      len(issues),
-		"startAt":    req.StartAt,
-		"maxResults": req.MaxResults,
+	v3.WriteJSON(w, http.StatusOK, v3.SearchResults{
+		Issues: items, StartAt: b.StartAt, MaxResults: limit, Total: res.Total,
 	})
 }
 
-func (h *SearchHandler) ListMyFilters(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserIDFromContext(r.Context())
-	filters, err := h.filters.List(userID)
+// ApproximateCount gestisce POST /rest/api/3/search/approximate-count.
+func (h *SearchHandler) ApproximateCount(w http.ResponseWriter, r *http.Request) {
+	var b jqlBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), 0, 0)
 	if err != nil {
-		http.Error(w, `{"error":"failed to list filters"}`, http.StatusInternalServerError)
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid JQL: " + err.Error()}, nil)
 		return
 	}
-	if filters == nil {
-		filters = []search.SavedFilter{}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(filters)
+	v3.WriteJSON(w, http.StatusOK, map[string]any{"count": res.Total})
 }
 
-func (h *SearchHandler) ListFavouriteFilters(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserIDFromContext(r.Context())
-	filters, err := h.filters.ListFavourites(userID)
-	if err != nil {
-		http.Error(w, `{"error":"failed to list filters"}`, http.StatusInternalServerError)
-		return
+// splitCSV divide una lista comma-separated scartando i token vuoti.
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
 	}
-	if filters == nil {
-		filters = []search.SavedFilter{}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(filters)
+	return out
 }
 
-func (h *SearchHandler) UpdateFilter(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name     string `json:"name"`
-		JQL      string `json:"jql"`
-		IsShared *bool  `json:"is_shared"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
-	}
-	f, err := h.filters.Update(r.PathValue("id"), req.Name, req.JQL, req.IsShared)
-	if err != nil {
-		http.Error(w, `{"error":"filter not found"}`, http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(f)
+// parseIntSafe è un wrapper su strconv.Atoi usato per i query param numerici.
+func parseIntSafe(s string) (int, error) {
+	return strconv.Atoi(s)
 }
 
-func (h *SearchHandler) AddFavourite(w http.ResponseWriter, r *http.Request) {
-	if err := h.filters.ToggleFavourite(r.PathValue("id"), true); err != nil {
-		http.Error(w, `{"error":"filter not found"}`, http.StatusNotFound)
-		return
+// clampMax applica il default/cap in stile Jira: v<=0 => def, v>cap => cap.
+func clampMax(v, def, cap int) int {
+	if v <= 0 {
+		return def
 	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *SearchHandler) RemoveFavourite(w http.ResponseWriter, r *http.Request) {
-	if err := h.filters.ToggleFavourite(r.PathValue("id"), false); err != nil {
-		http.Error(w, `{"error":"filter not found"}`, http.StatusNotFound)
-		return
+	if v > cap {
+		return cap
 	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *SearchHandler) ChangeFilterOwner(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		AccountID string `json:"accountId"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
-	}
-	if err := h.filters.ChangeOwner(r.PathValue("id"), req.AccountID); err != nil {
-		http.Error(w, `{"error":"filter not found"}`, http.StatusNotFound)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *SearchHandler) CreateFilter(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserIDFromContext(r.Context())
-	var req struct {
-		Name     string  `json:"name"`
-		JQL      string  `json:"jql"`
-		IsShared bool    `json:"is_shared"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
-	}
-	f, err := h.filters.Create(userID, nil, req.Name, req.JQL, req.IsShared)
-	if err != nil {
-		http.Error(w, `{"error":"failed to create filter"}`, http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(f)
-}
-
-func (h *SearchHandler) GetFilter(w http.ResponseWriter, r *http.Request) {
-	f, err := h.filters.Get(r.PathValue("id"))
-	if err != nil {
-		http.Error(w, `{"error":"filter not found"}`, http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(f)
-}
-
-func (h *SearchHandler) DeleteFilter(w http.ResponseWriter, r *http.Request) {
-	if err := h.filters.Delete(r.PathValue("id")); err != nil {
-		http.Error(w, `{"error":"filter not found"}`, http.StatusNotFound)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return v
 }

@@ -15,6 +15,10 @@ func NewService(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
+// DB espone la connessione sottostante, usata dagli handler per costruire un
+// search.DBResolver legato alla request corrente (es. currentUserID).
+func (s *Service) DB() *gorm.DB { return s.db }
+
 // SearchResult porta la pagina di issue e il totale complessivo (per la
 // paginazione offset del legacy /search).
 type SearchResult struct {
