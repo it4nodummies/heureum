@@ -180,3 +180,8 @@ func clampMax(v, def, cap int) int {
 	}
 	return v
 }
+
+// Autocomplete gestisce GET /rest/api/3/jql/autocompletedata.
+func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
+	v3.WriteJSON(w, http.StatusOK, v3.AutocompleteData())
+}

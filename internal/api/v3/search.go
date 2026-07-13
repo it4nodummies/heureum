@@ -42,3 +42,61 @@ func DecodeCursor(token string) (int, error) {
 	}
 	return strconv.Atoi(s[2:])
 }
+
+// FieldReferenceData e FunctionReferenceData: shape del contratto JQLReferenceData.
+// Nota: orderable/searchable/isList sono STRINGHE "true"/"false" nello schema Jira.
+type FieldReferenceData struct {
+	Value       string   `json:"value"`
+	DisplayName string   `json:"displayName"`
+	Orderable   string   `json:"orderable"`
+	Searchable  string   `json:"searchable"`
+	Operators   []string `json:"operators"`
+	Types       []string `json:"types"`
+}
+
+type FunctionReferenceData struct {
+	Value       string   `json:"value"`
+	DisplayName string   `json:"displayName"`
+	IsList      string   `json:"isList"`
+	Types       []string `json:"types"`
+}
+
+type JQLReferenceData struct {
+	VisibleFieldNames    []FieldReferenceData    `json:"visibleFieldNames"`
+	VisibleFunctionNames []FunctionReferenceData `json:"visibleFunctionNames"`
+	JQLReservedWords     []string                `json:"jqlReservedWords"`
+}
+
+// AutocompleteData descrive i campi/funzioni JQL supportati dal nostro engine.
+func AutocompleteData() JQLReferenceData {
+	field := func(v, dn string, orderable bool, ops []string) FieldReferenceData {
+		o := "false"
+		if orderable {
+			o = "true"
+		}
+		return FieldReferenceData{Value: v, DisplayName: dn, Orderable: o, Searchable: "true", Operators: ops, Types: []string{"java.lang.String"}}
+	}
+	eq := []string{"=", "!=", "in", "not in"}
+	txt := []string{"~", "!~"}
+	return JQLReferenceData{
+		VisibleFieldNames: []FieldReferenceData{
+			field("project", "Project", false, eq),
+			field("status", "Status", true, eq),
+			field("assignee", "Assignee", true, append([]string{"is", "is not"}, eq...)),
+			field("reporter", "Reporter", false, eq),
+			field("priority", "Priority", true, eq),
+			field("type", "Type", false, eq),
+			field("labels", "Labels", false, eq),
+			field("summary", "Summary", true, txt),
+			field("text", "Text", false, txt),
+			field("resolution", "Resolution", false, []string{"is", "is not"}),
+			field("created", "Created", true, []string{"=", "!=", ">", ">=", "<", "<="}),
+			field("updated", "Updated", true, []string{"=", "!=", ">", ">=", "<", "<="}),
+			field("key", "Key", true, eq),
+		},
+		VisibleFunctionNames: []FunctionReferenceData{
+			{Value: "currentUser()", DisplayName: "currentUser()", IsList: "false", Types: []string{"com.atlassian.jira.user.ApplicationUser"}},
+		},
+		JQLReservedWords: []string{"and", "or", "not", "in", "is", "empty", "null", "order", "by", "asc", "desc"},
+	}
+}
