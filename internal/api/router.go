@@ -47,7 +47,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	historyH := handlers.NewHistoryHandler(db, issueSvc)
 	attachmentSvc := issue.NewAttachmentService(db)
 	attachmentH := handlers.NewAttachmentHandler(attachmentSvc, issueSvc)
-	issueLinkH := handlers.NewIssueLinkHandler(issueSvc)
+	issueLinkH := handlers.NewIssueLinkHandler(issueSvc, cfg.BaseURL)
 	wfH := handlers.NewWorkflowHandler(wfSvc, issueSvc, projectSvc)
 	sprintSvc := sprint.NewService(db)
 	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)

@@ -240,3 +240,23 @@ func TestWatchers_ConformsToContract(t *testing.T) {
 		t.Errorf("GET watchers non conforme: %v", err)
 	}
 }
+
+func TestCreateIssueLink_Status(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	a := createIssueViaAPI(t, srv, jwt, "DEMO", "Blocker")
+	b := createIssueViaAPI(t, srv, jwt, "DEMO", "Blocked")
+	body := `{"type":{"name":"Blocks"},"inwardIssue":{"key":"` + b + `"},"outwardIssue":{"key":"` + a + `"}}`
+	req, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/issueLink", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 201 {
+		t.Fatalf("status = %d, want 201", res.StatusCode)
+	}
+}

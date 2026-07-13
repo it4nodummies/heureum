@@ -68,3 +68,37 @@ func TestJiraWatchers_EmptyWatchersIsNotNull(t *testing.T) {
 		t.Errorf("marshaled Watchers = %s, want []", b)
 	}
 }
+
+func TestJiraLinkType(t *testing.T) {
+	lt := JiraLinkType("blocks", "https://example.com")
+
+	if lt.Name != "Blocks" {
+		t.Errorf("Name = %q, want Blocks", lt.Name)
+	}
+	if lt.Inward != "is blocked by" {
+		t.Errorf("Inward = %q, want %q", lt.Inward, "is blocked by")
+	}
+	if lt.Outward != "blocks" {
+		t.Errorf("Outward = %q, want blocks", lt.Outward)
+	}
+	if lt.Self != "https://example.com/rest/api/3/issueLinkType/1" {
+		t.Errorf("Self = %q", lt.Self)
+	}
+}
+
+func TestLinkTypeForName_RoundTrips(t *testing.T) {
+	cases := map[string]string{
+		"Blocks":    "blocks",
+		"Duplicate": "duplicates",
+		"Relates":   "relates",
+	}
+	for name, internal := range cases {
+		if got := LinkTypeForName(name); got != internal {
+			t.Errorf("LinkTypeForName(%q) = %q, want %q", name, got, internal)
+		}
+		lt := JiraLinkType(internal, "https://example.com")
+		if lt.Name != name {
+			t.Errorf("JiraLinkType(%q).Name = %q, want %q", internal, lt.Name, name)
+		}
+	}
+}

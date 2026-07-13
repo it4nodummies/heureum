@@ -49,3 +49,60 @@ func JiraWatchers(issueKey, baseURL string, isWatching bool, watchers []user.Use
 	}
 	return ws
 }
+
+// LinkTypeRef è lo schema v3 IssueLinkType (additionalProperties:false).
+type LinkTypeRef struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Inward  string `json:"inward"`
+	Outward string `json:"outward"`
+	Self    string `json:"self,omitempty"`
+}
+
+// LinkedIssueRef è lo schema v3 LinkedIssue (additionalProperties:false).
+type LinkedIssueRef struct {
+	ID     string         `json:"id"`
+	Key    string         `json:"key"`
+	Self   string         `json:"self"`
+	Fields map[string]any `json:"fields,omitempty"`
+}
+
+// IssueLinkV3 è lo schema v3 IssueLink (additionalProperties:false).
+type IssueLinkV3 struct {
+	ID           string          `json:"id"`
+	Self         string          `json:"self"`
+	Type         LinkTypeRef     `json:"type"`
+	InwardIssue  *LinkedIssueRef `json:"inwardIssue,omitempty"`
+	OutwardIssue *LinkedIssueRef `json:"outwardIssue,omitempty"`
+}
+
+// JiraLinkType mappa il nostro LinkType interno alla forma v3.
+func JiraLinkType(internal, baseURL string) LinkTypeRef {
+	switch internal {
+	case "blocks":
+		return LinkTypeRef{ID: "1", Name: "Blocks", Inward: "is blocked by", Outward: "blocks", Self: baseURL + "/rest/api/3/issueLinkType/1"}
+	case "is_blocked":
+		return LinkTypeRef{ID: "1", Name: "Blocks", Inward: "is blocked by", Outward: "blocks", Self: baseURL + "/rest/api/3/issueLinkType/1"}
+	case "duplicates":
+		return LinkTypeRef{ID: "2", Name: "Duplicate", Inward: "is duplicated by", Outward: "duplicates", Self: baseURL + "/rest/api/3/issueLinkType/2"}
+	default:
+		return LinkTypeRef{ID: "3", Name: "Relates", Inward: "relates to", Outward: "relates to", Self: baseURL + "/rest/api/3/issueLinkType/3"}
+	}
+}
+
+// LinkTypeForName mappa un name Jira ("Blocks","Duplicate","Relates") al LinkType interno.
+func LinkTypeForName(name string) string {
+	switch name {
+	case "Blocks":
+		return "blocks"
+	case "Duplicate":
+		return "duplicates"
+	default:
+		return "relates"
+	}
+}
+
+// LinkedIssue costruisce un LinkedIssueRef v3 con summary/status minimali in fields.
+func LinkedIssue(id, key, self, summary, status string) LinkedIssueRef {
+	return LinkedIssueRef{ID: id, Key: key, Self: self, Fields: map[string]any{"summary": summary, "status": map[string]any{"name": status}}}
+}
