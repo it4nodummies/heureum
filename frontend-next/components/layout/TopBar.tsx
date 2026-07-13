@@ -6,13 +6,13 @@ import { useRouter } from "next/navigation";
 import { getStoredUser, clearToken } from "@/lib/auth";
 import type { User } from "@/lib/api";
 import CreateProjectModal from "@/components/projects/CreateProjectModal";
+import { GlobalSearch } from "@/components/search/GlobalSearch";
 
 export default function TopBar() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [search, setSearch] = useState("");
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,29 +51,7 @@ export default function TopBar() {
       <header className="h-[52px] bg-white border-b border-slate-100 flex items-center px-4 gap-4 shrink-0 z-30">
         {/* Search */}
         <div className="flex-1 max-w-lg">
-          <div className="relative">
-            <svg
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            >
-              <path
-                fillRule="evenodd"
-                d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search"
-              className="w-full pl-9 pr-4 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] focus:bg-white transition-all placeholder:text-slate-400"
-            />
-            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-300 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
-              /
-            </kbd>
-          </div>
+          <GlobalSearch />
         </div>
 
         {/* Right actions */}

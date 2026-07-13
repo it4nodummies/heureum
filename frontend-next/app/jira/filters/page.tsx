@@ -1,12 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { search, filters, type SearchIssue } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
 
 export default function FiltersPage() {
+  return (
+    <Suspense fallback={null}>
+      <FiltersPageInner />
+    </Suspense>
+  );
+}
+
+function FiltersPageInner() {
   const qc = useQueryClient();
+  const params = useSearchParams();
   const [jql, setJql] = useState("");
   const [results, setResults] = useState<SearchIssue[]>([]);
   const [ran, setRan] = useState(false);
@@ -25,6 +35,15 @@ export default function FiltersPage() {
     mutationFn: (name: string) => filters.create(name, jql),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["filters", "my"] }),
   });
+
+  useEffect(() => {
+    const initial = params.get("jql");
+    if (initial) {
+      setJql(initial);
+      run.mutate(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto max-w-5xl p-6">
