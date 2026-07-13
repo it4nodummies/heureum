@@ -1,10 +1,8 @@
 package search
 
 import (
-	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/user"
-	"github.com/open-jira/open-jira/internal/domain/workflow"
 	"gorm.io/gorm"
 )
 
@@ -24,25 +22,6 @@ func (r *DBResolver) ProjectID(keyOrID string) (string, bool) {
 		return "", false
 	}
 	return p.ID, true
-}
-
-// StatusID risolve un nome di stato workflow al suo id. Gli stati vivono in
-// workflow.WorkflowStatus (tabella workflow_statuses), non in un tipo issue.Status
-// (che non esiste nel dominio).
-func (r *DBResolver) StatusID(name string) (string, bool) {
-	var st workflow.WorkflowStatus
-	if err := r.db.Where("name = ?", name).First(&st).Error; err != nil {
-		return "", false
-	}
-	return st.ID, true
-}
-
-func (r *DBResolver) TypeID(name string) (string, bool) {
-	var it issue.IssueType
-	if err := r.db.Where("name = ?", name).First(&it).Error; err != nil {
-		return "", false
-	}
-	return it.ID, true
 }
 
 func (r *DBResolver) UserID(login string) (string, bool) {

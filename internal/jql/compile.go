@@ -9,8 +9,6 @@ import (
 // (search.DBResolver) per tenere questo package disaccoppiato dal DB.
 type Resolver interface {
 	ProjectID(keyOrID string) (string, bool)
-	StatusID(name string) (string, bool)
-	TypeID(name string) (string, bool)
 	UserID(login string) (string, bool)
 	CurrentUserID() string
 }
@@ -102,9 +100,9 @@ func compileClause(c *Clause, r Resolver) (string, []any, error) {
 	case "project":
 		return resolvedEq("project_id", c, r.ProjectID)
 	case "status":
-		return resolvedEq("status_id", c, r.StatusID)
+		return nameSubqueryClause("status_id", "workflow_statuses", c)
 	case "type", "issuetype":
-		return resolvedEq("type_id", c, r.TypeID)
+		return nameSubqueryClause("type_id", "issue_types", c)
 	case "assignee":
 		return userClause("assignee_id", c, r)
 	case "reporter":
@@ -207,6 +205,35 @@ func nullableClause(col string, c *Clause) (string, []any, error) {
 		return col + " IS NOT NULL", nil, nil
 	}
 	return col + " IS NULL", nil, nil
+}
+
+// nameSubqueryClause gestisce campi il cui valore è un id risolto per NOME in una
+// tabella per-progetto (stati, tipi). Usa una subquery che abbraccia tutti i
+// progetti: i nomi di stato/tipo non sono globalmente unici, quindi risolverli a
+// un singolo id darebbe risultati errati in ambienti multi-progetto.
+func nameSubqueryClause(col, table string, c *Clause) (string, []any, error) {
+	if c.IsEmpty {
+		return nullableClause(col, c)
+	}
+	switch c.Op {
+	case "=":
+		return col + " IN (SELECT id FROM " + table + " WHERE name = ?)", []any{c.Value}, nil
+	case "!=":
+		return col + " NOT IN (SELECT id FROM " + table + " WHERE name = ?)", []any{c.Value}, nil
+	case "IN", "NOT IN":
+		ph := strings.TrimSuffix(strings.Repeat("?,", len(c.Values)), ",")
+		args := make([]any, len(c.Values))
+		for i, v := range c.Values {
+			args[i] = v
+		}
+		op := "IN"
+		if c.Op == "NOT IN" {
+			op = "NOT IN"
+		}
+		return col + " " + op + " (SELECT id FROM " + table + " WHERE name IN (" + ph + "))", args, nil
+	default:
+		return "", nil, fmt.Errorf("operatore %q non valido per %s", c.Op, c.Field)
+	}
 }
 
 func labelsClause(c *Clause) (string, []any, error) {

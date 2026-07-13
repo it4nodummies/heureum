@@ -14,17 +14,6 @@ func (fakeResolver) ProjectID(k string) (string, bool) {
 	}
 	return "", false
 }
-func (fakeResolver) StatusID(n string) (string, bool) {
-	m := map[string]string{"To Do": "st-todo", "Done": "st-done", "todo": "st-todo"}
-	id, ok := m[n]
-	return id, ok
-}
-func (fakeResolver) TypeID(n string) (string, bool) {
-	if strings.EqualFold(n, "Bug") {
-		return "type-bug", true
-	}
-	return "", false
-}
 func (fakeResolver) UserID(login string) (string, bool) {
 	if login == "dev" {
 		return "user-dev", true
@@ -58,7 +47,7 @@ func TestCompile_ProjectEq(t *testing.T) {
 
 func TestCompile_StatusInList(t *testing.T) {
 	c := compile(t, `status IN ("To Do", Done)`)
-	if !strings.Contains(c.Where, "status_id IN (?,?)") {
+	if !strings.Contains(c.Where, "status_id IN (SELECT id FROM workflow_statuses WHERE name IN (?,?))") {
 		t.Errorf("where: %q", c.Where)
 	}
 	if len(c.Args) != 2 {

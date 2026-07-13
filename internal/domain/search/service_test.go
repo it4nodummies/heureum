@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/open-jira/open-jira/internal/domain/workflow"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -85,13 +86,43 @@ func TestSearch_InvalidJQL(t *testing.T) {
 	}
 }
 
+// TestSearch_StatusByName_SpansProjects verifica il fix per il bug per cui
+// status/type venivano risolti a un singolo id "First()", scelto arbitrariamente
+// tra i progetti. Due progetti hanno ciascuno una propria riga workflow_statuses
+// chiamata "To Do" (id diversi): status = "To Do" deve abbracciare entrambi.
+func TestSearch_StatusByName_SpansProjects(t *testing.T) {
+	db := newDB(t)
+	if err := db.AutoMigrate(&workflow.WorkflowStatus{}); err != nil {
+		t.Fatalf("migrate workflow_statuses: %v", err)
+	}
+
+	st1 := &workflow.WorkflowStatus{ID: "st-todo-proj1", WorkflowID: "wf-1", Name: "To Do"}
+	st2 := &workflow.WorkflowStatus{ID: "st-todo-proj2", WorkflowID: "wf-2", Name: "To Do"}
+	if err := db.Create(st1).Error; err != nil {
+		t.Fatalf("create status 1: %v", err)
+	}
+	if err := db.Create(st2).Error; err != nil {
+		t.Fatalf("create status 2: %v", err)
+	}
+
+	seedIssue(t, db, "proj-1", "Alpha", st1.ID, 1)
+	seedIssue(t, db, "proj-2", "Beta", st2.ID, 2)
+
+	svc := NewService(db)
+	res, err := svc.Search(`status = "To Do"`, &staticResolver{}, 0, 50)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if res.Total != 2 || len(res.Issues) != 2 {
+		t.Errorf("atteso status name-based su entrambi i progetti: total=%d issues=%d", res.Total, len(res.Issues))
+	}
+}
+
 // staticResolver implementa jql.Resolver per i test.
 type staticResolver struct {
 	project map[string]string
 }
 
 func (s *staticResolver) ProjectID(k string) (string, bool) { id, ok := s.project[k]; return id, ok }
-func (s *staticResolver) StatusID(string) (string, bool)    { return "", false }
-func (s *staticResolver) TypeID(string) (string, bool)      { return "", false }
 func (s *staticResolver) UserID(string) (string, bool)      { return "", false }
 func (s *staticResolver) CurrentUserID() string             { return "user-me" }
