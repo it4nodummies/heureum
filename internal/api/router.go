@@ -42,6 +42,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	commentH := handlers.NewCommentHandler(commentSvc, issueSvc, cfg.BaseURL)
 	worklogSvc := issue.NewWorklogService(db)
 	worklogH := handlers.NewWorklogHandler(worklogSvc, issueSvc, cfg.BaseURL)
+	voteSvc := issue.NewVoteService(db)
+	votesH := handlers.NewVotesHandler(voteSvc, issueSvc, cfg.BaseURL)
 	historyH := handlers.NewHistoryHandler(db, issueSvc)
 	attachmentSvc := issue.NewAttachmentService(db)
 	attachmentH := handlers.NewAttachmentHandler(attachmentSvc, issueSvc)
@@ -171,6 +173,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/worklog", authMw(http.HandlerFunc(worklogH.List)))
 	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/worklog", authMw(http.HandlerFunc(worklogH.Create)))
 	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}", authMw(http.HandlerFunc(worklogH.Delete)))
+
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/votes", authMw(http.HandlerFunc(votesH.List)))
+	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/votes", authMw(http.HandlerFunc(votesH.Add)))
+	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/votes", authMw(http.HandlerFunc(votesH.Remove)))
 
 	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(http.HandlerFunc(attachmentH.Upload)))
 	mux.Handle("GET /rest/api/3/attachment/{id}", authMw(http.HandlerFunc(attachmentH.Get)))

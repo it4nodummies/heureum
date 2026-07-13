@@ -137,3 +137,73 @@ func TestWorklog_ConformsToContract(t *testing.T) {
 		t.Fatalf("DELETE worklog status = %d: %s", delRes.StatusCode, b)
 	}
 }
+
+func TestVotes_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	key := createIssueViaAPI(t, srv, jwt, "DEMO", "Has votes")
+
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+
+	postReq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/issue/"+key+"/votes", nil)
+	postReq.Header.Set("Authorization", "Bearer "+jwt)
+	postRes, err := http.DefaultClient.Do(postReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer postRes.Body.Close()
+	if postRes.StatusCode != 204 {
+		b, _ := io.ReadAll(postRes.Body)
+		t.Fatalf("POST votes status = %d: %s", postRes.StatusCode, b)
+	}
+
+	getReq, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key+"/votes", nil)
+	getReq.Header.Set("Authorization", "Bearer "+jwt)
+	getRes, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getRes.Body.Close()
+	if getRes.StatusCode != 200 {
+		b, _ := io.ReadAll(getRes.Body)
+		t.Fatalf("GET votes status = %d: %s", getRes.StatusCode, b)
+	}
+	bodyBytes, err := io.ReadAll(getRes.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.ValidateResponse("GET", "/rest/api/3/issue/"+key+"/votes", getRes.StatusCode, getRes.Header, strings.NewReader(string(bodyBytes))); err != nil {
+		t.Errorf("GET votes non conforme: %v", err)
+	}
+	var votes struct {
+		Votes    int    `json:"votes"`
+		HasVoted bool   `json:"hasVoted"`
+		Voters   []any  `json:"voters"`
+		Self     string `json:"self"`
+	}
+	if err := json.Unmarshal(bodyBytes, &votes); err != nil {
+		t.Fatal(err)
+	}
+	if votes.Votes != 1 {
+		t.Errorf("votes = %d, want 1", votes.Votes)
+	}
+	if !votes.HasVoted {
+		t.Error("hasVoted = false, want true")
+	}
+	if votes.Voters == nil {
+		t.Error("voters = nil, want non-nil slice")
+	}
+
+	delReq, _ := http.NewRequest("DELETE", srv.URL+"/rest/api/3/issue/"+key+"/votes", nil)
+	delReq.Header.Set("Authorization", "Bearer "+jwt)
+	delRes, err := http.DefaultClient.Do(delReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer delRes.Body.Close()
+	if delRes.StatusCode != 204 {
+		b, _ := io.ReadAll(delRes.Body)
+		t.Fatalf("DELETE votes status = %d: %s", delRes.StatusCode, b)
+	}
+}
