@@ -29,6 +29,10 @@ type SearchResult struct {
 // Search compila la JQL e la esegue. jql vuota => tutte le issue non archiviate.
 // offset/limit implementano la paginazione. Escludiamo sempre le archiviate.
 func (s *Service) Search(jqlStr string, r jql.Resolver, offset, limit int) (SearchResult, error) {
+	if offset < 0 {
+		offset = 0
+	}
+
 	q, err := jql.Parse(jqlStr)
 	if err != nil {
 		return SearchResult{}, err
@@ -46,6 +50,11 @@ func (s *Service) Search(jqlStr string, r jql.Resolver, offset, limit int) (Sear
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
 		return SearchResult{}, err
+	}
+
+	// limit == 0: solo conteggio (usato da /search/approximate-count) — niente Find.
+	if limit == 0 {
+		return SearchResult{Total: int(total)}, nil
 	}
 
 	q2 := base

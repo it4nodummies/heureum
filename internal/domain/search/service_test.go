@@ -86,6 +86,23 @@ func TestSearch_InvalidJQL(t *testing.T) {
 	}
 }
 
+func TestSearch_CountOnly(t *testing.T) {
+	db := newDB(t)
+	seedIssue(t, db, "proj-1", "Alpha", "st-todo", 1)
+	seedIssue(t, db, "proj-1", "Beta", "st-todo", 2)
+	svc := NewService(db)
+	res, err := svc.Search(``, &staticResolver{}, 0, 0)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if res.Total != 2 {
+		t.Errorf("total atteso 2, %d", res.Total)
+	}
+	if len(res.Issues) != 0 {
+		t.Errorf("count-only non deve restituire righe, ne ha %d", len(res.Issues))
+	}
+}
+
 // TestSearch_StatusByName_SpansProjects verifica il fix per il bug per cui
 // status/type venivano risolti a un singolo id "First()", scelto arbitrariamente
 // tra i progetti. Due progetti hanno ciascuno una propria riga workflow_statuses

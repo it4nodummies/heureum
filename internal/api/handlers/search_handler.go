@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,10 +41,7 @@ type jqlBody struct {
 func (h *SearchHandler) readParams(r *http.Request) (jqlBody, error) {
 	var b jqlBody
 	if r.Method == http.MethodPost {
-		if r.Body == nil {
-			return b, nil
-		}
-		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil && err != io.EOF {
 			return b, err
 		}
 		return b, nil
