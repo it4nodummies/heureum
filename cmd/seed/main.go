@@ -14,6 +14,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/open-jira/open-jira/internal/domain/search"
 	"github.com/open-jira/open-jira/internal/domain/user"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 	"github.com/open-jira/open-jira/internal/store"
@@ -160,6 +161,19 @@ func main() {
 		// DEMO-1 non esiste: skip senza errori.
 	default:
 		log.Fatalf("check issue DEMO-1: %v", err)
+	}
+
+	// Filtro salvato demo (idempotente)
+	filterSvc := search.NewFilterService(s.DB)
+	var existingF search.SavedFilter
+	err = s.DB.Where("owner_id = ? AND name = ?", admin.ID, "My open issues").First(&existingF).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if _, err := filterSvc.Create(admin.ID, nil, "My open issues", "Issue assegnate a me", "assignee = currentUser() ORDER BY updated DESC", false); err != nil {
+			log.Fatalf("seed filter: %v", err)
+		}
+		fmt.Println("created demo filter")
+	} else if err != nil {
+		log.Fatalf("check demo filter: %v", err)
 	}
 
 	fmt.Println("seed complete")

@@ -2,9 +2,9 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **78**
-- Nel contratto ma mancanti: **643**
-- Implementati ma fuori contratto (estensioni): **78**
+- Nel contratto e implementati (path match): **80**
+- Nel contratto ma mancanti: **641**
+- Implementati ma fuori contratto (estensioni): **74**
 
 ## Mancanti (dal contratto)
 
@@ -237,7 +237,6 @@
 - `GET /rest/api/3/issuetypescreenscheme/mapping` — Get issue type screen scheme items
 - `GET /rest/api/3/issuetypescreenscheme/project` — Get issue type screen schemes for projects
 - `GET /rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/project` — Get issue type screen scheme projects
-- `GET /rest/api/3/jql/autocompletedata` — Get field reference data (GET)
 - `GET /rest/api/3/jql/autocompletedata/suggestions` — Get field auto complete suggestions
 - `GET /rest/api/3/jql/function/computation` — Get precomputations (apps)
 - `GET /rest/api/3/license/approximateLicenseCount` — Get approximate license count
@@ -491,8 +490,6 @@
 - `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}/move` — Move screen tab field
 - `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/move/{pos}` — Move screen tab
 - `POST /rest/api/3/screenscheme` — Create screen scheme
-- `POST /rest/api/3/search/approximate-count` — Count issues using JQL
-- `POST /rest/api/3/search/jql` — Search for issues using JQL enhanced search (POST)
 - `POST /rest/api/3/statuses` — Bulk create statuses
 - `POST /rest/api/3/task/{taskId}/cancel` — Cancel task
 - `POST /rest/api/3/uiModifications` — Create UI modification
@@ -571,6 +568,7 @@
 - `PUT /rest/api/3/fieldconfigurationscheme/{id}/mapping` — Assign issue types to field configurations
 - `PUT /rest/api/3/filter/defaultShareScope` — Set default share scope
 - `PUT /rest/api/3/filter/{id}/columns` — Set columns
+- `PUT /rest/api/3/filter/{id}/owner` — Change filter owner
 - `PUT /rest/api/3/issue/archive` — Archive issue(s) by issue ID/key
 - `PUT /rest/api/3/issue/properties/{propertyKey}` — Bulk set issue property
 - `PUT /rest/api/3/issue/unarchive` — Unarchive issue(s) by issue keys/ID
@@ -659,7 +657,6 @@
 - `DELETE /rest/api/3/custom-fields/{}`
 - `DELETE /rest/api/3/dashboards/{}`
 - `DELETE /rest/api/3/dashboards/{}/widgets/{}`
-- `DELETE /rest/api/3/filters/{}`
 - `DELETE /rest/api/3/project/{}/git/providers`
 - `DELETE /rest/api/3/project/{}/members/{}`
 - `DELETE /rest/api/3/project/{}/star`
@@ -672,8 +669,6 @@
 - `GET /rest/api/3/custom-fields/{}/options`
 - `GET /rest/api/3/dashboards`
 - `GET /rest/api/3/dashboards/{}`
-- `GET /rest/api/3/filters`
-- `GET /rest/api/3/filters/{}`
 - `GET /rest/api/3/issue/{}/custom-values`
 - `GET /rest/api/3/issue/{}/git`
 - `GET /rest/api/3/notifications`
@@ -716,7 +711,6 @@
 - `POST /rest/api/3/custom-fields/{}/options`
 - `POST /rest/api/3/dashboards`
 - `POST /rest/api/3/dashboards/{}/widgets`
-- `POST /rest/api/3/filters`
 - `POST /rest/api/3/issue/{}/labels`
 - `POST /rest/api/3/issues/rank`
 - `POST /rest/api/3/project/{}/automation`
