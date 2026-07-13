@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { issues } from "@/lib/api";
+import { issues, watchers, votes } from "@/lib/api";
 import { AdfRenderer } from "./adf";
 import { Comments } from "./Comments";
 
@@ -25,6 +25,17 @@ export function IssueView({ issueKey }: Props) {
       qc.invalidateQueries({ queryKey: ["issue", issueKey] });
       setEditing(false);
     },
+  });
+
+  const { data: w } = useQuery({ queryKey: ["watchers", issueKey], queryFn: () => watchers.get(issueKey) });
+  const { data: v } = useQuery({ queryKey: ["votes", issueKey], queryFn: () => votes.get(issueKey) });
+  const toggleWatch = useMutation({
+    mutationFn: () => (w?.isWatching ? watchers.unwatch(issueKey) : watchers.watch(issueKey)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchers", issueKey] }),
+  });
+  const toggleVote = useMutation({
+    mutationFn: () => (v?.hasVoted ? votes.unvote(issueKey) : votes.vote(issueKey)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["votes", issueKey] }),
   });
 
   if (isLoading) {
@@ -84,6 +95,14 @@ export function IssueView({ issueKey }: Props) {
         </div>
 
         <aside className="space-y-4 bg-white border border-slate-100 rounded-2xl shadow-sm shadow-slate-100/80 p-5 h-fit">
+          <button onClick={() => toggleWatch.mutate()} disabled={toggleWatch.isPending}
+            className="w-full rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+            {w?.isWatching ? "Stop watching" : "Watch"} ({w?.watchCount ?? 0})
+          </button>
+          <button onClick={() => toggleVote.mutate()} disabled={toggleVote.isPending}
+            className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+            {v?.hasVoted ? "Unvote" : "Vote"} ({v?.votes ?? 0})
+          </button>
           <Field label="Status" value={f.status?.name} />
           <Field label="Type" value={f.issuetype?.name} />
           <Field label="Priority" value={f.priority?.name} />
