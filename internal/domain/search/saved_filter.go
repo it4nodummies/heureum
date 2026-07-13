@@ -12,6 +12,7 @@ type SavedFilter struct {
 	ProjectID   *string   `gorm:"type:text" json:"project_id,omitempty"`
 	OwnerID     string    `gorm:"type:text;not null" json:"owner_id"`
 	Name        string    `gorm:"type:text;not null" json:"name"`
+	Description string    `gorm:"type:text;default:''" json:"description"`
 	JQL         string    `gorm:"type:text;default:''" json:"jql"`
 	IsShared    bool      `gorm:"default:false" json:"is_shared"`
 	IsFavourite bool      `gorm:"default:false" json:"is_favourite"`
@@ -34,19 +35,35 @@ func (s *FilterService) List(userID string) ([]SavedFilter, error) {
 	return filters, nil
 }
 
-func (s *FilterService) Create(ownerID string, projectID *string, name, jql string, isShared bool) (*SavedFilter, error) {
+func (s *FilterService) Create(ownerID string, projectID *string, name, description, jql string, isShared bool) (*SavedFilter, error) {
 	f := &SavedFilter{
-		ID:        uuid.New().String(),
-		OwnerID:   ownerID,
-		ProjectID: projectID,
-		Name:      name,
-		JQL:       jql,
-		IsShared:  isShared,
+		ID:          uuid.New().String(),
+		OwnerID:     ownerID,
+		ProjectID:   projectID,
+		Name:        name,
+		Description: description,
+		JQL:         jql,
+		IsShared:    isShared,
 	}
 	if err := s.db.Create(f).Error; err != nil {
 		return nil, err
 	}
 	return f, nil
+}
+
+// Search restituisce i filtri visibili all'utente (propri o condivisi) con
+// paginazione offset, più il totale.
+func (s *FilterService) Search(userID string, offset, limit int) ([]SavedFilter, int, error) {
+	q := s.db.Model(&SavedFilter{}).Where("owner_id = ? OR is_shared = ?", userID, true)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var filters []SavedFilter
+	if err := q.Order("created_at DESC").Offset(offset).Limit(limit).Find(&filters).Error; err != nil {
+		return nil, 0, err
+	}
+	return filters, int(total), nil
 }
 
 func (s *FilterService) Get(id string) (*SavedFilter, error) {
@@ -61,7 +78,7 @@ func (s *FilterService) Delete(id string) error {
 	return s.db.Where("id = ?", id).Delete(&SavedFilter{}).Error
 }
 
-func (s *FilterService) Update(id string, name, jql string, isShared *bool) (*SavedFilter, error) {
+func (s *FilterService) Update(id string, name, description, jql string, isShared *bool) (*SavedFilter, error) {
 	var f SavedFilter
 	if err := s.db.Where("id = ?", id).First(&f).Error; err != nil {
 		return nil, err
@@ -69,6 +86,9 @@ func (s *FilterService) Update(id string, name, jql string, isShared *bool) (*Sa
 	updates := map[string]interface{}{}
 	if name != "" {
 		updates["name"] = name
+	}
+	if description != "" {
+		updates["description"] = description
 	}
 	if jql != "" {
 		updates["jql"] = jql
