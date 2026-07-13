@@ -37,3 +37,34 @@ func TestJiraVotes_EmptyVotersIsNotNull(t *testing.T) {
 		t.Errorf("marshaled Voters = %s, want []", b)
 	}
 }
+
+func TestJiraWatchers(t *testing.T) {
+	u := user.User{ID: "u1", Email: "u1@example.com", DisplayName: "User One", IsActive: true}
+
+	ws := JiraWatchers("DEMO-1", "https://example.com", true, []user.User{u})
+
+	if ws.Self != "https://example.com/rest/api/3/issue/DEMO-1/watchers" {
+		t.Errorf("Self = %q", ws.Self)
+	}
+	if !ws.IsWatching {
+		t.Error("IsWatching = false, want true")
+	}
+	if ws.WatchCount != 1 {
+		t.Errorf("WatchCount = %d, want 1", ws.WatchCount)
+	}
+	if len(ws.Watchers) != 1 || ws.Watchers[0].AccountID != "u1" {
+		t.Errorf("Watchers = %+v", ws.Watchers)
+	}
+}
+
+func TestJiraWatchers_EmptyWatchersIsNotNull(t *testing.T) {
+	ws := JiraWatchers("DEMO-1", "https://example.com", false, nil)
+
+	b, err := json.Marshal(ws.Watchers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "[]" {
+		t.Errorf("marshaled Watchers = %s, want []", b)
+	}
+}

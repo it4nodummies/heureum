@@ -207,3 +207,36 @@ func TestVotes_ConformsToContract(t *testing.T) {
 		t.Fatalf("DELETE votes status = %d: %s", delRes.StatusCode, b)
 	}
 }
+
+func TestWatchers_ConformsToContract(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "DEMO", "Demo Project")
+	key := createIssueViaAPI(t, srv, jwt, "DEMO", "Watch me")
+	// add current user as watcher
+	areq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/issue/"+key+"/watchers", nil)
+	areq.Header.Set("Authorization", "Bearer "+jwt)
+	ares, err := http.DefaultClient.Do(areq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ares.Body.Close()
+	if ares.StatusCode != 204 {
+		t.Fatalf("POST watchers = %d, want 204", ares.StatusCode)
+	}
+	// get
+	req, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key+"/watchers", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("GET watchers = %d", res.StatusCode)
+	}
+	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
+	if err := v.ValidateResponse("GET", "/rest/api/3/issue/"+key+"/watchers", res.StatusCode, res.Header, res.Body); err != nil {
+		t.Errorf("GET watchers non conforme: %v", err)
+	}
+}

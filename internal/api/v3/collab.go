@@ -27,3 +27,25 @@ func JiraVotes(issueKey, baseURL string, count int, hasVoted bool, voters []user
 	}
 	return vs
 }
+
+// Watchers è lo schema v3 dei watcher di una issue (additionalProperties:false).
+type Watchers struct {
+	Self       string `json:"self"`
+	IsWatching bool   `json:"isWatching"`
+	WatchCount int    `json:"watchCount"`
+	Watchers   []User `json:"watchers"`
+}
+
+// JiraWatchers mappa lo stato dei watcher di un issue nella forma Jira v3.
+func JiraWatchers(issueKey, baseURL string, isWatching bool, watchers []user.User) Watchers {
+	ws := Watchers{
+		Self:       fmt.Sprintf("%s/rest/api/3/issue/%s/watchers", baseURL, issueKey),
+		IsWatching: isWatching,
+		WatchCount: len(watchers),
+		Watchers:   make([]User, 0, len(watchers)),
+	}
+	for _, u := range watchers {
+		ws.Watchers = append(ws.Watchers, JiraUser(u, baseURL))
+	}
+	return ws
+}

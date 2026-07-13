@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/open-jira/open-jira/internal/api/middleware"
 	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
@@ -352,65 +353,71 @@ func (h *IssueHandler) AddLabel(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(label)
 }
 
+// GetWatchers implementa GET /rest/api/3/issue/{issueIdOrKey}/watchers
+// restituendo lo schema Watchers v3 (self, isWatching, watchCount, watchers).
 func (h *IssueHandler) GetWatchers(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.svc.GetByKey(r.PathValue("issueIdOrKey"))
-	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+	iss, err := h.resolveIssue(r.PathValue("issueIdOrKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
 		return
 	}
-	watchers, _ := h.svc.GetWatchers(iss.ID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"watchers": watchers})
+	wl, _ := h.svc.GetWatchers(iss.ID)
+	ids := make([]string, 0, len(wl))
+	for _, x := range wl {
+		ids = append(ids, x.UserID)
+	}
+	var users []user.User
+	if len(ids) > 0 {
+		h.svc.DB().Where("id IN ?", ids).Find(&users)
+	}
+	current := middleware.UserIDFromContext(r.Context())
+	isWatching := false
+	for _, id := range ids {
+		if id == current {
+			isWatching = true
+			break
+		}
+	}
+	v3.WriteJSON(w, http.StatusOK, v3.JiraWatchers(iss.Key, h.baseURL, isWatching, users))
 }
 
+// AddWatcher implementa POST /rest/api/3/issue/{issueIdOrKey}/watchers: il
+// body opzionale è una raw accountId string; in sua assenza si usa il caller.
 func (h *IssueHandler) AddWatcher(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.svc.GetByKey(r.PathValue("issueIdOrKey"))
-	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+	iss, err := h.resolveIssue(r.PathValue("issueIdOrKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
 		return
 	}
-	var username string
-	if err := json.NewDecoder(r.Body).Decode(&username); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
+	userID := middleware.UserIDFromContext(r.Context())
+	var raw string
+	if json.NewDecoder(r.Body).Decode(&raw) == nil && raw != "" {
+		userID = raw
 	}
-	if username == "" {
-		http.Error(w, `{"error":"username is required"}`, http.StatusBadRequest)
-		return
-	}
-	var user struct {
-		ID string `gorm:"column:id"`
-	}
-	if err := h.svc.DB().Table("users").Where("username = ?", username).Select("id").Scan(&user).Error; err != nil || user.ID == "" {
-		http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
-		return
-	}
-	if err := h.svc.Watch(iss.ID, user.ID); err != nil {
-		http.Error(w, `{"error":"failed to add watcher"}`, http.StatusInternalServerError)
+	if err := h.svc.Watch(iss.ID, userID); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to add watcher."}, nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// RemoveWatcher implementa DELETE /rest/api/3/issue/{issueIdOrKey}/watchers:
+// Jira passa l'utente target come query string ?accountId=; in sua assenza si
+// usa il caller.
 func (h *IssueHandler) RemoveWatcher(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.svc.GetByKey(r.PathValue("issueIdOrKey"))
-	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+	iss, err := h.resolveIssue(r.PathValue("issueIdOrKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
 		return
 	}
-	username := r.URL.Query().Get("username")
-	if username == "" {
-		http.Error(w, `{"error":"username query parameter is required"}`, http.StatusBadRequest)
+	userID := middleware.UserIDFromContext(r.Context())
+	if q := r.URL.Query().Get("accountId"); q != "" {
+		userID = q
+	}
+	if err := h.svc.Unwatch(iss.ID, userID); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to remove watcher."}, nil)
 		return
 	}
-	var user struct {
-		ID string `gorm:"column:id"`
-	}
-	if err := h.svc.DB().Table("users").Where("username = ?", username).Select("id").Scan(&user).Error; err != nil || user.ID == "" {
-		http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
-		return
-	}
-	h.svc.Unwatch(iss.ID, user.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
