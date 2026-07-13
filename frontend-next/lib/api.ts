@@ -288,3 +288,43 @@ export const meta = {
   issueTypes: () => apiFetch<IssueTypeRef[]>("/rest/api/3/issuetype"),
   statuses: () => apiFetch<StatusRef[]>("/rest/api/3/status"),
 };
+
+// ── Comments ─────────────────────────────────────────────────────────────────
+
+export interface Comment {
+  self: string;
+  id: string;
+  author: JiraUserRef | null;
+  body: ADFNode | null;
+  created: string;
+  updated: string;
+}
+export interface PageOfComments { startAt: number; maxResults: number; total: number; comments: Comment[]; }
+
+export const comments = {
+  list: (issueKey: string) => apiFetch<PageOfComments>(`/rest/api/3/issue/${issueKey}/comment`),
+  add: (issueKey: string, body: ADFNode) =>
+    apiFetch<Comment>(`/rest/api/3/issue/${issueKey}/comment`, { method: "POST", body: JSON.stringify({ body }) }),
+  del: (issueKey: string, id: string) =>
+    apiFetch<void>(`/rest/api/3/issue/${issueKey}/comment/${id}`, { method: "DELETE" }),
+};
+
+// ── Watchers & Votes ─────────────────────────────────────────────────────────
+
+export interface Watchers { self: string; isWatching: boolean; watchCount: number; watchers: JiraUserRef[]; }
+export interface Votes { self: string; votes: number; hasVoted: boolean; voters: JiraUserRef[]; }
+
+export const watchers = {
+  get: (issueKey: string) => apiFetch<Watchers>(`/rest/api/3/issue/${issueKey}/watchers`),
+  watch: (issueKey: string) => apiFetch<void>(`/rest/api/3/issue/${issueKey}/watchers`, { method: "POST" }),
+  unwatch: (issueKey: string) => apiFetch<void>(`/rest/api/3/issue/${issueKey}/watchers`, { method: "DELETE" }),
+};
+export const votes = {
+  get: (issueKey: string) => apiFetch<Votes>(`/rest/api/3/issue/${issueKey}/votes`),
+  vote: (issueKey: string) => apiFetch<void>(`/rest/api/3/issue/${issueKey}/votes`, { method: "POST" }),
+  unvote: (issueKey: string) => apiFetch<void>(`/rest/api/3/issue/${issueKey}/votes`, { method: "DELETE" }),
+};
+
+export function textToADF(text: string): ADFNode {
+  return { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text }] }] };
+}
