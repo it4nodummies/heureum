@@ -39,7 +39,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	issueSvc := issue.NewService(db)
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, cfg.BaseURL)
 	commentSvc := issue.NewCommentService(db)
-	commentH := handlers.NewCommentHandler(commentSvc, issueSvc)
+	commentH := handlers.NewCommentHandler(commentSvc, issueSvc, cfg.BaseURL)
 	historyH := handlers.NewHistoryHandler(db, issueSvc)
 	attachmentSvc := issue.NewAttachmentService(db)
 	attachmentH := handlers.NewAttachmentHandler(attachmentSvc, issueSvc)
