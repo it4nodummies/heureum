@@ -45,7 +45,10 @@ func (s *RemoteLinkService) ListByIssue(issueID string) ([]RemoteLink, error) {
 	return out, err
 }
 
-// Delete rimuove il remote link con l'id dato.
-func (s *RemoteLinkService) Delete(id string) error {
-	return s.db.Delete(&RemoteLink{}, "id = ?", id).Error
+// Delete rimuove il remote link con l'id dato, ma solo se appartiene a
+// issueID. Restituisce il numero di righe eliminate: il chiamante lo usa per
+// distinguere "eliminato" da "non trovato / non appartenente all'issue".
+func (s *RemoteLinkService) Delete(issueID, id string) (int64, error) {
+	res := s.db.Delete(&RemoteLink{}, "issue_id = ? AND id = ?", issueID, id)
+	return res.RowsAffected, res.Error
 }

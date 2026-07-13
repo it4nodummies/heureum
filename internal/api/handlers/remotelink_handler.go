@@ -100,10 +100,23 @@ func (h *RemoteLinkHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}{Self: mapped.Self})
 }
 
-// Delete rimuove il remote link identificato dal path param "id".
+// Delete rimuove il remote link identificato dal path param "id", ma solo se
+// appartiene all'issue risolto dal path: un link di PROJ-1 non può essere
+// eliminato tramite una richiesta scoping su PROJ-2. 404 se l'issue non
+// esiste o se il link non appartiene ad esso.
 func (h *RemoteLinkHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.PathValue("id")); err != nil {
+	iss := h.resolve(r)
+	if iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"issue not found"}, nil)
+		return
+	}
+	n, err := h.svc.Delete(iss.ID, r.PathValue("id"))
+	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete remote link"}, nil)
+		return
+	}
+	if n == 0 {
+		v3.WriteError(w, http.StatusNotFound, []string{"remote link not found"}, nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

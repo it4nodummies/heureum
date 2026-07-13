@@ -55,10 +55,33 @@ func TestRemoteLinkService_Delete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(rl.ID); err != nil {
+
+	// Delete scoped to a different issue must not remove the link and must
+	// report zero rows affected.
+	n, err := svc.Delete("issue-2", rl.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
+	if n != 0 {
+		t.Errorf("Delete with wrong issueID RowsAffected = %d, want 0", n)
+	}
 	links, err := svc.ListByIssue("issue-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("ListByIssue after mismatched Delete len = %d, want 1", len(links))
+	}
+
+	// Delete scoped to the owning issue removes the link.
+	n, err = svc.Delete("issue-1", rl.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("Delete RowsAffected = %d, want 1", n)
+	}
+	links, err = svc.ListByIssue("issue-1")
 	if err != nil {
 		t.Fatal(err)
 	}
