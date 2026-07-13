@@ -2,9 +2,11 @@ package search
 
 import (
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/open-jira/open-jira/internal/jql"
 	"gorm.io/gorm"
 )
 
+// Service esegue ricerche JQL sulle issue.
 type Service struct {
 	db *gorm.DB
 }
@@ -13,16 +15,51 @@ func NewService(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
-func (s *Service) Search(query string) ([]issue.Issue, error) {
-	q := Parse(query)
-	db := s.db.Where("is_archived = ?", false)
-	db = q.Apply(db)
-	if q.Label != "" {
-		db = db.Where("id IN (SELECT il.issue_id FROM issue_labels il JOIN labels l ON il.label_id = l.id WHERE l.name = ?)", q.Label)
+// SearchResult porta la pagina di issue e il totale complessivo (per la
+// paginazione offset del legacy /search).
+type SearchResult struct {
+	Issues []issue.Issue
+	Total  int
+}
+
+// Search compila la JQL e la esegue. jql vuota => tutte le issue non archiviate.
+// offset/limit implementano la paginazione. Escludiamo sempre le archiviate.
+func (s *Service) Search(jqlStr string, r jql.Resolver, offset, limit int) (SearchResult, error) {
+	q, err := jql.Parse(jqlStr)
+	if err != nil {
+		return SearchResult{}, err
 	}
+	compiled, err := jql.Compile(q, r)
+	if err != nil {
+		return SearchResult{}, err
+	}
+
+	base := s.db.Model(&issue.Issue{}).Where("is_archived = ?", false)
+	if compiled.Where != "" {
+		base = base.Where(compiled.Where, compiled.Args...)
+	}
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return SearchResult{}, err
+	}
+
+	q2 := base
+	if compiled.Order != "" {
+		q2 = q2.Order(compiled.Order)
+	} else {
+		q2 = q2.Order("seq_id ASC")
+	}
+	if limit > 0 {
+		q2 = q2.Limit(limit)
+	}
+	if offset > 0 {
+		q2 = q2.Offset(offset)
+	}
+
 	var issues []issue.Issue
-	if err := db.Order("created_at DESC").Find(&issues).Error; err != nil {
-		return nil, err
+	if err := q2.Find(&issues).Error; err != nil {
+		return SearchResult{}, err
 	}
-	return issues, nil
+	return SearchResult{Issues: issues, Total: int(total)}, nil
 }
