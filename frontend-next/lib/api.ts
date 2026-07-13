@@ -325,6 +325,63 @@ export const votes = {
   unvote: (issueKey: string) => apiFetch<void>(`/rest/api/3/issue/${issueKey}/votes`, { method: "DELETE" }),
 };
 
+// ── Search & Filters ─────────────────────────────────────────────────────────
+
+export interface SearchIssue {
+  id: string;
+  key: string;
+  self: string;
+  fields: {
+    summary?: string;
+    status?: { name: string; statusCategory?: { key: string; colorName: string } };
+    priority?: { name: string };
+    assignee?: { displayName: string } | null;
+    updated?: string;
+  };
+}
+
+export interface SearchJqlResponse {
+  issues: SearchIssue[];
+  nextPageToken?: string;
+  isLast: boolean;
+}
+
+export interface Filter {
+  id: string;
+  name: string;
+  description?: string;
+  jql: string;
+  favourite: boolean;
+  owner?: { displayName: string };
+}
+
+export const search = {
+  jql: (jql: string, opts?: { fields?: string[]; nextPageToken?: string; maxResults?: number }) =>
+    apiFetch<SearchJqlResponse>("/rest/api/3/search/jql", {
+      method: "POST",
+      body: JSON.stringify({
+        jql,
+        fields: opts?.fields ?? ["summary", "status", "priority", "assignee", "updated"],
+        nextPageToken: opts?.nextPageToken,
+        maxResults: opts?.maxResults ?? 50,
+      }),
+    }),
+};
+
+export const filters = {
+  list: () => apiFetch<Filter[]>("/rest/api/3/filter/my"),
+  favourites: () => apiFetch<Filter[]>("/rest/api/3/filter/favourite"),
+  get: (id: string) => apiFetch<Filter>(`/rest/api/3/filter/${id}`),
+  create: (name: string, jql: string, description?: string) =>
+    apiFetch<Filter>("/rest/api/3/filter", {
+      method: "POST",
+      body: JSON.stringify({ name, jql, description }),
+    }),
+  del: (id: string) => apiFetch<void>(`/rest/api/3/filter/${id}`, { method: "DELETE" }),
+  setFavourite: (id: string, fav: boolean) =>
+    apiFetch<Filter>(`/rest/api/3/filter/${id}/favourite`, { method: fav ? "PUT" : "DELETE" }),
+};
+
 export function textToADF(text: string): ADFNode {
   return { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text }] }] };
 }
