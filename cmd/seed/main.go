@@ -136,5 +136,31 @@ func main() {
 		}
 	}
 
+	var demo1 issue.Issue
+	switch err := s.DB.Where("key = ?", "DEMO-1").First(&demo1).Error; {
+	case err == nil:
+		commentSvc := issue.NewCommentService(s.DB)
+		existing, err := commentSvc.GetComments(demo1.ID)
+		if err != nil {
+			log.Fatalf("get comments for DEMO-1: %v", err)
+		}
+		if len(existing) == 0 {
+			comments := []string{
+				`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Grazie, ci sto lavorando."}]}]}`,
+				`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Aggiornato lo stato."}]}]}`,
+			}
+			for _, adfDoc := range comments {
+				if _, err := commentSvc.AddComment(demo1.ID, admin.ID, adfDoc); err != nil {
+					log.Fatalf("add comment to DEMO-1: %v", err)
+				}
+			}
+			fmt.Printf("created %d comments on DEMO-1\n", len(comments))
+		}
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		// DEMO-1 non esiste: skip senza errori.
+	default:
+		log.Fatalf("check issue DEMO-1: %v", err)
+	}
+
 	fmt.Println("seed complete")
 }

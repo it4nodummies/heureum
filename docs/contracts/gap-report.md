@@ -2,8 +2,8 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **69**
-- Nel contratto ma mancanti: **652**
+- Nel contratto e implementati (path match): **78**
+- Nel contratto ma mancanti: **643**
 - Implementati ma fuori contratto (estensioni): **78**
 
 ## Mancanti (dal contratto)
@@ -34,10 +34,7 @@
 - `DELETE /rest/api/3/issue/properties/{propertyKey}` — Bulk delete issue property
 - `DELETE /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Delete issue property
 - `DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink` — Delete remote issue link by global ID
-- `DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}` — Delete remote issue link by ID
-- `DELETE /rest/api/3/issue/{issueIdOrKey}/votes` — Delete vote
 - `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog` — Bulk delete worklogs
-- `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` — Delete worklog
 - `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}` — Delete worklog property
 - `DELETE /rest/api/3/issueLinkType/{issueLinkTypeId}` — Delete issue link type
 - `DELETE /rest/api/3/issuesecurityschemes/{schemeId}` — Delete issue security scheme
@@ -214,11 +211,8 @@
 - `GET /rest/api/3/issue/picker` — Get issue picker suggestions
 - `GET /rest/api/3/issue/{issueIdOrKey}/properties` — Get issue property keys
 - `GET /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Get issue property
-- `GET /rest/api/3/issue/{issueIdOrKey}/remotelink` — Get remote issue links
 - `GET /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}` — Get remote issue link by ID
 - `GET /rest/api/3/issue/{issueIdOrKey}/transitions` — Get transitions
-- `GET /rest/api/3/issue/{issueIdOrKey}/votes` — Get votes
-- `GET /rest/api/3/issue/{issueIdOrKey}/worklog` — Get issue worklogs
 - `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` — Get worklog
 - `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties` — Get worklog property keys
 - `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}` — Get worklog property
@@ -453,9 +447,6 @@
 - `POST /rest/api/3/issue/watching` — Get is watching issue bulk
 - `POST /rest/api/3/issue/{issueIdOrKey}/changelog/list` — Get changelogs by IDs
 - `POST /rest/api/3/issue/{issueIdOrKey}/notify` — Send notification for issue
-- `POST /rest/api/3/issue/{issueIdOrKey}/remotelink` — Create or update remote issue link
-- `POST /rest/api/3/issue/{issueIdOrKey}/votes` — Add vote
-- `POST /rest/api/3/issue/{issueIdOrKey}/worklog` — Add worklog
 - `POST /rest/api/3/issue/{issueIdOrKey}/worklog/move` — Bulk move worklogs
 - `POST /rest/api/3/issueLinkType` — Create issue link type
 - `POST /rest/api/3/issuesecurityschemes` — Create issue security scheme

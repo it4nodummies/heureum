@@ -235,9 +235,69 @@ func TestWatchers_ConformsToContract(t *testing.T) {
 	if res.StatusCode != 200 {
 		t.Fatalf("GET watchers = %d", res.StatusCode)
 	}
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	v := MustLoad(t, "../../docs/contracts/jira-platform-v3.json")
-	if err := v.ValidateResponse("GET", "/rest/api/3/issue/"+key+"/watchers", res.StatusCode, res.Header, res.Body); err != nil {
+	if err := v.ValidateResponse("GET", "/rest/api/3/issue/"+key+"/watchers", res.StatusCode, res.Header, strings.NewReader(string(bodyBytes))); err != nil {
 		t.Errorf("GET watchers non conforme: %v", err)
+	}
+	var watchers struct {
+		IsWatching bool   `json:"isWatching"`
+		WatchCount int    `json:"watchCount"`
+		Watchers   []any  `json:"watchers"`
+		Self       string `json:"self"`
+	}
+	if err := json.Unmarshal(bodyBytes, &watchers); err != nil {
+		t.Fatal(err)
+	}
+	if !watchers.IsWatching {
+		t.Error("isWatching = false, want true")
+	}
+	if watchers.WatchCount != 1 {
+		t.Errorf("watchCount = %d, want 1", watchers.WatchCount)
+	}
+	if len(watchers.Watchers) < 1 {
+		t.Errorf("len(watchers) = %d, want >= 1", len(watchers.Watchers))
+	}
+
+	// remove watcher
+	delReq, _ := http.NewRequest("DELETE", srv.URL+"/rest/api/3/issue/"+key+"/watchers", nil)
+	delReq.Header.Set("Authorization", "Bearer "+jwt)
+	delRes, err := http.DefaultClient.Do(delReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer delRes.Body.Close()
+	if delRes.StatusCode != 204 {
+		b, _ := io.ReadAll(delRes.Body)
+		t.Fatalf("DELETE watchers status = %d: %s", delRes.StatusCode, b)
+	}
+
+	// get again, expect no longer watching
+	req2, _ := http.NewRequest("GET", srv.URL+"/rest/api/3/issue/"+key+"/watchers", nil)
+	req2.Header.Set("Authorization", "Bearer "+jwt)
+	res2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res2.Body.Close()
+	if res2.StatusCode != 200 {
+		t.Fatalf("GET watchers (after delete) = %d", res2.StatusCode)
+	}
+	var watchers2 struct {
+		IsWatching bool `json:"isWatching"`
+		WatchCount int  `json:"watchCount"`
+	}
+	if err := json.NewDecoder(res2.Body).Decode(&watchers2); err != nil {
+		t.Fatal(err)
+	}
+	if watchers2.IsWatching {
+		t.Error("isWatching = true after delete, want false")
+	}
+	if watchers2.WatchCount != 0 {
+		t.Errorf("watchCount = %d after delete, want 0", watchers2.WatchCount)
 	}
 }
 
