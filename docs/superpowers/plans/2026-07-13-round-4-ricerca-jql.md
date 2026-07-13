@@ -1322,9 +1322,9 @@ package search
 import (
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -1504,6 +1504,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/open-jira/open-jira/internal/domain/workflow"
 	"gorm.io/gorm"
 )
 
@@ -1526,7 +1527,8 @@ func (r *DBResolver) ProjectID(keyOrID string) (string, bool) {
 }
 
 func (r *DBResolver) StatusID(name string) (string, bool) {
-	var st issue.Status
+	// Gli stati vivono nel package workflow (tabella workflow_statuses), non in issue.
+	var st workflow.WorkflowStatus
 	if err := r.db.Where("name = ?", name).First(&st).Error; err != nil {
 		return "", false
 	}
