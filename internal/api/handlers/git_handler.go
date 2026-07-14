@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -15,13 +16,15 @@ type GitHandler struct {
 	gitConfigSvc *git.ConfigService
 	issueSvc     *issue.Service
 	projectSvc   *project.Service
+	commentSvc   *issue.CommentService
 }
 
-func NewGitHandler(gitConfigSvc *git.ConfigService, issueSvc *issue.Service, projectSvc *project.Service) *GitHandler {
+func NewGitHandler(gitConfigSvc *git.ConfigService, issueSvc *issue.Service, projectSvc *project.Service, commentSvc *issue.CommentService) *GitHandler {
 	return &GitHandler{
 		gitConfigSvc: gitConfigSvc,
 		issueSvc:     issueSvc,
 		projectSvc:   projectSvc,
+		commentSvc:   commentSvc,
 	}
 }
 
@@ -165,7 +168,9 @@ func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.Web
 			if err != nil {
 				continue
 			}
-			h.gitConfigSvc.LinkCommit(iss.ID, cfg.ID, commit.SHA, commit.Message, commit.Author)
+			if err := h.gitConfigSvc.LinkCommit(iss.ID, cfg.ID, commit.SHA, commit.Message, commit.Author); err == nil {
+				h.commentCommitReference(iss.ID, commit.SHA, commit.Message)
+			}
 		}
 	}
 
@@ -235,6 +240,19 @@ func (h *GitHandler) autoTransitionIssue(iss *issue.Issue, projectID string) {
 	if doneStatusID != "" {
 		h.issueSvc.Update(iss.Key, nil, nil, nil, nil, &doneStatusID, nil)
 	}
+}
+
+func (h *GitHandler) commentCommitReference(issueID, sha, message string) {
+	if h.commentSvc == nil {
+		return
+	}
+	short := sha
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	body := fmt.Sprintf(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":%q}]}]}`,
+		fmt.Sprintf("Commit %s referenced this issue: %s", short, message))
+	_, _ = h.commentSvc.AddComment(issueID, "", body)
 }
 
 func uniqueKeys(keys []string) []string {

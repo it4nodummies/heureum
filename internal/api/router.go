@@ -73,7 +73,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	notifSvc := notification.NewService(db)
 	notifSvc.SetBroadcaster(func(msg []byte) { wsHub.Broadcast(msg) })
 	gitConfigSvc := git.NewConfigService(db)
-	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc)
+	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc, commentSvc)
 	notifH := handlers.NewNotificationHandler(notifSvc)
 	issueSvc.SetNotifier(notifSvc)
 	commentSvc.SetNotifier(notifSvc)
