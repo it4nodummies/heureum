@@ -72,12 +72,16 @@ func (s *Service) RemoveStatus(statusID string) error {
 	return s.db.Delete(&WorkflowStatus{}, "id = ?", statusID).Error
 }
 
-func (s *Service) AddTransition(workflowID, fromStatusID, toStatusID string) (*WorkflowTransition, error) {
+// AddTransition crea una transizione from→to con nome e regole base.
+func (s *Service) AddTransition(workflowID, fromStatusID, toStatusID, name string, requireAssignee, setResolution bool) (*WorkflowTransition, error) {
 	tr := &WorkflowTransition{
-		ID:           uuid.New().String(),
-		WorkflowID:   workflowID,
-		FromStatusID: fromStatusID,
-		ToStatusID:   toStatusID,
+		ID:              uuid.New().String(),
+		WorkflowID:      workflowID,
+		FromStatusID:    fromStatusID,
+		ToStatusID:      toStatusID,
+		Name:            name,
+		RequireAssignee: requireAssignee,
+		SetResolution:   setResolution,
 	}
 	if err := s.db.Create(tr).Error; err != nil {
 		return nil, err
@@ -93,6 +97,54 @@ func (s *Service) GetTransitions(workflowID string) ([]WorkflowTransition, error
 	var transitions []WorkflowTransition
 	s.db.Where("workflow_id = ?", workflowID).Find(&transitions)
 	return transitions, nil
+}
+
+// GetTransitionByID carica una singola transizione.
+func (s *Service) GetTransitionByID(id string) (*WorkflowTransition, error) {
+	var tr WorkflowTransition
+	if err := s.db.Where("id = ?", id).First(&tr).Error; err != nil {
+		return nil, err
+	}
+	return &tr, nil
+}
+
+// GetAvailableTransitions restituisce le transizioni uscenti da fromStatusID.
+func (s *Service) GetAvailableTransitions(workflowID, fromStatusID string) ([]WorkflowTransition, error) {
+	var trs []WorkflowTransition
+	if err := s.db.Where("workflow_id = ? AND from_status_id = ?", workflowID, fromStatusID).Find(&trs).Error; err != nil {
+		return nil, err
+	}
+	return trs, nil
+}
+
+// UpdateTransition aggiorna nome e regole di una transizione (puntatori nil = invariato).
+func (s *Service) UpdateTransition(id string, name *string, requireAssignee, setResolution *bool) (*WorkflowTransition, error) {
+	updates := map[string]any{}
+	if name != nil {
+		updates["name"] = *name
+	}
+	if requireAssignee != nil {
+		updates["require_assignee"] = *requireAssignee
+	}
+	if setResolution != nil {
+		updates["set_resolution"] = *setResolution
+	}
+	if len(updates) > 0 {
+		if err := s.db.Model(&WorkflowTransition{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+	}
+	return s.GetTransitionByID(id)
+}
+
+// ReorderStatuses riassegna la position degli stati secondo l'ordine dato.
+func (s *Service) ReorderStatuses(workflowID string, orderedStatusIDs []string) error {
+	for i, id := range orderedStatusIDs {
+		if err := s.db.Model(&WorkflowStatus{}).Where("workflow_id = ? AND id = ?", workflowID, id).Update("position", i).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) ValidateTransition(workflowID, fromStatusID, toStatusID string) error {
@@ -134,9 +186,9 @@ func (s *Service) CreateDefaultWorkflow(projectID string) (*Workflow, error) {
 	inProg, _ := s.AddStatus(wf.ID, "IN PROGRESS", CategoryInProgress, "#3B82F6")
 	done, _ := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
 
-	s.AddTransition(wf.ID, todo.ID, inProg.ID)
-	s.AddTransition(wf.ID, inProg.ID, todo.ID)
-	s.AddTransition(wf.ID, inProg.ID, done.ID)
+	s.AddTransition(wf.ID, todo.ID, inProg.ID, "Start Progress", false, false)
+	s.AddTransition(wf.ID, inProg.ID, todo.ID, "Stop Progress", false, false)
+	s.AddTransition(wf.ID, inProg.ID, done.ID, "Done", false, true)
 
 	return s.GetWorkflow(projectID)
 }

@@ -29,8 +29,11 @@ type WorkflowStatus struct {
 }
 
 type WorkflowTransition struct {
-	ID           string `gorm:"primaryKey;type:text" json:"id"`
-	WorkflowID   string `gorm:"type:text;not null;index" json:"workflow_id"`
-	FromStatusID string `gorm:"type:text;not null" json:"from_status_id"`
-	ToStatusID   string `gorm:"type:text;not null" json:"to_status_id"`
+	ID              string `gorm:"primaryKey;type:text" json:"id"`
+	WorkflowID      string `gorm:"type:text;not null;index" json:"workflow_id"`
+	FromStatusID    string `gorm:"type:text;not null" json:"from_status_id"`
+	ToStatusID      string `gorm:"type:text;not null" json:"to_status_id"`
+	Name            string `gorm:"type:text;default:''" json:"name"`
+	RequireAssignee bool   `gorm:"column:require_assignee;default:false" json:"require_assignee"`
+	SetResolution   bool   `gorm:"column:set_resolution;default:false" json:"set_resolution"`
 }

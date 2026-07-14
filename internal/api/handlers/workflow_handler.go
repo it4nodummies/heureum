@@ -111,7 +111,8 @@ func (h *WorkflowHandler) AddTransition(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	tr, err := h.wfSvc.AddTransition(wf.ID, req.FromStatusID, req.ToStatusID)
+	// TODO(Task 7): read name/require_assignee/set_resolution from req.
+	tr, err := h.wfSvc.AddTransition(wf.ID, req.FromStatusID, req.ToStatusID, "", false, false)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return

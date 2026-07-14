@@ -97,7 +97,7 @@ func TestAddAndRemoveTransition(t *testing.T) {
 	s1, _ := svc.AddStatus(wf.ID, "Todo", CategoryTodo, "#AAA")
 	s2, _ := svc.AddStatus(wf.ID, "Done", CategoryDone, "#BBB")
 
-	tr, err := svc.AddTransition(wf.ID, s1.ID, s2.ID)
+	tr, err := svc.AddTransition(wf.ID, s1.ID, s2.ID, "", false, false)
 	if err != nil {
 		t.Fatalf("AddTransition() error = %v", err)
 	}
@@ -132,7 +132,7 @@ func TestValidateTransitionAllowsExisting(t *testing.T) {
 	wf, _ := svc.CreateWorkflow("proj-6", "WF")
 	s1, _ := svc.AddStatus(wf.ID, "Todo", CategoryTodo, "#AAA")
 	s2, _ := svc.AddStatus(wf.ID, "Done", CategoryDone, "#BBB")
-	svc.AddTransition(wf.ID, s1.ID, s2.ID)
+	svc.AddTransition(wf.ID, s1.ID, s2.ID, "", false, false)
 
 	err := svc.ValidateTransition(wf.ID, s1.ID, s2.ID)
 	if err != nil {
