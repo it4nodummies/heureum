@@ -24,6 +24,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/search"
 	"github.com/open-jira/open-jira/internal/domain/sprint"
 	"github.com/open-jira/open-jira/internal/domain/timeline"
+	"github.com/open-jira/open-jira/internal/domain/webhook"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 )
 
@@ -80,6 +81,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	cfH := handlers.NewCustomFieldHandler(cfSvc)
 	autoSvc := automation.NewService(db)
 	autoH := handlers.NewAutomationHandler(autoSvc)
+	webhookSvc := webhook.NewService(db)
+	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
 	timelineSvc := timeline.NewService(db)
 	timelineH := handlers.NewTimelineHandler(timelineSvc)
 	calendarSvc := calendar.NewService(db)
@@ -164,6 +167,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.GetProvider)))
 	mux.Handle("POST /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.ConfigureProvider)))
 	mux.Handle("DELETE /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.DeleteProvider)))
+	mux.Handle("GET /rest/api/3/project/{key}/webhooks", authMw(http.HandlerFunc(webhookH.List)))
+	mux.Handle("POST /rest/api/3/project/{key}/webhooks", authMw(http.HandlerFunc(webhookH.Create)))
+	mux.Handle("DELETE /rest/api/3/project/{key}/webhooks/{id}", authMw(http.HandlerFunc(webhookH.Delete)))
 
 	mux.Handle("GET /rest/api/3/project/{key}/issues", authMw(http.HandlerFunc(issueH.List)))
 	mux.Handle("POST /rest/api/3/issue", authMw(http.HandlerFunc(issueH.Create)))
