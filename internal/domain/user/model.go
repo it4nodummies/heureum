@@ -9,4 +9,6 @@ type User struct {
 	PasswordHash string `gorm:"type:text;default:''" json:"-"`
 	IsAdmin      bool   `gorm:"default:false" json:"is_admin"`
 	IsActive     bool   `gorm:"default:true" json:"is_active"`
+	TimeZone     string `gorm:"column:time_zone;default:''" json:"time_zone"`
+	Locale       string `gorm:"column:locale;default:''" json:"locale"`
 }

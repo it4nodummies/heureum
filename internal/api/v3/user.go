@@ -25,9 +25,8 @@ const DefaultAvatarPath = "/static/default-avatar.svg"
 
 // JiraUser mappa il modello interno user.User nella forma Jira v3.
 //
-// AccountType è fisso a "atlassian" e TimeZone/Locale restano sempre vuoti
-// finché user.User non guadagna quei campi (TODO: aggiungere fuso orario e
-// locale al modello utente e popolarli qui).
+// AccountType è fisso a "atlassian". TimeZone/Locale sono popolati da
+// u.TimeZone/u.Locale (colonne time_zone/locale, migrazione 000014).
 func JiraUser(u user.User, baseURL string) User {
 	avatar := u.AvatarURL
 	if avatar == "" {
@@ -40,6 +39,8 @@ func JiraUser(u user.User, baseURL string) User {
 		EmailAddress: u.Email,
 		DisplayName:  u.DisplayName,
 		Active:       u.IsActive,
+		TimeZone:     u.TimeZone,
+		Locale:       u.Locale,
 		AvatarUrls: map[string]string{
 			"16x16": avatar, "24x24": avatar, "32x32": avatar, "48x48": avatar,
 		},
