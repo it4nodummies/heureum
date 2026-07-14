@@ -737,3 +737,108 @@ export const groups = {
   create: (name: string) =>
     apiFetch<GroupRef>("/rest/api/3/group", { method: "POST", body: JSON.stringify({ name }) }),
 };
+
+// ── Integrations ─────────────────────────────────────────────────────────────
+
+// webhookOut (internal/api/handlers/webhook_handler.go) — secret is never returned.
+export interface Webhook {
+  id: string;
+  project_id: string;
+  url: string;
+  events: string[];
+  is_active: boolean;
+}
+
+// git.GitProviderConfig (internal/domain/git/config.go). Note the server
+// returns token_encrypted (not a plain "token") and webhook_secret as-is.
+export interface GitProviderConfig {
+  id: string;
+  project_id: string;
+  provider_type: string;
+  base_url: string;
+  token_encrypted: string;
+  webhook_secret: string;
+  created_at: string;
+}
+
+// git.IssueCommit / IssueBranch / IssuePullRequest (internal/domain/git/config.go),
+// as returned by GET /issue/{issueKey}/git.
+export interface IssueCommit {
+  id: string;
+  issue_id: string;
+  provider_id?: string;
+  commit_sha: string;
+  message: string;
+  author: string;
+  committed_at?: string;
+}
+
+export interface IssueBranch {
+  id: string;
+  issue_id: string;
+  provider_id?: string;
+  branch_name: string;
+  repo_url: string;
+}
+
+export interface IssuePullRequest {
+  id: string;
+  issue_id: string;
+  provider_id?: string;
+  pr_number: number;
+  title: string;
+  url: string;
+  state: string;
+  created_at: string;
+  merged_at?: string;
+}
+
+export interface IssueGitInfo {
+  commits: IssueCommit[];
+  branches: IssueBranch[];
+  pull_requests: IssuePullRequest[];
+}
+
+// automation.AutomationRule (internal/domain/automation/model.go).
+export interface AutomationRule {
+  id: string;
+  project_id: string;
+  name: string;
+  is_active: boolean;
+  trigger_type: string;
+  conditions_json: string;
+  actions_json: string;
+  created_at: string;
+}
+
+export const integrations = {
+  webhooks: (projectKey: string) => apiFetch<Webhook[]>(`/rest/api/3/project/${projectKey}/webhooks`),
+  createWebhook: (projectKey: string, url: string, events: string[]) =>
+    apiFetch<Webhook>(`/rest/api/3/project/${projectKey}/webhooks`, {
+      method: "POST",
+      body: JSON.stringify({ url, events }),
+    }),
+  deleteWebhook: (projectKey: string, id: string) =>
+    apiFetch<void>(`/rest/api/3/project/${projectKey}/webhooks/${id}`, { method: "DELETE" }),
+  // Real route is /project/{key}/git/providers (the plan guessed /git-provider).
+  // GetProvider 404s (via apiFetch throw) when none is configured yet, rather
+  // than returning null.
+  gitProvider: (projectKey: string) =>
+    apiFetch<GitProviderConfig>(`/rest/api/3/project/${projectKey}/git/providers`),
+  configureGit: (
+    projectKey: string,
+    body: { provider_type: string; base_url: string; token: string; webhook_secret: string }
+  ) =>
+    apiFetch<GitProviderConfig>(`/rest/api/3/project/${projectKey}/git/providers`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  // Path segment is named {projectID} in the router — ListRules reads it
+  // straight off the path with no project-key lookup, so pass the project's
+  // internal id (Project.id), not its key.
+  automationRules: (projectID: string) => apiFetch<AutomationRule[]>(`/rest/api/3/project/${projectID}/automation`),
+};
+
+export const issueGit = {
+  info: (issueKey: string) => apiFetch<IssueGitInfo>(`/rest/api/3/issue/${issueKey}/git`),
+};
