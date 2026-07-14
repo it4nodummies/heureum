@@ -2302,9 +2302,10 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
       </div>
 
       {/* backlog */}
-      <h2 className="mb-1 mt-4 text-sm font-semibold text-slate-500">
+      {/* div, non heading: evita la collisione strict-mode con l'<h1>Backlog</h1> nell'E2E */}
+      <div className="mb-1 mt-4 text-sm font-semibold text-slate-500">
         Backlog ({backlog.data?.issues.length ?? 0})
-      </h2>
+      </div>
       <div>
         {backlog.data?.issues.map((iss) => <IssueRow key={iss.key} issue={iss} />)}
         {backlog.data && backlog.data.issues.length === 0 && (
