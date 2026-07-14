@@ -92,6 +92,11 @@ func (h *FilterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusNotFound, []string{"filter not found"}, nil)
 		return
 	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if f.OwnerID != uid && !f.IsShared && !h.chk.IsGlobalAdmin(uid) {
+		v3.WriteError(w, http.StatusNotFound, []string{"the resource does not exist or you do not have permission to view it"}, nil)
+		return
+	}
 	v3.WriteJSON(w, http.StatusOK, h.toFilter(f))
 }
 

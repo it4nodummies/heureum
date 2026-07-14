@@ -44,6 +44,24 @@ func (h *DashboardHandler) requireDashboardOwner(w http.ResponseWriter, r *http.
 	return d, true
 }
 
+// requireDashboardVisible carica il dashboard id e verifica che l'utente
+// autenticato possa vederlo: proprietario, dashboard pubblica, o admin
+// globale. Scrive 404 (senza rivelarne l'esistenza) se il dashboard non
+// esiste o non è visibile.
+func (h *DashboardHandler) requireDashboardVisible(w http.ResponseWriter, r *http.Request, id string) (*dashboard.Dashboard, bool) {
+	d, err := h.svc.GetDashboard(id)
+	if err != nil {
+		http.Error(w, `{"error":"dashboard not found"}`, http.StatusNotFound)
+		return nil, false
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if d.OwnerID != uid && !d.IsPublic && !h.chk.IsGlobalAdmin(uid) {
+		http.Error(w, `{"error":"the resource does not exist or you do not have permission to view it"}`, http.StatusNotFound)
+		return nil, false
+	}
+	return d, true
+}
+
 func (h *DashboardHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
 	dashboards, _ := h.svc.ListDashboards(userID)
@@ -75,9 +93,8 @@ func (h *DashboardHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DashboardHandler) Get(w http.ResponseWriter, r *http.Request) {
-	d, err := h.svc.GetDashboard(r.PathValue("id"))
-	if err != nil {
-		http.Error(w, `{"error":"dashboard not found"}`, http.StatusNotFound)
+	d, ok := h.requireDashboardVisible(w, r, r.PathValue("id"))
+	if !ok {
 		return
 	}
 	widgets, _ := h.svc.GetWidgets(d.ID)
@@ -276,9 +293,8 @@ func containsIgnoreCase(s, substr string) bool {
 
 func (h *DashboardHandler) CopyDashboard(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
-	original, err := h.svc.GetDashboard(r.PathValue("id"))
-	if err != nil {
-		http.Error(w, `{"error":"dashboard not found"}`, http.StatusNotFound)
+	original, ok := h.requireDashboardVisible(w, r, r.PathValue("id"))
+	if !ok {
 		return
 	}
 	copied, err := h.svc.CreateDashboard(userID, original.Name+" (copy)")

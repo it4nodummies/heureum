@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/it4nodummies/heureum/internal/domain/search"
 )
 
 // TestAuthz_FilterMutationsAreOwnerScoped verifica che un utente non possa
@@ -211,5 +213,106 @@ func TestAuthz_NonAdminForbiddenOnGroups(t *testing.T) {
 	resp := doJSON(t, srv, http.MethodPost, alice, "/rest/api/3/group", map[string]any{"name": "x"})
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("POST /group (non-admin) status = %d, want 403", resp.StatusCode)
+	}
+}
+
+// TestAuthz_FilterGetIsOwnerOrSharedScoped verifica che GET /filter/{id}
+// (Round 12, Task 9) sia visibile solo al proprietario (o a un admin
+// globale, non testato qui): bob non deve poter leggere un filtro privato
+// di alice (404, per non rivelarne l'esistenza), mentre alice deve
+// continuare a vederlo. Verifica anche il caso positivo is_shared=true:
+// l'API di creazione/aggiornamento filtro non espone il flag "shared" nel
+// body (filterBody in filter_handler.go ha solo name/description/jql), quindi
+// il flag viene impostato direttamente sul DB di test, come già fa
+// promoteAdmin in harness_authz_test.go per is_admin.
+func TestAuthz_FilterGetIsOwnerOrSharedScoped(t *testing.T) {
+	srv, authSvc, db := newTestServerDB(t)
+	alice := registerAndLogin(t, authSvc)
+	bob := registerUserAndLogin(t, authSvc, "bob@example.com", "bob")
+
+	resC := doJSON(t, srv, http.MethodPost, alice, "/rest/api/3/filter", map[string]any{
+		"name": "alice's private filter", "jql": "project = AZ",
+	})
+	if resC.StatusCode != http.StatusOK {
+		t.Fatalf("POST /filter status = %d, want 200", resC.StatusCode)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resC.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	resC.Body.Close()
+	id := created.ID
+	if id == "" {
+		t.Fatal("expected non-empty filter id")
+	}
+
+	// bob non è né proprietario né il filtro è condiviso → 404.
+	resGetBob := doJSON(t, srv, http.MethodGet, bob, "/rest/api/3/filter/"+id, nil)
+	if resGetBob.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /filter/%s (bob, private) status = %d, want 404", id, resGetBob.StatusCode)
+	}
+
+	// alice, proprietaria, continua a vederlo.
+	resGetAlice := doJSON(t, srv, http.MethodGet, alice, "/rest/api/3/filter/"+id, nil)
+	if resGetAlice.StatusCode != http.StatusOK {
+		t.Fatalf("GET /filter/%s (alice) status = %d, want 200", id, resGetAlice.StatusCode)
+	}
+
+	// una volta condiviso (is_shared=true), bob deve poterlo vedere.
+	if err := db.Model(&search.SavedFilter{}).Where("id = ?", id).Update("is_shared", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	resGetBobShared := doJSON(t, srv, http.MethodGet, bob, "/rest/api/3/filter/"+id, nil)
+	if resGetBobShared.StatusCode != http.StatusOK {
+		t.Fatalf("GET /filter/%s (bob, shared) status = %d, want 200", id, resGetBobShared.StatusCode)
+	}
+}
+
+// TestAuthz_DashboardGetIsOwnerOrPublicScoped verifica che GET /dashboard/{id}
+// (Round 12, Task 9) e POST /dashboard/{id}/copy siano visibili solo al
+// proprietario (o dashboard pubblica/admin globale, non testati qui): bob non
+// deve poter leggere né copiare un dashboard privato di alice (404 in
+// entrambi i casi), mentre alice deve continuare a vederlo.
+func TestAuthz_DashboardGetIsOwnerOrPublicScoped(t *testing.T) {
+	srv, authSvc, _ := newTestServerDB(t)
+	alice := registerAndLogin(t, authSvc)
+	bob := registerUserAndLogin(t, authSvc, "bob@example.com", "bob")
+
+	resC := doJSON(t, srv, http.MethodPost, alice, "/rest/api/3/dashboard", map[string]any{
+		"name": "alice's private dashboard",
+	})
+	if resC.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /dashboard status = %d, want 201", resC.StatusCode)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resC.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	resC.Body.Close()
+	id := created.ID
+	if id == "" {
+		t.Fatal("expected non-empty dashboard id")
+	}
+
+	// bob non è proprietario e il dashboard non è pubblico → 404 su GET.
+	resGetBob := doJSON(t, srv, http.MethodGet, bob, "/rest/api/3/dashboard/"+id, nil)
+	if resGetBob.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /dashboard/%s (bob, private) status = %d, want 404", id, resGetBob.StatusCode)
+	}
+
+	// bob non può copiare il dashboard privato di alice → 404.
+	resCopyBob := doJSON(t, srv, http.MethodPost, bob, "/rest/api/3/dashboard/"+id+"/copy", nil)
+	if resCopyBob.StatusCode != http.StatusNotFound {
+		t.Fatalf("POST /dashboard/%s/copy (bob, private) status = %d, want 404", id, resCopyBob.StatusCode)
+	}
+
+	// alice, proprietaria, continua a vederlo.
+	resGetAlice := doJSON(t, srv, http.MethodGet, alice, "/rest/api/3/dashboard/"+id, nil)
+	if resGetAlice.StatusCode != http.StatusOK {
+		t.Fatalf("GET /dashboard/%s (alice) status = %d, want 200", id, resGetAlice.StatusCode)
 	}
 }
