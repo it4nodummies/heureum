@@ -225,6 +225,59 @@ func (s *Service) GetHistory(issueID string) ([]IssueHistory, error) {
 	return h, nil
 }
 
+// Rank riordina le issue indicate posizionandole tra afterID (posizione minore)
+// e beforeID (posizione maggiore), usando la colonna Position (float, midpoint).
+// Se manca un vicino, inserisce in coda/testa con passo fisso. afterID/beforeID
+// sono id interni delle issue di riferimento (già risolti dal chiamante).
+func (s *Service) Rank(issueIDs []string, beforeID, afterID *string) error {
+	if len(issueIDs) == 0 {
+		return nil
+	}
+	var lo, hi float64
+	hasLo, hasHi := false, false
+	if afterID != nil {
+		var a Issue
+		if err := s.db.First(&a, "id = ?", *afterID).Error; err != nil {
+			return err
+		}
+		lo, hasLo = a.Position, true
+	}
+	if beforeID != nil {
+		var b Issue
+		if err := s.db.First(&b, "id = ?", *beforeID).Error; err != nil {
+			return err
+		}
+		hi, hasHi = b.Position, true
+	}
+	n := float64(len(issueIDs))
+	var base, step float64
+	switch {
+	case hasLo && hasHi:
+		base = lo
+		step = (hi - lo) / (n + 1)
+	case hasLo:
+		base = lo
+		step = 1000
+	case hasHi:
+		base = hi - 1000*(n+1)
+		step = 1000
+	default:
+		var maxPos float64
+		if err := s.db.Model(&Issue{}).Select("COALESCE(MAX(position), 0)").Scan(&maxPos).Error; err != nil {
+			return err
+		}
+		base = maxPos
+		step = 1000
+	}
+	for i, id := range issueIDs {
+		p := base + step*float64(i+1)
+		if err := s.db.Model(&Issue{}).Where("id = ?", id).Update("position", p).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) DB() *gorm.DB { return s.db }
 
 func (s *Service) logHistory(issueID, actorID, field, oldVal, newVal string) {
