@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/it4nodummies/heureum/internal/domain/user"
 )
@@ -81,6 +82,9 @@ type CreateInput struct {
 	CategoryID   *string
 	AssigneeType string
 	URL          string
+	// CreatorID, when set, is added as a project admin member after the
+	// project is created (self-serve create: creator becomes admin).
+	CreatorID string
 }
 
 // CreateProject creates a project from a structured input, allowing callers
@@ -118,6 +122,11 @@ func (s *Service) CreateProject(in CreateInput) (*Project, error) {
 	}
 	if err := s.db.Create(p).Error; err != nil {
 		return nil, err
+	}
+	if in.CreatorID != "" {
+		if err := s.AddMember(p.ID, in.CreatorID, RoleAdmin); err != nil {
+			return nil, err
+		}
 	}
 	return p, nil
 }
@@ -306,8 +315,28 @@ func (s *Service) Archive(key string) error {
 	}).Error
 }
 
+// AddMember adds userID as a member of projectID with the given role. It is
+// idempotent: re-adding an existing member upserts (updates) their role
+// rather than erroring on the composite primary key conflict.
 func (s *Service) AddMember(projectID, userID string, role MemberRole) error {
-	return s.db.Create(&ProjectMember{ProjectID: projectID, UserID: userID, Role: role}).Error
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "project_id"}, {Name: "user_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"role"}),
+	}).Create(&ProjectMember{ProjectID: projectID, UserID: userID, Role: role}).Error
+}
+
+// GetRole returns the caller's role in projectID, or "" (nil error) if the
+// user is not a member of the project.
+func (s *Service) GetRole(projectID, userID string) (MemberRole, error) {
+	var m ProjectMember
+	err := s.db.Where("project_id = ? AND user_id = ?", projectID, userID).First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return m.Role, nil
 }
 
 func (s *Service) RemoveMember(projectID, userID string) error {

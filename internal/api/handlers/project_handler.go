@@ -80,6 +80,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Type:         project.TypeForTemplateKey(raw.ProjectTemplateKey),
 		AssigneeType: raw.AssigneeType,
 		URL:          raw.URL,
+		CreatorID:    middleware.UserIDFromContext(r.Context()),
 	}
 	if raw.LeadAccountID != "" {
 		in.LeadUserID = &raw.LeadAccountID

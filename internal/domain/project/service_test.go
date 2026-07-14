@@ -114,3 +114,48 @@ func TestListProjectsSkipsArchived(t *testing.T) {
 	}
 	_ = p2
 }
+
+func TestGetRole_ReturnsEmptyForNonMember(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+	role, err := svc.GetRole("proj-x", "user-x")
+	if err != nil {
+		t.Fatalf("GetRole err: %v", err)
+	}
+	if role != "" {
+		t.Errorf("expected empty role for non-member, got %q", role)
+	}
+}
+
+func TestAddMember_IsIdempotentAndUpdatesRole(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+	if err := svc.AddMember("p1", "u1", RoleMember); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember("p1", "u1", RoleAdmin); err != nil {
+		t.Fatalf("re-add must be idempotent: %v", err)
+	}
+	role, _ := svc.GetRole("p1", "u1")
+	if role != RoleAdmin {
+		t.Errorf("expected admin after upsert, got %q", role)
+	}
+	var cnt int64
+	svc.DB().Model(&ProjectMember{}).Where("project_id = ? AND user_id = ?", "p1", "u1").Count(&cnt)
+	if cnt != 1 {
+		t.Errorf("expected 1 member row, got %d", cnt)
+	}
+}
+
+func TestCreateProject_AddsCreatorAsAdmin(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+	p, err := svc.CreateProject(CreateInput{Name: "P", Key: "CREATP", Type: TypeScrum, CreatorID: "creator-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, _ := svc.GetRole(p.ID, "creator-1")
+	if role != RoleAdmin {
+		t.Errorf("creator must be admin, got %q", role)
+	}
+}
