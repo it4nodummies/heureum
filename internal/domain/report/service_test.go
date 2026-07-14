@@ -111,9 +111,15 @@ func TestProjectSummary_Counts(t *testing.T) {
 func TestCFD_ReadsHistoricalStatus(t *testing.T) {
 	db := newDB(t)
 	todoID, doneID := seedWorkflow(t, db, "proj-1")
-	iss := &issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-1", Title: "x", SeqID: 1, StatusID: &doneID}
+	// L'issue è ATTUALMENTE in TODO: se il CFD (bug) unisse sullo status
+	// corrente (i.status_id), la categoria 'done' risulterebbe vuota anche
+	// se in passato l'issue è transitata per DONE. Solo la query corretta,
+	// che unisce su ih.new_value (lo stato storico dell'evento), può
+	// popolare 'done' qui.
+	iss := &issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-1", Title: "x", SeqID: 1, StatusID: &todoID}
 	db.Create(iss)
-	// evento 'created' (entra in todo) e 'status' → done
+	// evento 'created' (entra in todo) e 'status' → done (poi tornata in todo,
+	// da cui lo stato attuale diverso da quello dell'evento storico)
 	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: iss.ID, FieldName: "created", OldValue: "", NewValue: "P-1", CreatedAt: time.Now().AddDate(0, 0, -2)})
 	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: iss.ID, FieldName: "status", OldValue: todoID, NewValue: doneID, CreatedAt: time.Now().AddDate(0, 0, -1)})
 
