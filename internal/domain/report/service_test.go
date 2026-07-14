@@ -153,6 +153,38 @@ func keysOf(m map[string][]int) []string {
 	return out
 }
 
+// TestCFD_CumulativeShape verifica che la CFD sia una vera cumulata giorno-per-giorno
+// (l'issue migra da todo→done nel tempo), non una serie piatta col totale ripetuto.
+func TestCFD_CumulativeShape(t *testing.T) {
+	db := newDB(t)
+	todoID, doneID := seedWorkflow(t, db, "proj-1")
+	iss := &issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-1", Title: "x", SeqID: 1, StatusID: &todoID}
+	db.Create(iss)
+	// giorno -3: creata (entra in todo); giorno -1: passa a done
+	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: iss.ID, FieldName: "created", OldValue: "", NewValue: "P-1", CreatedAt: time.Now().AddDate(0, 0, -3)})
+	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: iss.ID, FieldName: "status", OldValue: todoID, NewValue: doneID, CreatedAt: time.Now().AddDate(0, 0, -1)})
+
+	cfd, err := NewService(db).GetCFD("proj-1")
+	if err != nil {
+		t.Fatalf("GetCFD: %v", err)
+	}
+	if len(cfd.Dates) < 2 {
+		t.Fatalf("attese >=2 date, %d", len(cfd.Dates))
+	}
+	last := len(cfd.Dates) - 1
+	// primo giorno: 1 in todo, 0 in done. Ultimo giorno: 0 in todo, 1 in done.
+	if cfd.Data["todo"][0] != 1 || cfd.Data["done"][0] != 0 {
+		t.Errorf("primo giorno atteso todo=1 done=0, got todo=%d done=%d", cfd.Data["todo"][0], cfd.Data["done"][0])
+	}
+	if cfd.Data["todo"][last] != 0 || cfd.Data["done"][last] != 1 {
+		t.Errorf("ultimo giorno atteso todo=0 done=1, got todo=%d done=%d", cfd.Data["todo"][last], cfd.Data["done"][last])
+	}
+	// la serie NON deve essere piatta (il bug assegnava lo stesso totale a ogni giorno)
+	if cfd.Data["done"][0] == cfd.Data["done"][last] {
+		t.Errorf("la serie done è piatta (%v) — deve crescere nel tempo", cfd.Data["done"])
+	}
+}
+
 func TestPieByField_Status(t *testing.T) {
 	db := newDB(t)
 	todoID, doneID := seedWorkflow(t, db, "proj-1")

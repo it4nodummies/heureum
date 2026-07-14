@@ -338,10 +338,12 @@ func (s *Service) GetCFD(projectID string) (*CFDData, error) {
 		ORDER BY date ASC
 	`, projectID).Scan(&dayCounts)
 
+	empty := &CFDData{Categories: []string{"todo", "inprogress", "done"}, Dates: []string{}, Data: map[string][]int{}}
 	if len(dayCounts) == 0 {
-		return &CFDData{Categories: []string{"todo", "inprogress", "done"}, Dates: []string{}, Data: map[string][]int{}}, nil
+		return empty, nil
 	}
 
+	// Asse X: i giorni distinti in cui è avvenuto un evento, ordinati.
 	dateSet := make(map[string]bool)
 	for _, dc := range dayCounts {
 		dateSet[dc.Date] = true
@@ -352,6 +354,42 @@ func (s *Service) GetCFD(projectID string) (*CFDData, error) {
 	}
 	sort.Strings(dates)
 
+	// Timeline per issue: eventi (giorno, categoria) ordinati per data.
+	// 'created' → todo; 'status' → categoria dello stato di destinazione (new_value).
+	catByStatus := map[string]string{}
+	type catRow struct{ ID, Category string }
+	var catRows []catRow
+	s.db.Raw(`SELECT ws.id, ws.category FROM workflow_statuses ws
+		JOIN workflows w ON w.id = ws.workflow_id WHERE w.project_id = ?`, projectID).Scan(&catRows)
+	for _, r := range catRows {
+		catByStatus[r.ID] = r.Category
+	}
+
+	type ev struct{ day, cat string }
+	evByIssue := map[string][]ev{}
+	type hRow struct {
+		IssueID   string
+		FieldName string
+		NewValue  string
+		CreatedAt time.Time
+	}
+	var hRows []hRow
+	s.db.Raw(`SELECT ih.issue_id, ih.field_name, ih.new_value, ih.created_at
+		FROM issue_history ih JOIN issues i ON i.id = ih.issue_id
+		WHERE i.project_id = ? AND i.is_archived = FALSE AND ih.field_name IN ('status', 'created')
+		ORDER BY ih.created_at ASC`, projectID).Scan(&hRows)
+	for _, h := range hRows {
+		cat := "todo"
+		if h.FieldName == "status" {
+			if c, ok := catByStatus[h.NewValue]; ok {
+				cat = c
+			} else {
+				cat = "inprogress"
+			}
+		}
+		evByIssue[h.IssueID] = append(evByIssue[h.IssueID], ev{day: h.CreatedAt.Format("2006-01-02"), cat: cat})
+	}
+
 	cfd := &CFDData{
 		Categories: []string{"todo", "inprogress", "done"},
 		Dates:      dates,
@@ -361,31 +399,25 @@ func (s *Service) GetCFD(projectID string) (*CFDData, error) {
 		cfd.Data[cat] = make([]int, len(dates))
 	}
 
-	cumulative := map[string]int{"todo": 0, "inprogress": 0, "done": 0}
-	dateIndex := make(map[string]int)
-	for i, d := range dates {
-		dateIndex[d] = i
-	}
-	for _, dc := range dayCounts {
-		cumulative[dc.Category] += dc.Count
-	}
-	cfd.Data["todo"] = make([]int, len(dates))
-	cfd.Data["inprogress"] = make([]int, len(dates))
-	cfd.Data["done"] = make([]int, len(dates))
-
-	var projectIssues []issue.Issue
-	s.db.Where("project_id = ? AND is_archived = FALSE", projectID).Find(&projectIssues)
-
-	defaultCatCounts := map[string]int{"todo": 0, "inprogress": 0, "done": 0}
-	for _, iss := range projectIssues {
-		if iss.StatusID == nil {
-			defaultCatCounts["inprogress"]++
+	// Per ogni giorno conta le issue per categoria "as of" quel giorno: la
+	// categoria di ciascuna issue è quella dell'ultimo evento con day <= d
+	// (evByIssue è ordinato per data). Le bande così sommano al numero di
+	// issue create finora e migrano nel tempo (vera cumulata).
+	for di, d := range dates {
+		counts := map[string]int{"todo": 0, "inprogress": 0, "done": 0}
+		for _, evs := range evByIssue {
+			cat := ""
+			for _, e := range evs {
+				if e.day <= d {
+					cat = e.cat
+				}
+			}
+			if cat != "" {
+				counts[cat]++
+			}
 		}
-	}
-
-	for _, cat := range cfd.Categories {
-		for i := range dates {
-			cfd.Data[cat][i] = cumulative[cat] + defaultCatCounts[cat]
+		for _, cat := range cfd.Categories {
+			cfd.Data[cat][di] = counts[cat]
 		}
 	}
 
