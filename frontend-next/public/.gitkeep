@@ -1,0 +1,2 @@
+# Keep this directory in git. Next.js copies frontend-next/public into the
+# Docker image (COPY /app/public); it must exist even when empty.
