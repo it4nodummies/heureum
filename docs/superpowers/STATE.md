@@ -68,6 +68,7 @@ Nota: **allegati** ancora rinviati (richiedono storage file).
 - **(R7)** **Timeline/Gantt** e **Calendar** (issue per due date) — rinviati dal Round 7.
 - **(R7)** Loggare i cambi `sprint_id` nello storico (burndown con issue aggiunte/rimosse a metà sprint); gadget dashboard configurabili (report-gadget) con `moduleKey`/`uri` conformi v3; export report (CSV/PDF); `GetCreatedVsResolved` usa il giorno-calendario UTC (label vs wall-clock locale può sfasare di poche ore); instradare i vecchi handler report/dashboard attraverso `v3.WriteJSON`.
 - **(R7)** Rendering `fields.resolution` sulle issue aggiunto (commit `20a02a3`): `buildIssueInput` ora risolve `resolution_id` (gap preesistente reso visibile dalla post-function R6).
+- **(R7)** `GetCFD` accumula in uno scalare per categoria e assegna lo stesso totale a ogni indice data → la serie CFD è piatta invece che cumulativa giorno-per-giorno; correggere il loop per una vera cumulata temporale (rafforzare il test con asserzione sulla forma della serie).
 
 ## Come far ripartire il lavoro
 
