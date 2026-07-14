@@ -1,0 +1,4 @@
+ALTER TABLE users DROP COLUMN locale;
+ALTER TABLE users DROP COLUMN time_zone;
+DROP TABLE IF EXISTS group_members;
+DROP TABLE IF EXISTS groups;
