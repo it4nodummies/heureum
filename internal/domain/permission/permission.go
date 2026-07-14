@@ -4,6 +4,19 @@
 // scheme configurabile (rinviato a un round successivo).
 package permission
 
+// Chiavi di permesso esportate — single source of truth per defs e ForRole
+// (e per i consumer come internal/api/authz).
+const (
+	Administer         = "ADMINISTER"
+	AdministerProjects = "ADMINISTER_PROJECTS"
+	BrowseProjects     = "BROWSE_PROJECTS"
+	CreateIssues       = "CREATE_ISSUES"
+	EditIssues         = "EDIT_ISSUES"
+	TransitionIssues   = "TRANSITION_ISSUES"
+	DeleteIssues       = "DELETE_ISSUES"
+	ManageSprints      = "MANAGE_SPRINTS"
+)
+
 // Def è la definizione di una chiave di permesso stile Jira.
 type Def struct {
 	Key         string `json:"key"`
@@ -13,14 +26,14 @@ type Def struct {
 }
 
 var defs = []Def{
-	{"ADMINISTER", "Administer Jira", "Global administration", "GLOBAL"},
-	{"ADMINISTER_PROJECTS", "Administer Projects", "Manage project settings/workflow", "PROJECT"},
-	{"BROWSE_PROJECTS", "Browse Projects", "View project and issues", "PROJECT"},
-	{"CREATE_ISSUES", "Create Issues", "Create issues in the project", "PROJECT"},
-	{"EDIT_ISSUES", "Edit Issues", "Edit issues in the project", "PROJECT"},
-	{"TRANSITION_ISSUES", "Transition Issues", "Move issues through workflow", "PROJECT"},
-	{"DELETE_ISSUES", "Delete Issues", "Delete issues", "PROJECT"},
-	{"MANAGE_SPRINTS", "Manage Sprints", "Create/start/complete sprints", "PROJECT"},
+	{Administer, "Administer Jira", "Global administration", "GLOBAL"},
+	{AdministerProjects, "Administer Projects", "Manage project settings/workflow", "PROJECT"},
+	{BrowseProjects, "Browse Projects", "View project and issues", "PROJECT"},
+	{CreateIssues, "Create Issues", "Create issues in the project", "PROJECT"},
+	{EditIssues, "Edit Issues", "Edit issues in the project", "PROJECT"},
+	{TransitionIssues, "Transition Issues", "Move issues through workflow", "PROJECT"},
+	{DeleteIssues, "Delete Issues", "Delete issues", "PROJECT"},
+	{ManageSprints, "Manage Sprints", "Create/start/complete sprints", "PROJECT"},
 }
 
 // All restituisce tutte le definizioni di permesso.
@@ -43,11 +56,11 @@ func ForRole(role string, isGlobalAdmin bool) map[string]bool {
 	}
 	switch role {
 	case "admin":
-		set("ADMINISTER_PROJECTS", "BROWSE_PROJECTS", "CREATE_ISSUES", "EDIT_ISSUES", "TRANSITION_ISSUES", "DELETE_ISSUES", "MANAGE_SPRINTS")
+		set(AdministerProjects, BrowseProjects, CreateIssues, EditIssues, TransitionIssues, DeleteIssues, ManageSprints)
 	case "member":
-		set("BROWSE_PROJECTS", "CREATE_ISSUES", "EDIT_ISSUES", "TRANSITION_ISSUES", "MANAGE_SPRINTS")
+		set(BrowseProjects, CreateIssues, EditIssues, TransitionIssues, ManageSprints)
 	case "viewer":
-		set("BROWSE_PROJECTS")
+		set(BrowseProjects)
 	}
 	return out
 }
