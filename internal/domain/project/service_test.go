@@ -178,6 +178,43 @@ func TestMembershipSubquery_FiltersToMemberProjects(t *testing.T) {
 	_ = p2
 }
 
+func TestListWithFilters_ScopesByMembership(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+
+	p1, err := svc.CreateProject(CreateInput{Key: "LWF1", Name: "One", Type: TypeScrum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateProject(CreateInput{Key: "LWF2", Name: "Two", Type: TypeScrum}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember(p1.ID, "user-1", RoleMember); err != nil {
+		t.Fatal(err)
+	}
+
+	// Scoped to user-1: only the project they're a member of.
+	rows, total, err := svc.ListWithFilters(ListFilter{MemberUserID: "user-1"}, "user-1")
+	if err != nil {
+		t.Fatalf("ListWithFilters: %v", err)
+	}
+	if total != 1 || len(rows) != 1 {
+		t.Fatalf("expected 1 scoped project, got total=%d rows=%d", total, len(rows))
+	}
+	if rows[0].ID != p1.ID {
+		t.Errorf("expected project %s, got %s", p1.ID, rows[0].ID)
+	}
+
+	// Unscoped (empty MemberUserID, e.g. global admin): both projects.
+	rows, total, err = svc.ListWithFilters(ListFilter{}, "user-1")
+	if err != nil {
+		t.Fatalf("ListWithFilters: %v", err)
+	}
+	if total != 2 || len(rows) != 2 {
+		t.Fatalf("expected 2 unscoped projects, got total=%d rows=%d", total, len(rows))
+	}
+}
+
 func TestCreateProject_AddsCreatorAsAdmin(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewService(db, nil)

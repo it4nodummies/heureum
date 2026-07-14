@@ -38,7 +38,7 @@ func TestSearch_ByProject(t *testing.T) {
 
 	svc := NewService(db)
 	r := &staticResolver{project: map[string]string{"DEMO": "proj-1"}}
-	res, err := svc.Search(`project = DEMO`, r, 0, 50)
+	res, err := svc.Search(`project = DEMO`, r, 0, 50, nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestSearch_EmptyJQLReturnsAll(t *testing.T) {
 	seedIssue(t, db, "proj-1", "Alpha", "st-todo", 1)
 	seedIssue(t, db, "proj-1", "Beta", "st-todo", 2)
 	svc := NewService(db)
-	res, err := svc.Search(``, &staticResolver{}, 0, 50)
+	res, err := svc.Search(``, &staticResolver{}, 0, 50, nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestSearch_Pagination(t *testing.T) {
 		seedIssue(t, db, "proj-1", string(rune('A'+i)), "st-todo", i)
 	}
 	svc := NewService(db)
-	res, err := svc.Search(``, &staticResolver{}, 2, 2)
+	res, err := svc.Search(``, &staticResolver{}, 2, 2, nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestSearch_Pagination(t *testing.T) {
 
 func TestSearch_InvalidJQL(t *testing.T) {
 	svc := NewService(newDB(t))
-	if _, err := svc.Search(`project =`, &staticResolver{}, 0, 50); err == nil {
+	if _, err := svc.Search(`project =`, &staticResolver{}, 0, 50, nil); err == nil {
 		t.Error("attesa err per JQL invalida")
 	}
 }
@@ -91,7 +91,7 @@ func TestSearch_CountOnly(t *testing.T) {
 	seedIssue(t, db, "proj-1", "Alpha", "st-todo", 1)
 	seedIssue(t, db, "proj-1", "Beta", "st-todo", 2)
 	svc := NewService(db)
-	res, err := svc.Search(``, &staticResolver{}, 0, 0)
+	res, err := svc.Search(``, &staticResolver{}, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -100,6 +100,41 @@ func TestSearch_CountOnly(t *testing.T) {
 	}
 	if len(res.Issues) != 0 {
 		t.Errorf("count-only non deve restituire righe, ne ha %d", len(res.Issues))
+	}
+}
+
+// TestSearch_ScopedByMembership verifica che uno scope (subquery sui project
+// id visibili all'utente) filtri sia il Find sia il Count-only, mimando il
+// comportamento richiesto per membri non admin globali.
+func TestSearch_ScopedByMembership(t *testing.T) {
+	db := newDB(t)
+	seedIssue(t, db, "proj-1", "Alpha", "st-todo", 1)
+	seedIssue(t, db, "proj-1", "Beta", "st-todo", 2)
+	seedIssue(t, db, "proj-2", "Gamma", "st-todo", 3)
+
+	svc := NewService(db)
+	scope := db.Model(&issue.Issue{}).Select("project_id").Where("project_id = ?", "proj-1")
+
+	res, err := svc.Search(``, &staticResolver{}, 0, 50, scope)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if res.Total != 2 || len(res.Issues) != 2 {
+		t.Errorf("atteso solo le issue di proj-1: total=%d issues=%d", res.Total, len(res.Issues))
+	}
+	for _, iss := range res.Issues {
+		if iss.ProjectID != "proj-1" {
+			t.Errorf("issue fuori scope: %s (project %s)", iss.Title, iss.ProjectID)
+		}
+	}
+
+	// Count-only rispetta lo scope.
+	res, err = svc.Search(``, &staticResolver{}, 0, 0, scope)
+	if err != nil {
+		t.Fatalf("Search count-only: %v", err)
+	}
+	if res.Total != 2 {
+		t.Errorf("count-only atteso 2 con scope, %d", res.Total)
 	}
 }
 
@@ -126,7 +161,7 @@ func TestSearch_StatusByName_SpansProjects(t *testing.T) {
 	seedIssue(t, db, "proj-2", "Beta", st2.ID, 2)
 
 	svc := NewService(db)
-	res, err := svc.Search(`status = "To Do"`, &staticResolver{}, 0, 50)
+	res, err := svc.Search(`status = "To Do"`, &staticResolver{}, 0, 50, nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}

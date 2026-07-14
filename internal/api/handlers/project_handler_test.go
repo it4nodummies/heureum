@@ -29,7 +29,7 @@ func setupProjectTestDB(t *testing.T) *gorm.DB {
 func TestProjectCreateHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
-	h := NewProjectHandler(svc, workflow.NewService(db), "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
 
 	body := map[string]string{"name": "Test", "key": "TE", "description": "desc", "type": "scrum"}
 	b, _ := json.Marshal(body)
@@ -63,7 +63,7 @@ func TestProjectGetHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("Get Test", "GET", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc, workflow.NewService(db), "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
 
 	req := httptest.NewRequest("GET", "/rest/api/3/project/GET", nil)
 	req.SetPathValue("key", "GET")
@@ -78,7 +78,7 @@ func TestProjectGetHandler(t *testing.T) {
 func TestProjectGetNotFoundHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
-	h := NewProjectHandler(svc, workflow.NewService(db), "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
 
 	req := httptest.NewRequest("GET", "/rest/api/3/project/NOPE", nil)
 	req.SetPathValue("key", "NOPE")
@@ -94,7 +94,7 @@ func TestProjectListHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("P1", "P1", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc, workflow.NewService(db), "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
 
 	req := httptest.NewRequest("GET", "/rest/api/3/project", nil)
 	w := httptest.NewRecorder()
@@ -119,7 +119,7 @@ func TestProjectDeleteHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("Del", "DEL", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc, workflow.NewService(db), "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
 
 	req := httptest.NewRequest("DELETE", "/rest/api/3/project/DEL", nil)
 	req.SetPathValue("key", "DEL")
@@ -135,7 +135,7 @@ func TestProjectUpdateHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	svc.Create("Old", "OLD", "old desc", project.TypeScrum)
-	h := NewProjectHandler(svc, workflow.NewService(db), "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
 
 	body := map[string]string{"name": "New Name", "description": "new desc"}
 	b, _ := json.Marshal(body)
@@ -159,7 +159,7 @@ func TestProjectInviteHandler(t *testing.T) {
 	db := setupProjectTestDB(t)
 	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
 	p, _ := svc.Create("Inv", "INV", "desc", project.TypeScrum)
-	h := NewProjectHandler(svc, workflow.NewService(db), "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
 
 	body := map[string]string{"email": "invited@test.com", "role": "member"}
 	b, _ := json.Marshal(body)

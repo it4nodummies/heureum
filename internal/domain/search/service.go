@@ -28,7 +28,10 @@ type SearchResult struct {
 
 // Search compila la JQL e la esegue. jql vuota => tutte le issue non archiviate.
 // offset/limit implementano la paginazione. Escludiamo sempre le archiviate.
-func (s *Service) Search(jqlStr string, r jql.Resolver, offset, limit int) (SearchResult, error) {
+// scope, se non nil, è una subquery sui project_id visibili al chiamante (es.
+// project.Service.MembershipSubquery) usata per limitare i risultati ai
+// progetti di cui l'utente è membro; nil = nessuna limitazione (admin globale).
+func (s *Service) Search(jqlStr string, r jql.Resolver, offset, limit int, scope *gorm.DB) (SearchResult, error) {
 	if offset < 0 {
 		offset = 0
 	}
@@ -43,6 +46,9 @@ func (s *Service) Search(jqlStr string, r jql.Resolver, offset, limit int) (Sear
 	}
 
 	base := s.db.Model(&issue.Issue{}).Where("is_archived = ?", false)
+	if scope != nil {
+		base = base.Where("issues.project_id IN (?)", scope)
+	}
 	if compiled.Where != "" {
 		base = base.Where(compiled.Where, compiled.Args...)
 	}

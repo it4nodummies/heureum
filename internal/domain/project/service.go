@@ -196,6 +196,9 @@ func (s *Service) ListWithFilters(f ListFilter, userID string) ([]ProjectWithLea
 
 	query := s.db.Model(&Project{}).Where("is_archived = ?", false)
 
+	if f.MemberUserID != "" {
+		query = query.Where("projects.id IN (?)", s.MembershipSubquery(f.MemberUserID))
+	}
 	if f.Search != "" {
 		like := "%" + strings.ToLower(f.Search) + "%"
 		query = query.Where("LOWER(name) LIKE ? OR LOWER(key) LIKE ?", like, like)

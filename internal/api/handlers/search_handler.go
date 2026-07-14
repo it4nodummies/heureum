@@ -7,22 +7,37 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/search"
+	"gorm.io/gorm"
 )
 
 // SearchHandler implementa gli endpoint di ricerca JQL conformi a Jira Cloud
 // REST API v3: /search/jql (token-paginato), /search (legacy, offset-paginato)
 // e /search/approximate-count.
 type SearchHandler struct {
-	svc    *search.Service
-	issueH *IssueHandler // riusa buildIssueInput per costruire gli IssueBean
+	svc        *search.Service
+	issueH     *IssueHandler // riusa buildIssueInput per costruire gli IssueBean
+	chk        *authz.Checker
+	projectSvc *project.Service
 }
 
-func NewSearchHandler(svc *search.Service, issueH *IssueHandler) *SearchHandler {
-	return &SearchHandler{svc: svc, issueH: issueH}
+func NewSearchHandler(svc *search.Service, issueH *IssueHandler, chk *authz.Checker, projectSvc *project.Service) *SearchHandler {
+	return &SearchHandler{svc: svc, issueH: issueH, chk: chk, projectSvc: projectSvc}
+}
+
+// searchScope returns the membership subquery to scope JQL search results to
+// uid's projects, or nil (unscoped) when uid is a global admin, or when chk
+// isn't wired (e.g. tests exercising the handler directly without authz).
+func (h *SearchHandler) searchScope(uid string) *gorm.DB {
+	if h.chk == nil || h.projectSvc == nil || h.chk.IsGlobalAdmin(uid) {
+		return nil
+	}
+	return h.projectSvc.MembershipSubquery(uid)
 }
 
 // jqlBody è il corpo condiviso da tutti gli endpoint di ricerca, letto sia dal
@@ -83,7 +98,7 @@ func (h *SearchHandler) SearchJQL(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := clampMax(b.MaxResults, 50, 100)
 	uid := middleware.UserIDFromContext(r.Context())
-	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), offset, limit)
+	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), offset, limit, h.searchScope(uid))
 	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid JQL: " + err.Error()}, nil)
 		return
@@ -113,7 +128,7 @@ func (h *SearchHandler) SearchLegacy(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := clampMax(b.MaxResults, 50, 100)
 	uid := middleware.UserIDFromContext(r.Context())
-	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), b.StartAt, limit)
+	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), b.StartAt, limit, h.searchScope(uid))
 	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid JQL: " + err.Error()}, nil)
 		return
@@ -136,7 +151,7 @@ func (h *SearchHandler) ApproximateCount(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	uid := middleware.UserIDFromContext(r.Context())
-	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), 0, 0)
+	res, err := h.svc.Search(b.JQL, search.NewDBResolver(h.svc.DB(), uid), 0, 0, h.searchScope(uid))
 	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid JQL: " + err.Error()}, nil)
 		return

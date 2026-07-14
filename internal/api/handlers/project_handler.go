@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/project"
@@ -19,11 +20,20 @@ import (
 type ProjectHandler struct {
 	svc     *project.Service
 	wfSvc   *workflow.Service
+	chk     *authz.Checker
 	baseURL string
 }
 
-func NewProjectHandler(svc *project.Service, wfSvc *workflow.Service, baseURL string) *ProjectHandler {
-	return &ProjectHandler{svc: svc, wfSvc: wfSvc, baseURL: baseURL}
+func NewProjectHandler(svc *project.Service, wfSvc *workflow.Service, chk *authz.Checker, baseURL string) *ProjectHandler {
+	return &ProjectHandler{svc: svc, wfSvc: wfSvc, chk: chk, baseURL: baseURL}
+}
+
+// isGlobalAdmin reports whether uid is a global admin, and thus exempt from
+// membership scoping on project lists/search. chk may be nil (e.g. tests that
+// don't exercise admin-bypass semantics), in which case uid is never treated
+// as a global admin.
+func (h *ProjectHandler) isGlobalAdmin(uid string) bool {
+	return h.chk != nil && h.chk.IsGlobalAdmin(uid)
 }
 
 // leadOf resolves a project's lead user, returning nil if unset or not found.
@@ -160,6 +170,7 @@ func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 		maxResults = 50
 	}
 
+	userID := middleware.UserIDFromContext(r.Context())
 	filter := project.ListFilter{
 		Search:     q.Get("query"),
 		Types:      types,
@@ -168,8 +179,10 @@ func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 		StartAt:    startAt,
 		MaxResults: maxResults,
 	}
+	if !h.isGlobalAdmin(userID) {
+		filter.MemberUserID = userID
+	}
 
-	userID := middleware.UserIDFromContext(r.Context())
 	projects, total, err := h.svc.ListWithFilters(filter, userID)
 	if err != nil {
 		http.Error(w, `{"error":"failed to list projects"}`, http.StatusInternalServerError)
@@ -197,6 +210,9 @@ func (h *ProjectHandler) Search(w http.ResponseWriter, r *http.Request) {
 		SortDir:    "asc",
 		StartAt:    startAt,
 		MaxResults: maxResults,
+	}
+	if !h.isGlobalAdmin(userID) {
+		f.MemberUserID = userID
 	}
 	rows, total, err := h.svc.ListWithFilters(f, userID)
 	if err != nil {

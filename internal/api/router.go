@@ -43,7 +43,6 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	projectSvc := project.NewService(db, nil)
 	permH := handlers.NewPermissionHandler(db, projectSvc)
 	wfSvc := workflow.NewService(db)
-	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, cfg.BaseURL)
 	pcH := handlers.NewProjectCategoryHandler(db, cfg.BaseURL)
 	issueSvc := issue.NewService(db)
 
@@ -59,6 +58,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	cfSvc := customfield.NewService(db)
 	userSvc := user.NewService(db)
 	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc)
+	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
 
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, cfg.BaseURL)
 	commentSvc := issue.NewCommentService(db)
@@ -77,7 +77,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)
 	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc, chk)
 	searchSvc := search.NewService(db)
-	searchH := handlers.NewSearchHandler(searchSvc, issueH)
+	searchH := handlers.NewSearchHandler(searchSvc, issueH, chk, projectSvc)
 	filterSvc := search.NewFilterService(db)
 	filterH := handlers.NewFilterHandler(filterSvc, db, cfg.BaseURL, chk)
 	reportSvc := report.NewService(db)

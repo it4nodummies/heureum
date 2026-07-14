@@ -66,6 +66,10 @@ type ListFilter struct {
 	SortDir    string // "asc" | "desc"
 	StartAt    int
 	MaxResults int
+	// MemberUserID, when set, scopes the list to projects the given user is a
+	// member of (via MembershipSubquery). Empty means no scoping (e.g. global
+	// admin, who sees all projects).
+	MemberUserID string
 }
 
 // ProjectCategory rispecchia la tabella project_categories (migrazione 000002).
