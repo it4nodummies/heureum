@@ -613,6 +613,32 @@ export interface DashboardWidget {
   data?: unknown;
 }
 
+// Computed `data` shape for the "assigned_to_me" widget type.
+export interface AssignedIssue {
+  id: string;
+  key: string;
+  title: string;
+  priority: string;
+  project_id: string;
+  project_name: string;
+  updated_at: string;
+  status_name: string;
+}
+
+// Computed `data` shape for the "activity_stream" widget type.
+export interface ActivityItem {
+  id: string;
+  issue_id: string;
+  issue_key: string;
+  issue_title: string;
+  actor_id?: string;
+  actor_name: string;
+  field_name: string;
+  old_value: string;
+  new_value: string;
+  created_at: string;
+}
+
 export const dashboards = {
   list: () => apiFetch<Dashboard[]>("/rest/api/3/dashboards"),
   get: (id: string) => apiFetch<Dashboard & { widgets: DashboardWidget[] }>(`/rest/api/3/dashboards/${id}`),
