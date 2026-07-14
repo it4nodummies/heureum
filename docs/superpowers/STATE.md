@@ -1,6 +1,6 @@
 # Stato del progetto — punto di ripresa
 
-> Aggiornato: 2026-07-14 (dopo Round 5). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
+> Aggiornato: 2026-07-14 (dopo Round 6). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
 
 ## Obiettivo
 
@@ -26,13 +26,15 @@ Clone open source di Jira con **API drop-in compatibile con Jira Cloud REST API 
 
 - **Round 5 — Board, Backlog, Sprint** ✅ (piano: `docs/superpowers/plans/2026-07-14-round-5-board-backlog-sprint.md`): API **Agile 1.0** (`/rest/agile/1.0/*`). Board CRUD + `configuration` (colonne dagli status del workflow), liste `backlog`/`issue`/`sprint`/`epic`; sprint `POST /sprint`, `GET/POST/PUT/DELETE /sprint/{id}` (state active→Start, closed→Complete), `GET/POST /sprint/{id}/issue`; `PUT /issue/rank`, `POST /backlog/issue`, `GET /issue/{idOrKey}` (con `fields.sprint`), `GET /epic/{idOrKey}` (read). Nuovo dominio `internal/domain/board` + estensione `internal/domain/sprint` (seq_id/originBoardId/completeDate/CreateFull/UpdateFull) + `issue.Service.Rank` (Position midpoint). Migrazione 000012 (tabella `boards` + colonne sprint). **Id interi** via seq_id (board/sprint). **Due paginazioni**: board/sprint → `values`+`isLast`; liste issue → `SearchResults` `issues`+`total`. Mapper in `internal/api/v3/agile.go`; renderer issue condiviso `handlers/render_issues.go` (fix: `nil` fields → `*all`, ripara anche una GET search R4 latente). Epic = issue di tipo Epic. UI: board dnd (`@dnd-kit`) `/jira/boards/{id}` (drag→transizione stato via `POST /issue/{key}/transitions`) e backlog `/jira/boards/{id}/backlog` (sprint create/start/complete). E2E `board.spec.ts` (suite 13/13 verde).
 
-Gap report attuale: **100 endpoint path-match conformi** su ~500 del contratto (la conformità reale è garantita dai contract test in `internal/contract/`).
+- **Round 6 — Workflow** ✅ (piano: `docs/superpowers/plans/2026-07-14-round-6-workflow.md`): transizioni issue conformi v3 — `GET /rest/api/3/issue/{id}/transitions` (`Transitions`/`IssueTransition` con `to.statusCategory`) e `POST` nella shape Jira `{transition:{id}}` + estensione `{status_id}` (board), **204**. `GET /statuscategory` + `/statuscategory/{idOrKey}` (`CategoryFor` esportato). **Regole base transizione**: validator `require_assignee` (400 se manca assignee) + post-function `set_resolution` (setta/azzera la resolution su categoria `done`; risolve "Done" da `ResolutionIDByName`). Editing workflow per-progetto (rotte custom `/project/{key}/workflow/*`): statuses CRUD + transizioni nome/regole/list/delete + reorder. Migrazione 000013 (`workflow_transitions.name`+`require_assignee`+`set_resolution`). Nuovi mapper `internal/api/v3/transitions.go`; `issue.Service.SetResolution`/`ResolutionIDByName`; `workflow.Service.GetTransitionByID`/`GetAvailableTransitions`/`UpdateTransition`/`ReorderStatuses`. Seed: resolution "Done". UI: tab **Workflow** nelle impostazioni progetto (`WorkflowEditor`: stati add/remove + categoria/colore; transizioni con badge regole). E2E `workflow.spec.ts` (suite 14/14 verde).
 
-## Prossimo: Round 6 — Workflow (DA PIANIFICARE)
+Gap report attuale: **103 endpoint path-match conformi** su ~500 del contratto (la conformità reale è garantita dai contract test in `internal/contract/`).
 
-Dalla roadmap: stati custom con categorie, transizioni con condizioni/validator/post-function base, workflow per progetto. UI: editor workflow nelle impostazioni progetto, colonne board mappate sugli stati. Il piano NON è ancora scritto — creare con `superpowers:writing-plans`, poi eseguire con `superpowers:subagent-driven-development`.
+## Prossimo: Round 7 — Viste & Report (DA PIANIFICARE)
 
-Contesto utile: esiste già `internal/domain/workflow` (`Workflow`, `WorkflowStatus{ID,Name,Position,Category}`, `WorkflowTransition`, `Service` con `GetWorkflow`/`CreateDefaultWorkflow`/`AddStatus`/`UpdateStatus`/`ValidateTransition`); il `WorkflowHandler` espone già `POST /issue/{key}/transitions` (validato contro le transizioni) — usato dalla board dnd del Round 5. Da allineare al contratto v3: `/rest/api/3/workflow`, `/workflowscheme`, `/status` (già presente), transizioni con regole. **Nota**: `project.Service.Create` NON crea un workflow di default (solo l'handler HTTP lo fa) — il seed R5 lo compensa; valutare di spostare la creazione del workflow nel dominio.
+Dalla roadmap: Timeline/Gantt, Calendar, Summary progetto, Dashboard con gadget, report (Burndown, Velocity, Cumulative Flow, pie, created vs resolved). UI-intensivo con grafici (Recharts nella roadmap). Il piano NON è ancora scritto — creare con `superpowers:writing-plans`, poi eseguire con `superpowers:subagent-driven-development`.
+
+Contesto utile: le issue hanno `StartDate`/`DueDate`/`SprintID`/`StoryPoints`/`CreatedAt`/`UpdatedAt` (per timeline/calendar/report); gli sprint hanno date + state (per burndown/velocity); il changelog (`issue_history`) traccia i cambi di stato (per CFD/created-vs-resolved). Endpoint v3 rilevanti: `/dashboard`, `/dashboard/{id}/gadget`; ma molti report Jira sono UI-side su dati già esposti — valutare quanto è drop-in v3 vs UI-only. Riusare il motore `internal/jql` per aggregare le issue dei report.
 
 Nota: **allegati** ancora rinviati (richiedono storage file).
 
@@ -58,10 +60,13 @@ Nota: **allegati** ancora rinviati (richiedono storage file).
 - **(R5)** Board legata a un progetto: supportare board basate su filtro JQL puro; `POST /board/{id}/issue` (rank su board).
 - **(R5)** Consolidare/retirare le vecchie rotte custom `/rest/api/3/project/{key}/board|sprints` + `BoardHandler` custom (ora parallele all'API agile).
 - **(R5)** Drag&drop backlog↔sprint nella UI (ora solo bottoni); `project.Service.Create` non crea workflow di default (compensato nel seed) — spostare nel dominio.
+- **(R6)** Workflow CRUD bulk v3 (`/workflows/create`, `/workflows`, shape `statusReference` + arrays conditions/validators/actions); `/workflowscheme` (mappa workflow→tipi issue).
+- **(R6)** **Condizioni** di transizione che filtrano `isAvailable` in GET (ora sempre true); rule-engine generico oltre ai due flag base (`require_assignee`/`set_resolution`); transizioni `isGlobal`/`isInitial`; screen sulle transizioni (`hasScreen`/fields).
+- **(R6)** `WorkflowHandler.ListTransitions` può emettere `null` invece di `[]` a zero transizioni (l'editor usa `GetWorkflow`, non impattato); normalizzare a slice vuoto.
 
 ## Come far ripartire il lavoro
 
 1. Apri Claude Code nella cartella del repo, sul branch `feat/frontend-next`.
-2. Prompt suggerito: _"Leggi docs/superpowers/STATE.md. Pianifica ed esegui il Round 6 (Workflow) con lo stesso metodo dei round precedenti (writing-plans → subagent-driven-development, gate a tre livelli)."_
+2. Prompt suggerito: _"Leggi docs/superpowers/STATE.md. Pianifica ed esegui il Round 7 (Viste & Report) con lo stesso metodo dei round precedenti (writing-plans → subagent-driven-development, gate a tre livelli)."_
 3. Comandi di verifica utili: `go build ./... && go vet ./... && go test ./...`; `go run ./cmd/gapreport`; per la UI `cd frontend-next && npm run build` e Playwright.
 4. Seed/avvio demo: `APP_SECRET=dev DB_DRIVER=sqlite DB_DSN=./dev.db go run ./cmd/seed` poi `... go run ./cmd/server` (utente demo `admin@example.com` / `admin-demo-123`).
