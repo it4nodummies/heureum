@@ -26,12 +26,25 @@ func (s *Service) Create(projectID, name, goal string) (*Sprint, error) {
 	if name == "" {
 		return nil, errors.New("sprint name required")
 	}
+	return s.CreateFull(projectID, name, goal, nil, nil, nil)
+}
+
+// CreateFull crea uno sprint con tutti i campi agili, assegnando il seq_id.
+func (s *Service) CreateFull(projectID, name, goal string, originBoardID *int64, start, end *time.Time) (*Sprint, error) {
+	var maxSeq int64
+	if err := s.db.Model(&Sprint{}).Select("COALESCE(MAX(seq_id), 0)").Scan(&maxSeq).Error; err != nil {
+		return nil, err
+	}
 	sp := &Sprint{
-		ID:        uuid.New().String(),
-		ProjectID: projectID,
-		Name:      name,
-		Goal:      goal,
-		State:     StateFuture,
+		ID:            uuid.New().String(),
+		ProjectID:     projectID,
+		Name:          name,
+		Goal:          goal,
+		State:         StateFuture,
+		SeqID:         maxSeq + 1,
+		OriginBoardID: originBoardID,
+		StartDate:     start,
+		EndDate:       end,
 	}
 	if err := s.db.Create(sp).Error; err != nil {
 		return nil, err
@@ -43,6 +56,14 @@ func (s *Service) GetByID(id string) (*Sprint, error) {
 	var sp Sprint
 	if err := s.db.First(&sp, "id = ?", id).Error; err != nil {
 		return nil, errors.New("sprint not found")
+	}
+	return &sp, nil
+}
+
+func (s *Service) GetBySeqID(seqID int64) (*Sprint, error) {
+	var sp Sprint
+	if err := s.db.Where("seq_id = ?", seqID).First(&sp).Error; err != nil {
+		return nil, err
 	}
 	return &sp, nil
 }
@@ -87,6 +108,7 @@ func (s *Service) Complete(sprintID string, moveOpenToBacklog bool) (*Sprint, er
 	now := time.Now()
 	sp.State = StateClosed
 	sp.EndDate = &now
+	sp.CompleteDate = &now
 	if err := s.db.Save(&sp).Error; err != nil {
 		return nil, err
 	}
@@ -119,6 +141,40 @@ func (s *Service) AddIssue(sprintID, issueID string) error {
 
 func (s *Service) RemoveIssue(issueID string) error {
 	return s.db.Table("issues").Where("id = ?", issueID).Update("sprint_id", nil).Error
+}
+
+// UpdateFull aggiorna i campi modificabili di uno sprint (name/goal/state/date).
+// I puntatori nil lasciano il campo invariato.
+func (s *Service) UpdateFull(id string, name, goal, state *string, start, end *time.Time) (*Sprint, error) {
+	var sp Sprint
+	if err := s.db.Where("id = ?", id).First(&sp).Error; err != nil {
+		return nil, err
+	}
+	updates := map[string]any{}
+	if name != nil {
+		updates["name"] = *name
+	}
+	if goal != nil {
+		updates["goal"] = *goal
+	}
+	if state != nil {
+		updates["state"] = *state
+		if *state == string(StateClosed) {
+			updates["complete_date"] = time.Now()
+		}
+	}
+	if start != nil {
+		updates["start_date"] = *start
+	}
+	if end != nil {
+		updates["end_date"] = *end
+	}
+	if len(updates) > 0 {
+		if err := s.db.Model(&sp).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+	}
+	return s.GetByID(id)
 }
 
 func (s *Service) DB() *gorm.DB { return s.db }
