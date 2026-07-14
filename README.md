@@ -81,8 +81,12 @@ Only the environment variables actually read by the server are listed below.
 | `APP_BASE_URL` | no | `http://localhost:<APP_PORT>` | Base URL used to build absolute links |
 | `DB_DRIVER` | no | `postgres` | One of `postgres`, `mysql`, `sqlite` |
 | `REDIS_URL` | no | `redis://localhost:6379/0` | Redis connection URL |
+| `APP_UPLOADS_DIR` | no | `./data/uploads` | Local disk directory where issue attachments are stored |
+| `APP_SIGNUP` | no | `open` | `open` or `closed` — set `closed` to disable public registration |
 
 SMTP / OAuth / object-storage settings are planned and not yet wired.
+
+Attachments are stored on local disk under `APP_UPLOADS_DIR`; when running in Docker, mount a volume (see below) so uploads survive container restarts.
 
 ## Docker
 

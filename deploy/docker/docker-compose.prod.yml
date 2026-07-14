@@ -38,7 +38,10 @@ services:
       DB_DRIVER: postgres
       DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
       REDIS_URL: "redis://redis:6379/0"
+      APP_UPLOADS_DIR: "/data/uploads"
       # SMTP_*: planned — not yet consumed by the API (dead config until email delivery lands)
+    volumes:
+      - uploads:/data/uploads
     restart: unless-stopped
 
   worker:
@@ -77,3 +80,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:
