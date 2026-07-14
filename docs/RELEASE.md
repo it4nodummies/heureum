@@ -55,4 +55,4 @@ After the release workflow finishes, confirm the packages exist and are public:
 
 ## Known limitation to disclose
 
-As of 1.0, project-level **permissions are informational (UI-gating) and NOT yet enforced server-side** (see `SECURITY.md`). Server-side authorization enforcement is the next release (Round 11). Do not expose an instance to untrusted users until enforcement lands.
+Authorization is **enforced server-side on mutations** (403 by role/global-admin). However, **reads are not yet permission-gated**: any authenticated user can read any project's data. Read-side authorization is a planned post-1.0 enhancement (see `SECURITY.md`).

@@ -11,17 +11,21 @@ snapshots are not supported.
 | 1.x     | :white_check_mark: |
 | < 1.0   | :x:                 |
 
-## Known limitation — please read before deploying
+## Authorization model
 
-**As of 1.0, project-level permissions are informational (UI-gating) and NOT yet enforced
-server-side; server-side authorization enforcement is tracked for the next release. Do not
-expose an instance to untrusted users until enforcement lands.**
+As of 1.0, Heureum **enforces authorization server-side on mutating requests**: every
+create/update/delete is checked against the caller's role on the relevant project
+(admin/member/viewer) or their global-admin flag, returning **403** when the caller lacks
+the required permission. Group and project-category mutations require a global admin;
+filters and dashboards can only be mutated by their owner (or a global admin); the creator
+of a project automatically becomes its admin.
 
-In practice this means the API currently trusts authenticated callers to respect the
-permissions shown in the UI, rather than independently verifying project/issue-level
-authorization on every request. Until server-side enforcement ships, only deploy Heureum
-where all authenticated users are already trusted (e.g. an internal team), and do not rely
-on project permissions as a security boundary against other authenticated users.
+### Known limitation — please read before deploying
+
+**Reads are not yet permission-gated: any authenticated user can read any project's data
+(issues, comments, boards, reports).** Read-side authorization (`BROWSE_PROJECTS`) is a
+planned enhancement. If read confidentiality between authenticated users matters for your
+deployment, restrict access at the network layer until read enforcement ships.
 
 Other things to be aware of when evaluating deployment risk:
 

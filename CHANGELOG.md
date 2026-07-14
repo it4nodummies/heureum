@@ -9,8 +9,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.0.0] - YYYY-MM-DD
 
-Initial 1.0 release, accumulating the capabilities built across Rounds 0-9 of the Jira
+Initial 1.0 release, accumulating the capabilities built across Rounds 0-11 of the Jira
 parity effort.
+
+### Security
+
+- **Server-side authorization is enforced on mutating requests.** Every create/update/delete
+  is checked against the caller's project role (admin/member/viewer) or their global-admin
+  flag and returns **403** when the required permission is missing. Group and
+  project-category mutations require a global admin; filters and dashboards are mutable only
+  by their owner (or a global admin); creating a project makes the creator its admin.
+  (Reads are not yet permission-gated — see Known limitations.)
 
 ### Added
 
@@ -25,9 +34,8 @@ parity effort.
 - **Workflow**: configurable workflows and status transitions.
 - **Reports & dashboards**: project/board reports and dashboards with common Jira-style
   widgets.
-- **Users, groups & permissions**: user and group management, and project permission
-  schemes (see Known limitations below — permissions are informational only in this
-  release).
+- **Users, groups & permissions**: user and group management, and project roles
+  (admin/member/viewer) enforced server-side on mutations (see the Security section).
 - **Integrations**: signed outbound webhooks, automatic Git commit comments linking commits
   to issues, and an event-driven automation rule engine (via the async worker).
 - **API compatibility**: a REST surface compatible with a subset of the Jira Cloud v3
@@ -38,10 +46,9 @@ parity effort.
 
 ### Known limitations
 
-- **Permissions are not yet enforced server-side.** Project-level permissions are
-  currently informational (UI-gating only); the API does not independently verify
-  project/issue-level authorization on every request. Do not expose an instance to
-  untrusted users until server-side enforcement lands (tracked for a future release).
+- **Reads are not yet permission-gated.** Authorization is enforced on mutations, but any
+  authenticated user can still read any project's data (issues, comments, boards, reports).
+  Read-side authorization (`BROWSE_PROJECTS`) is planned for a future release.
 - **Attachments are not implemented.**
 - **SMTP and OAuth are not wired up.** The corresponding environment variables are
   reserved but not yet read by the server.
