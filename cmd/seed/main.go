@@ -21,6 +21,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/search"
 	"github.com/open-jira/open-jira/internal/domain/sprint"
 	"github.com/open-jira/open-jira/internal/domain/user"
+	webhook "github.com/open-jira/open-jira/internal/domain/webhook"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 	"github.com/open-jira/open-jira/internal/store"
 )
@@ -314,6 +315,17 @@ func main() {
 			log.Fatalf("seed notification: %v", err)
 		}
 		fmt.Println("created demo notification")
+	}
+
+	// Webhook demo sul progetto DEMO (idempotente)
+	whSvc := webhook.NewService(s.DB)
+	var existingW int64
+	s.DB.Table("webhooks").Where("project_id = ? AND url = ?", demo.ID, "https://example.com/demo-hook").Count(&existingW)
+	if existingW == 0 {
+		if _, err := whSvc.Create(demo.ID, "https://example.com/demo-hook", "demo-secret", []string{"issue_created", "issue_updated"}); err != nil {
+			log.Fatalf("seed webhook: %v", err)
+		}
+		fmt.Println("created demo webhook")
 	}
 
 	fmt.Println("seed complete")
