@@ -5,6 +5,7 @@ import { useState } from "react";
 import { issues, watchers, votes } from "@/lib/api";
 import { AdfRenderer } from "./adf";
 import { Comments } from "./Comments";
+import { DevelopmentPanel } from "./DevelopmentPanel";
 
 interface Props {
   issueKey: string;
@@ -111,6 +112,8 @@ export function IssueView({ issueKey }: Props) {
           <Field label="Labels" value={f.labels.length ? f.labels.join(", ") : "None"} />
         </aside>
       </div>
+
+      <DevelopmentPanel issueKey={issue.key} />
 
       <Comments issueKey={issue.key} />
     </div>
