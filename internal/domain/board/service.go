@@ -57,20 +57,30 @@ func (s *Service) ListByProject(projectID string) ([]Board, error) {
 	return boards, nil
 }
 
-// List restituisce tutte le board con paginazione offset, più il totale.
-func (s *Service) List(offset, limit int) ([]Board, int, error) {
+// List restituisce le board con paginazione offset, più il totale. scope, se
+// non nil, è una subquery sui project_id visibili al chiamante (es.
+// project.Service.MembershipSubquery) usata per limitare i risultati ai
+// progetti di cui l'utente è membro; nil = nessuna limitazione (admin globale).
+func (s *Service) List(offset, limit int, scope *gorm.DB) ([]Board, int, error) {
+	countQ := s.db.Model(&Board{})
+	if scope != nil {
+		countQ = countQ.Where("project_id IN (?)", scope)
+	}
 	var total int64
-	if err := s.db.Model(&Board{}).Count(&total).Error; err != nil {
+	if err := countQ.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	var boards []Board
 	q := s.db.Order("seq_id ASC")
+	if scope != nil {
+		q = q.Where("project_id IN (?)", scope)
+	}
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
 	if offset > 0 {
 		q = q.Offset(offset)
 	}
+	var boards []Board
 	if err := q.Find(&boards).Error; err != nil {
 		return nil, 0, err
 	}

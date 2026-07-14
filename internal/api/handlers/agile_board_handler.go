@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 
+	"gorm.io/gorm"
+
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
@@ -69,7 +71,8 @@ func (h *AgileBoardHandler) resolveBoard(r *http.Request) *board.Board {
 
 func (h *AgileBoardHandler) List(w http.ResponseWriter, r *http.Request) {
 	startAt, maxResults := v3.ParsePagination(r, 50, 100)
-	boards, total, err := h.boardSvc.List(startAt, maxResults)
+	uid := middleware.UserIDFromContext(r.Context())
+	boards, total, err := h.boardSvc.List(startAt, maxResults, h.boardScope(uid))
 	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list boards"}, nil)
 		return
@@ -79,6 +82,16 @@ func (h *AgileBoardHandler) List(w http.ResponseWriter, r *http.Request) {
 		values = append(values, v3.AgileBoard(h.boardInputFor(&boards[i])))
 	}
 	v3.WritePage(w, http.StatusOK, v3.Page[v3.Board]{StartAt: startAt, MaxResults: maxResults, Total: total, Values: values})
+}
+
+// boardScope returns the membership subquery scoping the global board list
+// (GET /rest/agile/1.0/board) to uid's projects, or nil (unscoped) when uid
+// is a global admin — same pattern as SearchHandler.searchScope (Task 6).
+func (h *AgileBoardHandler) boardScope(uid string) *gorm.DB {
+	if h.chk == nil || h.projectSvc == nil || h.chk.IsGlobalAdmin(uid) {
+		return nil
+	}
+	return h.projectSvc.MembershipSubquery(uid)
 }
 
 func (h *AgileBoardHandler) Create(w http.ResponseWriter, r *http.Request) {
