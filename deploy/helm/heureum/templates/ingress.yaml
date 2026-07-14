@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "open-jira.fullname" . }}
+  name: {{ include "heureum.fullname" . }}
   labels:
-    {{- include "open-jira.labels" . | nindent 4 }}
+    {{- include "heureum.labels" . | nindent 4 }}
 spec:
   rules:
   - host: {{ .Values.ingress.host }}
@@ -14,21 +14,21 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: {{ include "open-jira.fullname" . }}-api
+            name: {{ include "heureum.fullname" . }}-api
             port:
               number: 8080
       - path: /ws
         pathType: Prefix
         backend:
           service:
-            name: {{ include "open-jira.fullname" . }}-api
+            name: {{ include "heureum.fullname" . }}-api
             port:
               number: 8080
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: {{ include "open-jira.fullname" . }}-frontend
+            name: {{ include "heureum.fullname" . }}-frontend
             port:
               number: 80
 {{- end }}

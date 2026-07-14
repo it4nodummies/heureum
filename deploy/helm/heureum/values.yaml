@@ -1,12 +1,12 @@
 replicaCount: 1
 image:
-  api: open-jira/api:latest
-  worker: open-jira/worker:latest
-  frontend: open-jira/frontend:latest
+  api: ghcr.io/it4nodummies/heureum-api:latest
+  worker: ghcr.io/it4nodummies/heureum-worker:latest
+  frontend: ghcr.io/it4nodummies/heureum-frontend:latest
 config:
   appSecret: ""
   dbDriver: postgres
-  dbDsn: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
+  dbDsn: "postgres://heureum:heureum@postgres:5432/heureum?sslmode=disable"
   redisUrl: "redis://redis:6379/0"
   baseUrl: "http://localhost"
   smtpHost: ""

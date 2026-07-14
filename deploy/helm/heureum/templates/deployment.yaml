@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "open-jira.fullname" . }}-api
+  name: {{ include "heureum.fullname" . }}-api
   labels:
-    {{- include "open-jira.labels" . | nindent 4 }}
+    {{- include "heureum.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "open-jira.selectorLabels" . | nindent 6 }}
+      {{- include "heureum.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
   template:
     metadata:
       labels:
-        {{- include "open-jira.selectorLabels" . | nindent 8 }}
+        {{- include "heureum.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
     spec:
       containers:
@@ -26,9 +26,9 @@ spec:
           name: http
         envFrom:
         - configMapRef:
-            name: {{ include "open-jira.fullname" . }}-config
+            name: {{ include "heureum.fullname" . }}-config
         - secretRef:
-            name: {{ include "open-jira.fullname" . }}-secret
+            name: {{ include "heureum.fullname" . }}-secret
         resources:
           requests:
             cpu: 100m
@@ -52,20 +52,20 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "open-jira.fullname" . }}-worker
+  name: {{ include "heureum.fullname" . }}-worker
   labels:
-    {{- include "open-jira.labels" . | nindent 4 }}
+    {{- include "heureum.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "open-jira.selectorLabels" . | nindent 6 }}
+      {{- include "heureum.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: worker
   template:
     metadata:
       labels:
-        {{- include "open-jira.selectorLabels" . | nindent 8 }}
+        {{- include "heureum.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: worker
     spec:
       containers:
@@ -74,9 +74,9 @@ spec:
         imagePullPolicy: IfNotPresent
         envFrom:
         - configMapRef:
-            name: {{ include "open-jira.fullname" . }}-config
+            name: {{ include "heureum.fullname" . }}-config
         - secretRef:
-            name: {{ include "open-jira.fullname" . }}-secret
+            name: {{ include "heureum.fullname" . }}-secret
         resources:
           requests:
             cpu: 50m
@@ -88,20 +88,20 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "open-jira.fullname" . }}-frontend
+  name: {{ include "heureum.fullname" . }}-frontend
   labels:
-    {{- include "open-jira.labels" . | nindent 4 }}
+    {{- include "heureum.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "open-jira.selectorLabels" . | nindent 6 }}
+      {{- include "heureum.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: frontend
   template:
     metadata:
       labels:
-        {{- include "open-jira.selectorLabels" . | nindent 8 }}
+        {{- include "heureum.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
     spec:
       containers:

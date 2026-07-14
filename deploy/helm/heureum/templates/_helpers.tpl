@@ -1,16 +1,16 @@
-{{- define "open-jira.fullname" -}}
-{{- printf "open-jira" }}
+{{- define "heureum.fullname" -}}
+{{- printf "heureum" }}
 {{- end }}
 
-{{- define "open-jira.labels" -}}
-app.kubernetes.io/name: open-jira
+{{- define "heureum.labels" -}}
+app.kubernetes.io/name: heureum
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/version: {{ .Chart.AppVersion }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{- end }}
 
-{{- define "open-jira.selectorLabels" -}}
-app.kubernetes.io/name: open-jira
+{{- define "heureum.selectorLabels" -}}
+app.kubernetes.io/name: heureum
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

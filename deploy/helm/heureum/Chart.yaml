@@ -1,5 +1,5 @@
 apiVersion: v2
-name: open-jira
+name: heureum
 description: Open-source Jira clone
 type: application
 version: 1.0.0

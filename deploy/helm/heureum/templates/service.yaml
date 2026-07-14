@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "open-jira.fullname" . }}-api
+  name: {{ include "heureum.fullname" . }}-api
   labels:
-    {{- include "open-jira.labels" . | nindent 4 }}
+    {{- include "heureum.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   type: ClusterIP
@@ -13,15 +13,15 @@ spec:
     protocol: TCP
     name: http
   selector:
-    {{- include "open-jira.selectorLabels" . | nindent 4 }}
+    {{- include "heureum.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "open-jira.fullname" . }}-frontend
+  name: {{ include "heureum.fullname" . }}-frontend
   labels:
-    {{- include "open-jira.labels" . | nindent 4 }}
+    {{- include "heureum.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
   type: ClusterIP
@@ -31,5 +31,5 @@ spec:
     protocol: TCP
     name: http
   selector:
-    {{- include "open-jira.selectorLabels" . | nindent 4 }}
+    {{- include "heureum.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
