@@ -437,3 +437,56 @@ func (s *Service) GetPieByField(projectID, field string) ([]PieSlice, error) {
 	}
 	return slices, nil
 }
+
+// CreatedVsResolvedData: serie giornaliere di issue create vs risolte.
+type CreatedVsResolvedData struct {
+	Dates    []string `json:"dates"`
+	Created  []int    `json:"created"`
+	Resolved []int    `json:"resolved"`
+}
+
+// GetCreatedVsResolved conta, per gli ultimi `days` giorni, le issue create
+// (evento 'created') e risolte (transizione a uno stato categoria 'done').
+func (s *Service) GetCreatedVsResolved(projectID string, days int) (CreatedVsResolvedData, error) {
+	if days <= 0 {
+		days = 30
+	}
+	out := CreatedVsResolvedData{Dates: make([]string, days), Created: make([]int, days), Resolved: make([]int, days)}
+	// indicizza le date (oggi-days+1 .. oggi)
+	base := time.Now().Truncate(24*time.Hour).AddDate(0, 0, -(days - 1))
+	idx := map[string]int{}
+	for i := 0; i < days; i++ {
+		d := base.AddDate(0, 0, i).Format("2006-01-02")
+		out.Dates[i] = d
+		idx[d] = i
+	}
+	// created: eventi 'created'
+	type row struct {
+		Date string
+		Cnt  int
+	}
+	var created []row
+	s.db.Raw(`SELECT DATE(ih.created_at) AS date, COUNT(*) AS cnt
+	          FROM issue_history ih JOIN issues i ON i.id = ih.issue_id
+	          WHERE i.project_id = ? AND ih.field_name = 'created' AND DATE(ih.created_at) >= ?
+	          GROUP BY DATE(ih.created_at)`, projectID, base.Format("2006-01-02")).Scan(&created)
+	for _, r := range created {
+		if i, ok := idx[r.Date]; ok {
+			out.Created[i] = r.Cnt
+		}
+	}
+	// resolved: transizioni 'status' verso uno stato categoria 'done'
+	var resolved []row
+	s.db.Raw(`SELECT DATE(ih.created_at) AS date, COUNT(*) AS cnt
+	          FROM issue_history ih
+	          JOIN issues i ON i.id = ih.issue_id
+	          JOIN workflow_statuses ws ON ws.id = ih.new_value
+	          WHERE i.project_id = ? AND ih.field_name = 'status' AND ws.category = 'done' AND DATE(ih.created_at) >= ?
+	          GROUP BY DATE(ih.created_at)`, projectID, base.Format("2006-01-02")).Scan(&resolved)
+	for _, r := range resolved {
+		if i, ok := idx[r.Date]; ok {
+			out.Resolved[i] = r.Cnt
+		}
+	}
+	return out, nil
+}

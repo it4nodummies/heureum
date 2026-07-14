@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/project"
@@ -122,4 +123,25 @@ func (h *ReportHandler) Summary(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+// CreatedVsResolved: GET /rest/api/3/project/{key}/reports/created-vs-resolved?days=30
+func (h *ReportHandler) CreatedVsResolved(w http.ResponseWriter, r *http.Request) {
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+		return
+	}
+	days := 30
+	if v := r.URL.Query().Get("days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			days = n
+		}
+	}
+	data, err := h.svc.GetCreatedVsResolved(p.ID, days)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to compute report"}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, data)
 }

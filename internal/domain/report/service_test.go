@@ -194,3 +194,35 @@ func TestPieByField_Invalid(t *testing.T) {
 		t.Error("atteso errore per campo non supportato")
 	}
 }
+
+func TestCreatedVsResolved(t *testing.T) {
+	db := newDB(t)
+	_, doneID := seedWorkflow(t, db, "proj-1")
+	now := time.Now()
+	// una issue creata 2 giorni fa
+	c := &issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-1", Title: "a", SeqID: 1, StatusID: &doneID, CreatedAt: now.AddDate(0, 0, -2)}
+	db.Create(c)
+	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: c.ID, FieldName: "created", OldValue: "", NewValue: "P-1", CreatedAt: now.AddDate(0, 0, -2)})
+	// risolta (status → done) ieri
+	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: c.ID, FieldName: "status", OldValue: "x", NewValue: doneID, CreatedAt: now.AddDate(0, 0, -1)})
+
+	svc := NewService(db)
+	data, err := svc.GetCreatedVsResolved("proj-1", 7)
+	if err != nil {
+		t.Fatalf("GetCreatedVsResolved: %v", err)
+	}
+	if len(data.Dates) != 7 {
+		t.Fatalf("attesi 7 giorni, %d", len(data.Dates))
+	}
+	sumC, sumR := 0, 0
+	for i := range data.Dates {
+		sumC += data.Created[i]
+		sumR += data.Resolved[i]
+	}
+	if sumC != 1 {
+		t.Errorf("created totali attesi 1, %d", sumC)
+	}
+	if sumR != 1 {
+		t.Errorf("resolved totali attesi 1, %d", sumR)
+	}
+}
