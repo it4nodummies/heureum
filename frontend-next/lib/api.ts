@@ -278,6 +278,15 @@ export const issues = {
       body: JSON.stringify({ fields }),
     }),
 
+  // PUT /rest/api/3/issue/{key} non gestisce lo status (non è un campo "fields"
+  // libero come Jira reale: richiede una transizione validata dal workflow).
+  // Endpoint reale: POST /rest/api/3/issue/{key}/transitions { status_id }.
+  transition: (idOrKey: string, statusId: string) =>
+    apiFetch<void>(`/rest/api/3/issue/${idOrKey}/transitions`, {
+      method: "POST",
+      body: JSON.stringify({ status_id: statusId }),
+    }),
+
   del: (idOrKey: string) => apiFetch<void>(`/rest/api/3/issue/${idOrKey}`, { method: "DELETE" }),
 };
 
