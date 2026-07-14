@@ -7,7 +7,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.0.0] - YYYY-MM-DD
+## [1.0.0] - 2026-07-14
 
 Initial 1.0 release, accumulating the capabilities built across Rounds 0-11 of the Jira
 parity effort.
