@@ -85,7 +85,7 @@ func (s *Service) GetBurndownData(sprintID string) (*BurndownData, error) {
 		totalSP += iss.StoryPoints
 		issueInitialSP[iss.ID] = iss.StoryPoints
 		var history []issue.IssueHistory
-		s.db.Where("issue_id = ? AND field_name IN ('story_points', 'status_id', 'sprint_id')",
+		s.db.Where("issue_id = ? AND field_name IN ('story_points', 'status')",
 			iss.ID).Order("created_at ASC").Find(&history)
 		issueEntries[iss.ID] = history
 	}
@@ -115,7 +115,6 @@ func (s *Service) GetBurndownData(sprintID string) (*BurndownData, error) {
 				}
 				curSP := iss.StoryPoints
 				done := false
-				removeFromSprint := false
 				for _, h := range issueEntries[iss.ID] {
 					if h.CreatedAt.After(dayEnd) {
 						break
@@ -125,20 +124,16 @@ func (s *Service) GetBurndownData(sprintID string) (*BurndownData, error) {
 						var val int
 						fmt.Sscanf(h.NewValue, "%d", &val)
 						curSP = val
-					case "status_id":
+					case "status":
 						if h.NewValue == doneStatusID {
 							done = true
 						}
 						if h.OldValue == doneStatusID && h.NewValue != doneStatusID {
 							done = false
 						}
-					case "sprint_id":
-						if h.NewValue != sprintID {
-							removeFromSprint = true
-						}
 					}
 				}
-				if !done && !removeFromSprint {
+				if !done {
 					remaining += curSP
 				}
 			}
@@ -270,7 +265,7 @@ func (s *Service) GetBurnupData(sprintID string) (*BurndownData, error) {
 	for _, iss := range sprintIssues {
 		totalSP += iss.StoryPoints
 		var history []issue.IssueHistory
-		s.db.Where("issue_id = ? AND field_name IN ('story_points', 'status_id')",
+		s.db.Where("issue_id = ? AND field_name IN ('story_points', 'status')",
 			iss.ID).Order("created_at ASC").Find(&history)
 		issueEntries[iss.ID] = history
 	}
@@ -304,7 +299,7 @@ func (s *Service) GetBurnupData(sprintID string) (*BurndownData, error) {
 					var val int
 					fmt.Sscanf(h.NewValue, "%d", &val)
 					sp = val
-				case "status_id":
+				case "status":
 					currentDone = h.NewValue == doneStatusID
 					if h.OldValue == doneStatusID && h.NewValue != doneStatusID {
 						currentDone = false
