@@ -1,6 +1,10 @@
 {{- define "heureum.fullname" -}}
-{{- printf "heureum" }}
-{{- end }}
+{{- if contains "heureum" .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-heureum" .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
 
 {{- define "heureum.labels" -}}
 app.kubernetes.io/name: heureum

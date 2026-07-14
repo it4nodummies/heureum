@@ -38,16 +38,27 @@ spec:
             memory: 256Mi
         livenessProbe:
           httpGet:
-            path: /api/v1/projects
+            path: /healthz
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 15
         readinessProbe:
           httpGet:
-            path: /api/v1/projects
+            path: /healthz
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: uploads
+          mountPath: {{ .Values.uploads.dir }}
+      volumes:
+      - name: uploads
+        {{- if .Values.uploads.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "heureum.fullname" . }}-uploads
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -109,7 +120,7 @@ spec:
         image: {{ .Values.image.frontend }}
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 80
+        - containerPort: 3000
           name: http
         resources:
           requests:
@@ -118,3 +129,15 @@ spec:
           limits:
             cpu: 100m
             memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10

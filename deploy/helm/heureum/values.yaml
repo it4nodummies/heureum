@@ -13,6 +13,11 @@ config:
 ingress:
   enabled: false
   host: jira.example.com
+uploads:
+  dir: /data/uploads
+  persistence:
+    enabled: true
+    size: 5Gi
 postgresql:
   enabled: false
 redis:
