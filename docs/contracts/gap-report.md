@@ -2,15 +2,13 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **80**
-- Nel contratto ma mancanti: **641**
+- Nel contratto e implementati (path match): **100**
+- Nel contratto ma mancanti: **621**
 - Implementati ma fuori contratto (estensioni): **74**
 
 ## Mancanti (dal contratto)
 
-- `DELETE /rest/agile/1.0/board/{boardId}` — Delete board
 - `DELETE /rest/agile/1.0/board/{boardId}/properties/{propertyKey}` — Delete board property
-- `DELETE /rest/agile/1.0/sprint/{sprintId}` — Delete sprint
 - `DELETE /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Delete property
 - `DELETE /rest/api/3/comment/{commentId}/properties/{propertyKey}` — Delete comment property
 - `DELETE /rest/api/3/component/{id}` — Delete component
@@ -108,16 +106,10 @@
 - `DELETE /rest/security/1.0/bulkByProperties` — Delete Vulnerabilities by Property
 - `DELETE /rest/security/1.0/linkedWorkspaces/bulk` — Delete linked Security Workspaces
 - `DELETE /rest/security/1.0/vulnerability/{vulnerabilityId}` — Delete a Vulnerability by ID
-- `GET /rest/agile/1.0/board` — Get all boards
 - `GET /rest/agile/1.0/board/filter/{filterId}` — Get board by filter id
-- `GET /rest/agile/1.0/board/{boardId}` — Get board
-- `GET /rest/agile/1.0/board/{boardId}/backlog` — Get issues for backlog
-- `GET /rest/agile/1.0/board/{boardId}/configuration` — Get configuration
-- `GET /rest/agile/1.0/board/{boardId}/epic` — Get epics
 - `GET /rest/agile/1.0/board/{boardId}/epic/none/issue` — Get issues without epic for board
 - `GET /rest/agile/1.0/board/{boardId}/epic/{epicId}/issue` — Get board issues for epic
 - `GET /rest/agile/1.0/board/{boardId}/features` — Get features for board
-- `GET /rest/agile/1.0/board/{boardId}/issue` — Get issues for board
 - `GET /rest/agile/1.0/board/{boardId}/project` — Get projects
 - `GET /rest/agile/1.0/board/{boardId}/project/full` — Get projects full
 - `GET /rest/agile/1.0/board/{boardId}/properties` — Get board property keys
@@ -125,16 +117,11 @@
 - `GET /rest/agile/1.0/board/{boardId}/quickfilter` — Get all quick filters
 - `GET /rest/agile/1.0/board/{boardId}/quickfilter/{quickFilterId}` — Get quick filter
 - `GET /rest/agile/1.0/board/{boardId}/reports` — Get reports for board
-- `GET /rest/agile/1.0/board/{boardId}/sprint` — Get all sprints
 - `GET /rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue` — Get board issues for sprint
 - `GET /rest/agile/1.0/board/{boardId}/version` — Get all versions
 - `GET /rest/agile/1.0/epic/none/issue` — Get issues without epic
-- `GET /rest/agile/1.0/epic/{epicIdOrKey}` — Get epic
 - `GET /rest/agile/1.0/epic/{epicIdOrKey}/issue` — Get issues for epic
-- `GET /rest/agile/1.0/issue/{issueIdOrKey}` — Get issue
 - `GET /rest/agile/1.0/issue/{issueIdOrKey}/estimation` — Get issue estimation for board
-- `GET /rest/agile/1.0/sprint/{sprintId}` — Get sprint
-- `GET /rest/agile/1.0/sprint/{sprintId}/issue` — Get issues for sprint
 - `GET /rest/agile/1.0/sprint/{sprintId}/properties` — Get properties keys
 - `GET /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Get property
 - `GET /rest/api/3/announcementBanner` — Get announcement banner configuration
@@ -396,16 +383,11 @@
 - `GET /rest/software/1.0/epic/none/issue` — Get issues without epic (enhanced)
 - `GET /rest/software/1.0/epic/{epicIdOrKey}/issue` — Get issues for epic (enhanced)
 - `GET /rest/software/1.0/sprint/{sprintId}/issue` — Get issues for sprint (enhanced)
-- `POST /rest/agile/1.0/backlog/issue` — Move issues to backlog
 - `POST /rest/agile/1.0/backlog/{boardId}/issue` — Move issues to backlog for board
-- `POST /rest/agile/1.0/board` — Create board
 - `POST /rest/agile/1.0/board/{boardId}/issue` — Move issues to board
 - `POST /rest/agile/1.0/epic/none/issue` — Remove issues from epic
 - `POST /rest/agile/1.0/epic/{epicIdOrKey}` — Partially update epic
 - `POST /rest/agile/1.0/epic/{epicIdOrKey}/issue` — Move issues to epic
-- `POST /rest/agile/1.0/sprint` — Create sprint
-- `POST /rest/agile/1.0/sprint/{sprintId}` — Partially update sprint
-- `POST /rest/agile/1.0/sprint/{sprintId}/issue` — Move issues to sprint and rank
 - `POST /rest/agile/1.0/sprint/{sprintId}/swap` — Swap sprint
 - `POST /rest/api/3/app/field/context/configuration/list` — Bulk get custom field configurations
 - `POST /rest/api/3/app/field/value` — Update custom fields
@@ -533,9 +515,7 @@
 - `PUT /rest/agile/1.0/board/{boardId}/features` — Toggle features
 - `PUT /rest/agile/1.0/board/{boardId}/properties/{propertyKey}` — Set board property
 - `PUT /rest/agile/1.0/epic/{epicIdOrKey}/rank` — Rank epics
-- `PUT /rest/agile/1.0/issue/rank` — Rank issues
 - `PUT /rest/agile/1.0/issue/{issueIdOrKey}/estimation` — Estimate issue for board
-- `PUT /rest/agile/1.0/sprint/{sprintId}` — Update sprint
 - `PUT /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Set property
 - `PUT /rest/api/3/announcementBanner` — Update announcement banner configuration
 - `PUT /rest/api/3/app/field/{fieldIdOrKey}/context/configuration` — Update custom field configurations

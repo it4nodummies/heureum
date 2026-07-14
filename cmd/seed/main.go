@@ -16,6 +16,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/search"
+	"github.com/open-jira/open-jira/internal/domain/sprint"
 	"github.com/open-jira/open-jira/internal/domain/user"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
 	"github.com/open-jira/open-jira/internal/store"
@@ -207,6 +208,20 @@ func main() {
 		fmt.Println("created demo board")
 	} else if err != nil {
 		log.Fatalf("check demo board: %v", err)
+	}
+
+	// Sprint demo (idempotente), legato alla board demo (seq_id 1)
+	sprintSvc := sprint.NewService(s.DB)
+	var existingS sprint.Sprint
+	err = s.DB.Where("project_id = ? AND name = ?", demo.ID, "Sprint 1").First(&existingS).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		boardSeq := int64(1)
+		if _, err := sprintSvc.CreateFull(demo.ID, "Sprint 1", "Primo sprint demo", &boardSeq, nil, nil); err != nil {
+			log.Fatalf("seed sprint: %v", err)
+		}
+		fmt.Println("created demo sprint")
+	} else if err != nil {
+		log.Fatalf("check demo sprint: %v", err)
 	}
 
 	fmt.Println("seed complete")
