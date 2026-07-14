@@ -101,6 +101,17 @@ func (h *IssueHandler) buildIssueInput(iss *issue.Issue) v3.IssueInput {
 			in.Parent = &v3.ParentRef{ID: itoaInt64(parent.SeqID), Key: parent.Key, Self: h.baseURL + "/rest/api/3/issue/" + itoaInt64(parent.SeqID)}
 		}
 	}
+	if iss.ResolutionID != nil {
+		var row struct {
+			ID          string
+			Name        string
+			Description string
+		}
+		if db.Table("resolutions").Where("id = ?", *iss.ResolutionID).Scan(&row).Error == nil && row.ID != "" {
+			r := v3.JiraResolution(row.ID, row.Name, row.Description, h.baseURL)
+			in.Resolution = &r
+		}
+	}
 	labels, _ := h.svc.GetLabels(iss.ID)
 	in.Labels = labels
 	return in
