@@ -13,19 +13,21 @@ snapshots are not supported.
 
 ## Authorization model
 
-As of 1.0, Heureum **enforces authorization server-side on mutating requests**: every
-create/update/delete is checked against the caller's role on the relevant project
-(admin/member/viewer) or their global-admin flag, returning **403** when the caller lacks
-the required permission. Group and project-category mutations require a global admin;
-filters and dashboards can only be mutated by their owner (or a global admin); the creator
-of a project automatically becomes its admin.
+As of 1.0, Heureum **enforces authorization server-side on both mutations and reads**:
 
-### Known limitation — please read before deploying
+- **Mutations** (create/update/delete) are checked against the caller's role on the
+  relevant project (admin/member/viewer) or their global-admin flag, returning **403**
+  when the caller lacks the required permission. Group and project-category mutations
+  require a global admin; filters and dashboards can only be mutated by their owner (or a
+  global admin); the creator of a project automatically becomes its admin.
+- **Reads** are membership-gated: project-scoped resources (projects, issues, boards,
+  sprints, reports, comments, attachments, …) return **404** to non-members — without
+  revealing whether the resource exists. Lists and JQL search results are filtered to the
+  caller's projects. User email addresses are visible only to the user themselves and to
+  global admins. Filters and dashboards are readable by their owner, or when shared/public.
+  The board websocket endpoint requires authentication. Global admins see everything.
 
-**Reads are not yet permission-gated: any authenticated user can read any project's data
-(issues, comments, boards, reports).** Read-side authorization (`BROWSE_PROJECTS`) is a
-planned enhancement. If read confidentiality between authenticated users matters for your
-deployment, restrict access at the network layer until read enforcement ships.
+### Notes for deployers
 
 Other things to be aware of when evaluating deployment risk:
 

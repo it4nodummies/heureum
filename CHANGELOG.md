@@ -19,7 +19,12 @@ parity effort.
   flag and returns **403** when the required permission is missing. Group and
   project-category mutations require a global admin; filters and dashboards are mutable only
   by their owner (or a global admin); creating a project makes the creator its admin.
-  (Reads are not yet permission-gated — see Known limitations.)
+- **Reads are membership-gated.** Project-scoped GET endpoints return **404** to
+  non-members (no existence leak); project lists and JQL search results are filtered to the
+  caller's memberships; user email addresses are visible only to the user themselves and to
+  global admins; filters/dashboards are readable by owner or when shared/public (this also
+  closes a hole where any user could copy another user's private dashboard); the board
+  websocket endpoint now requires authentication. Global admins bypass read scoping.
 
 ### Added
 
@@ -54,9 +59,6 @@ parity effort.
 
 ### Known limitations
 
-- **Reads are not yet permission-gated.** Authorization is enforced on mutations, but any
-  authenticated user can still read any project's data (issues, comments, boards, reports).
-  Read-side authorization (`BROWSE_PROJECTS`) is planned for a future release.
 - **No object storage for attachments yet.** Attachments are stored on local disk only;
   S3-compatible storage is a planned enhancement.
 - **SMTP and OAuth are not wired up.** The corresponding environment variables are

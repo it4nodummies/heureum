@@ -57,6 +57,6 @@ After the release workflow finishes, confirm the packages exist and are public:
       tenant isolation (see the README's Multi-tenancy section). Set `APP_SIGNUP=closed` on
       any instance exposed to the public internet once its users are provisioned.
 
-## Known limitation to disclose
+## Security posture at 1.0
 
-Authorization is **enforced server-side on mutations** (403 by role/global-admin). However, **reads are not yet permission-gated**: any authenticated user can read any project's data. Read-side authorization is a planned post-1.0 enhancement (see `SECURITY.md`).
+Authorization is **enforced server-side on both mutations (403) and reads (404 + filtered lists)** — see `SECURITY.md` for the full model. Remaining known limitations to disclose: attachments on local disk (no object storage yet), SMTP/OAuth env not wired.
