@@ -35,6 +35,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	userH := handlers.NewUserHandler(db, cfg.BaseURL)
 	oauthH := handlers.NewOAuthHandler(db, cfg.Secret, cfg.BaseURL)
 	projectSvc := project.NewService(db, nil)
+	permH := handlers.NewPermissionHandler(db, projectSvc)
 	wfSvc := workflow.NewService(db)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, cfg.BaseURL)
 	pcH := handlers.NewProjectCategoryHandler(db, cfg.BaseURL)
@@ -122,6 +123,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMyself)))
 	mux.Handle("GET /rest/api/3/users/search", authMw(http.HandlerFunc(userH.SearchUsers)))
 	mux.Handle("GET /rest/api/3/user", authMw(http.HandlerFunc(userH.GetUser)))
+	mux.Handle("GET /rest/api/3/permissions", authMw(http.HandlerFunc(permH.Permissions)))
+	mux.Handle("GET /rest/api/3/mypermissions", authMw(http.HandlerFunc(permH.MyPermissions)))
 
 	mux.Handle("GET /rest/api/3/project", authMw(http.HandlerFunc(projectH.List)))
 	mux.Handle("POST /rest/api/3/project", authMw(http.HandlerFunc(projectH.Create)))
