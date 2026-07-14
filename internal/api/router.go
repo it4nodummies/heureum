@@ -283,6 +283,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/project/{key}/reports/velocity", authMw(http.HandlerFunc(reportH.Velocity)))
 	mux.Handle("GET /rest/api/3/project/{key}/reports/burnup", authMw(http.HandlerFunc(reportH.Burnup)))
 	mux.Handle("GET /rest/api/3/project/{key}/reports/cfd", authMw(http.HandlerFunc(reportH.CFD)))
+	mux.Handle("GET /rest/api/3/project/{key}/reports/pie", authMw(http.HandlerFunc(reportH.Pie)))
 	mux.Handle("GET /rest/api/3/project/{key}/summary", authMw(http.HandlerFunc(reportH.Summary)))
 
 	mux.Handle("GET /rest/api/3/dashboards", authMw(http.HandlerFunc(dashboardH.List)))

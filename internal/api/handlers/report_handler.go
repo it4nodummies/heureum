@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/report"
 )
@@ -87,6 +88,25 @@ func (h *ReportHandler) CFD(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+// Pie: GET /rest/api/3/project/{key}/reports/pie?field=status|priority|assignee|type
+func (h *ReportHandler) Pie(w http.ResponseWriter, r *http.Request) {
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+		return
+	}
+	field := r.URL.Query().Get("field")
+	if field == "" {
+		field = "status"
+	}
+	slices, err := h.svc.GetPieByField(p.ID, field)
+	if err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{err.Error()}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, slices)
 }
 
 func (h *ReportHandler) Summary(w http.ResponseWriter, r *http.Request) {

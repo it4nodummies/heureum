@@ -152,3 +152,45 @@ func keysOf(m map[string][]int) []string {
 	}
 	return out
 }
+
+func TestPieByField_Status(t *testing.T) {
+	db := newDB(t)
+	todoID, doneID := seedWorkflow(t, db, "proj-1")
+	db.Create(&issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-1", Title: "a", SeqID: 1, StatusID: &todoID})
+	db.Create(&issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-2", Title: "b", SeqID: 2, StatusID: &doneID})
+	db.Create(&issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-3", Title: "c", SeqID: 3, StatusID: &doneID})
+
+	svc := NewService(db)
+	slices, err := svc.GetPieByField("proj-1", "status")
+	if err != nil {
+		t.Fatalf("GetPieByField: %v", err)
+	}
+	byLabel := map[string]int{}
+	for _, s := range slices {
+		byLabel[s.Label] = s.Count
+	}
+	if byLabel["TO DO"] != 1 || byLabel["DONE"] != 2 {
+		t.Errorf("conteggi torta errati: %v", byLabel)
+	}
+}
+
+func TestPieByField_Priority(t *testing.T) {
+	db := newDB(t)
+	db.Create(&issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-1", Title: "a", SeqID: 1, Priority: issue.PriorityHigh})
+	db.Create(&issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-2", Title: "b", SeqID: 2, Priority: issue.PriorityHigh})
+	svc := NewService(db)
+	slices, err := svc.GetPieByField("proj-1", "priority")
+	if err != nil {
+		t.Fatalf("GetPieByField: %v", err)
+	}
+	if len(slices) != 1 || slices[0].Label != "high" || slices[0].Count != 2 {
+		t.Errorf("torta priority errata: %+v", slices)
+	}
+}
+
+func TestPieByField_Invalid(t *testing.T) {
+	svc := NewService(newDB(t))
+	if _, err := svc.GetPieByField("proj-1", "bogus"); err == nil {
+		t.Error("atteso errore per campo non supportato")
+	}
+}

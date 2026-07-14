@@ -35,10 +35,10 @@ type VelocityData struct {
 }
 
 type SprintVelocity struct {
-	SprintID      string `json:"sprint_id"`
-	SprintName    string `json:"sprint_name"`
-	Completed     int    `json:"completed"`
-	TotalPlanned  int    `json:"total_planned"`
+	SprintID     string `json:"sprint_id"`
+	SprintName   string `json:"sprint_name"`
+	Completed    int    `json:"completed"`
+	TotalPlanned int    `json:"total_planned"`
 }
 
 func (s *Service) GetBurndownData(sprintID string) (*BurndownData, error) {
@@ -396,4 +396,44 @@ type CFDData struct {
 	Categories []string         `json:"categories"`
 	Dates      []string         `json:"dates"`
 	Data       map[string][]int `json:"data"`
+}
+
+// PieSlice è una fetta della torta: etichetta + conteggio.
+type PieSlice struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+// GetPieByField aggrega le issue non archiviate del progetto per il campo dato.
+// Campi supportati: status, priority, assignee, type.
+func (s *Service) GetPieByField(projectID, field string) ([]PieSlice, error) {
+	var q string
+	switch field {
+	case "status":
+		q = `SELECT COALESCE(ws.name, 'No status') AS label, COUNT(*) AS count
+		     FROM issues i LEFT JOIN workflow_statuses ws ON ws.id = i.status_id
+		     WHERE i.project_id = ? AND i.is_archived = FALSE
+		     GROUP BY label ORDER BY count DESC`
+	case "priority":
+		q = `SELECT priority AS label, COUNT(*) AS count
+		     FROM issues WHERE project_id = ? AND is_archived = FALSE
+		     GROUP BY priority ORDER BY count DESC`
+	case "assignee":
+		q = `SELECT COALESCE(u.display_name, 'Unassigned') AS label, COUNT(*) AS count
+		     FROM issues i LEFT JOIN users u ON u.id = i.assignee_id
+		     WHERE i.project_id = ? AND i.is_archived = FALSE
+		     GROUP BY label ORDER BY count DESC`
+	case "type":
+		q = `SELECT COALESCE(it.name, 'No type') AS label, COUNT(*) AS count
+		     FROM issues i LEFT JOIN issue_types it ON it.id = i.type_id
+		     WHERE i.project_id = ? AND i.is_archived = FALSE
+		     GROUP BY label ORDER BY count DESC`
+	default:
+		return nil, fmt.Errorf("unsupported field: %s", field)
+	}
+	var slices []PieSlice
+	if err := s.db.Raw(q, projectID).Scan(&slices).Error; err != nil {
+		return nil, err
+	}
+	return slices, nil
 }
