@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/timeline"
 	"github.com/open-jira/open-jira/internal/domain/webhook"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
+	"github.com/open-jira/open-jira/internal/integration"
 )
 
 func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
@@ -83,6 +85,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	autoH := handlers.NewAutomationHandler(autoSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
+	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc, &http.Client{Timeout: 10 * time.Second})
+	issueSvc.SetEventSink(dispatcher)
 	timelineSvc := timeline.NewService(db)
 	timelineH := handlers.NewTimelineHandler(timelineSvc)
 	calendarSvc := calendar.NewService(db)

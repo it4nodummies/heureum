@@ -10,8 +10,9 @@ import (
 )
 
 type Service struct {
-	db       *gorm.DB
-	notifier Notifier
+	db        *gorm.DB
+	notifier  Notifier
+	eventSink EventSink
 }
 
 type Notifier interface {
@@ -19,9 +20,22 @@ type Notifier interface {
 	NotifyStatusChanged(issueID, newStatus, issueKey, issueTitle, actorUserID string) error
 }
 
+// EventSink riceve eventi di dominio sulle issue (per integrazioni: webhook, automation).
+type EventSink interface {
+	IssueEvent(eventType string, iss *Issue)
+}
+
 func NewService(db *gorm.DB) *Service { return &Service{db: db} }
 
 func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
+
+func (s *Service) SetEventSink(e EventSink) { s.eventSink = e }
+
+func (s *Service) emit(eventType string, iss *Issue) {
+	if s.eventSink != nil {
+		s.eventSink.IssueEvent(eventType, iss)
+	}
+}
 
 func (s *Service) Create(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string) (*Issue, error) {
 	if title == "" {
@@ -55,6 +69,7 @@ func (s *Service) Create(projectKey, projectID, title, description string, prior
 		return nil, err
 	}
 	s.logHistory(issue.ID, "", "created", "", key)
+	s.emit("issue_created", issue)
 	return issue, nil
 }
 
@@ -99,6 +114,7 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 		return nil, err
 	}
 	updates := map[string]interface{}{}
+	statusChanged := false
 	if title != nil {
 		s.logHistory(issue.ID, "", "title", issue.Title, *title)
 		updates["title"] = *title
@@ -129,8 +145,11 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 		}
 		s.logHistory(issue.ID, "", "status", old, *statusID)
 		updates["status_id"] = *statusID
-		if *statusID != old && s.notifier != nil {
-			s.notifier.NotifyStatusChanged(issue.ID, *statusID, issue.Key, issue.Title, "")
+		if *statusID != old {
+			statusChanged = true
+			if s.notifier != nil {
+				s.notifier.NotifyStatusChanged(issue.ID, *statusID, issue.Key, issue.Title, "")
+			}
 		}
 	}
 	if storyPoints != nil {
@@ -140,7 +159,15 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 	if err := s.db.Model(issue).Updates(updates).Error; err != nil {
 		return nil, err
 	}
-	return s.GetByKey(key)
+	updated, err := s.GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	s.emit("issue_updated", updated)
+	if statusChanged {
+		s.emit("issue_transitioned", updated)
+	}
+	return updated, nil
 }
 
 func (s *Service) Delete(key string) error {
