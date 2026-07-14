@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/open-jira/open-jira/internal/api/middleware"
 	v3 "github.com/open-jira/open-jira/internal/api/v3"
@@ -46,6 +47,18 @@ func (h *IssueHandler) resolveIssue(idOrKey string) (*issue.Issue, error) {
 }
 
 func itoaInt64(n int64) string { return strconv.FormatInt(n, 10) }
+
+// isEpic verifica se la issue è di tipo "Epic" (case-insensitive) risolvendo il type.
+func (h *IssueHandler) isEpic(iss *issue.Issue) bool {
+	if iss.TypeID == nil {
+		return false
+	}
+	var it issue.IssueType
+	if h.svc.DB().First(&it, "id = ?", *iss.TypeID).Error != nil {
+		return false
+	}
+	return strings.EqualFold(it.Name, "Epic")
+}
 
 // buildIssueInput arricchisce un'issue di dominio con le entità collegate
 // (assignee, reporter, tipo, stato, progetto, parent, label) necessarie a

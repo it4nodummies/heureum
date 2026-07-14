@@ -153,3 +153,131 @@ func (h *AgileBoardHandler) Configuration(w http.ResponseWriter, r *http.Request
 	}
 	v3.WriteJSON(w, http.StatusOK, cfg)
 }
+
+// writeIssuePage scrive una lista di issue nello shape SearchResults (issues+total).
+func (h *AgileBoardHandler) writeIssuePage(w http.ResponseWriter, issues []issue.Issue, startAt, maxResults, total int) {
+	items, err := renderIssueList(h.issueH, issues, nil)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"render error"}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, v3.SearchResults{Issues: items, StartAt: startAt, MaxResults: maxResults, Total: total})
+}
+
+// page applica la paginazione offset a uno slice di issue.
+func page(issues []issue.Issue, startAt, maxResults int) []issue.Issue {
+	if startAt > len(issues) {
+		return []issue.Issue{}
+	}
+	end := startAt + maxResults
+	if end > len(issues) {
+		end = len(issues)
+	}
+	return issues[startAt:end]
+}
+
+// BoardIssues: tutte le issue del progetto della board.
+func (h *AgileBoardHandler) BoardIssues(w http.ResponseWriter, r *http.Request) {
+	b := h.resolveBoard(r)
+	if b == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"board not found"}, nil)
+		return
+	}
+	all, err := h.issueSvc.ListByProject(b.ProjectID, issue.WithNotArchived())
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list issues"}, nil)
+		return
+	}
+	startAt, maxResults := v3.ParsePagination(r, 50, 100)
+	h.writeIssuePage(w, page(all, startAt, maxResults), startAt, maxResults, len(all))
+}
+
+// Backlog: issue del progetto senza sprint (sprint_id IS NULL).
+func (h *AgileBoardHandler) Backlog(w http.ResponseWriter, r *http.Request) {
+	b := h.resolveBoard(r)
+	if b == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"board not found"}, nil)
+		return
+	}
+	all, err := h.issueSvc.ListByProject(b.ProjectID, issue.WithNotArchived())
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list issues"}, nil)
+		return
+	}
+	var backlog []issue.Issue
+	for _, iss := range all {
+		if iss.SprintID == nil {
+			backlog = append(backlog, iss)
+		}
+	}
+	startAt, maxResults := v3.ParsePagination(r, 50, 100)
+	h.writeIssuePage(w, page(backlog, startAt, maxResults), startAt, maxResults, len(backlog))
+}
+
+// BoardSprints: sprint del progetto della board (shape values+isLast).
+func (h *AgileBoardHandler) BoardSprints(w http.ResponseWriter, r *http.Request) {
+	b := h.resolveBoard(r)
+	if b == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"board not found"}, nil)
+		return
+	}
+	sprints, err := h.sprintSvc.ListByProject(b.ProjectID)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list sprints"}, nil)
+		return
+	}
+	startAt, maxResults := v3.ParsePagination(r, 50, 100)
+	values := make([]v3.Sprint, 0, len(sprints))
+	for i := range sprints {
+		values = append(values, sprintToV3(&sprints[i], h.baseURL))
+	}
+	v3.WritePage(w, http.StatusOK, v3.Page[v3.Sprint]{StartAt: startAt, MaxResults: maxResults, Total: len(values), Values: values})
+}
+
+// BoardEpics: issue di tipo Epic nel progetto (shape values+isLast, minimal).
+func (h *AgileBoardHandler) BoardEpics(w http.ResponseWriter, r *http.Request) {
+	b := h.resolveBoard(r)
+	if b == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"board not found"}, nil)
+		return
+	}
+	all, err := h.issueSvc.ListByProject(b.ProjectID, issue.WithNotArchived())
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list issues"}, nil)
+		return
+	}
+	epics := make([]map[string]any, 0)
+	for i := range all {
+		if h.issueH.isEpic(&all[i]) {
+			epics = append(epics, map[string]any{
+				"id":      all[i].SeqID,
+				"key":     all[i].Key,
+				"name":    all[i].Title,
+				"summary": all[i].Title,
+				"done":    false,
+			})
+		}
+	}
+	startAt, maxResults := v3.ParsePagination(r, 50, 100)
+	lo := startAt
+	if lo > len(epics) {
+		lo = len(epics)
+	}
+	hi := lo + maxResults
+	if hi > len(epics) {
+		hi = len(epics)
+	}
+	v3.WriteJSON(w, http.StatusOK, map[string]any{
+		"startAt": startAt, "maxResults": maxResults, "total": len(epics),
+		"isLast": hi >= len(epics), "values": epics[lo:hi],
+	})
+}
+
+// sprintToV3 mappa uno sprint di dominio nella Sprint agile.
+func sprintToV3(sp *sprint.Sprint, baseURL string) v3.Sprint {
+	return v3.AgileSprint(v3.SprintInput{
+		SeqID: sp.SeqID, Name: sp.Name, State: string(sp.State), Goal: sp.Goal,
+		OriginBoardID: sp.OriginBoardID, StartDate: sp.StartDate, EndDate: sp.EndDate,
+		CompleteDate: sp.CompleteDate, BaseURL: baseURL,
+	})
+}
