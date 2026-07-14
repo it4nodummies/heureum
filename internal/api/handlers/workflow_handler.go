@@ -106,15 +106,17 @@ func (h *WorkflowHandler) AddTransition(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var req struct {
-		FromStatusID string `json:"from_status_id"`
-		ToStatusID   string `json:"to_status_id"`
+		FromStatusID    string `json:"from_status_id"`
+		ToStatusID      string `json:"to_status_id"`
+		Name            string `json:"name"`
+		RequireAssignee bool   `json:"require_assignee"`
+		SetResolution   bool   `json:"set_resolution"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	// TODO(Task 7): read name/require_assignee/set_resolution from req.
-	tr, err := h.wfSvc.AddTransition(wf.ID, req.FromStatusID, req.ToStatusID, "", false, false)
+	tr, err := h.wfSvc.AddTransition(wf.ID, req.FromStatusID, req.ToStatusID, req.Name, req.RequireAssignee, req.SetResolution)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
@@ -122,6 +124,80 @@ func (h *WorkflowHandler) AddTransition(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(tr)
+}
+
+// ListTransitions gestisce GET /rest/api/3/project/{key}/workflow/transitions.
+func (h *WorkflowHandler) ListTransitions(w http.ResponseWriter, r *http.Request) {
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+		return
+	}
+	wf, err := h.wfSvc.GetWorkflow(p.ID)
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"workflow not found"}, nil)
+		return
+	}
+	trs, err := h.wfSvc.GetTransitions(wf.ID)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list transitions"}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, trs)
+}
+
+// UpdateTransition gestisce PATCH /rest/api/3/project/{key}/workflow/transitions/{id}.
+func (h *WorkflowHandler) UpdateTransition(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name            *string `json:"name"`
+		RequireAssignee *bool   `json:"require_assignee"`
+		SetResolution   *bool   `json:"set_resolution"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
+		return
+	}
+	tr, err := h.wfSvc.UpdateTransition(r.PathValue("id"), req.Name, req.RequireAssignee, req.SetResolution)
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"transition not found"}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, tr)
+}
+
+// DeleteTransition gestisce DELETE /rest/api/3/project/{key}/workflow/transitions/{id}.
+func (h *WorkflowHandler) DeleteTransition(w http.ResponseWriter, r *http.Request) {
+	if err := h.wfSvc.RemoveTransition(r.PathValue("id")); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete transition"}, nil)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ReorderStatuses gestisce PUT /rest/api/3/project/{key}/workflow/statuses/order.
+func (h *WorkflowHandler) ReorderStatuses(w http.ResponseWriter, r *http.Request) {
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+		return
+	}
+	wf, err := h.wfSvc.GetWorkflow(p.ID)
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"workflow not found"}, nil)
+		return
+	}
+	var req struct {
+		StatusIDs []string `json:"status_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
+		return
+	}
+	if err := h.wfSvc.ReorderStatuses(wf.ID, req.StatusIDs); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to reorder"}, nil)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // issueAndWorkflow trova la issue e il suo workflow.

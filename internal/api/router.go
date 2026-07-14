@@ -206,6 +206,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("PATCH /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.UpdateStatus)))
 	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.DeleteStatus)))
 	mux.Handle("POST /rest/api/3/project/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.AddTransition)))
+	mux.Handle("GET /rest/api/3/project/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.ListTransitions)))
+	mux.Handle("PATCH /rest/api/3/project/{key}/workflow/transitions/{id}", authMw(http.HandlerFunc(wfH.UpdateTransition)))
+	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/transitions/{id}", authMw(http.HandlerFunc(wfH.DeleteTransition)))
+	mux.Handle("PUT /rest/api/3/project/{key}/workflow/statuses/order", authMw(http.HandlerFunc(wfH.ReorderStatuses)))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.AvailableTransitions)))
 	mux.Handle("POST /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.DoTransition)))
 	// /status (collezione) è servito da ReferenceHandler per rispettare lo
