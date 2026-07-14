@@ -72,6 +72,17 @@ func (s *Service) RemoveOption(id string) error {
 	return s.db.Where("id = ?", id).Delete(&CustomFieldOption{}).Error
 }
 
+// GetOption carica una CustomFieldOption per id (incl. FieldID), necessaria
+// per risolvere il progetto (option -> field -> project) prima di applicare
+// l'autorizzazione su DELETE /custom-fields/options/{optionID}.
+func (s *Service) GetOption(id string) (*CustomFieldOption, error) {
+	var o CustomFieldOption
+	if err := s.db.First(&o, "id = ?", id).Error; err != nil {
+		return nil, errors.New("custom field option not found")
+	}
+	return &o, nil
+}
+
 func (s *Service) ListOptions(fieldID string) ([]CustomFieldOption, error) {
 	var opts []CustomFieldOption
 	s.db.Where("field_id = ?", fieldID).Order("position ASC").Find(&opts)

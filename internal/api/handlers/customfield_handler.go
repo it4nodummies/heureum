@@ -4,15 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/domain/customfield"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 )
 
 type CustomFieldHandler struct {
 	svc *customfield.Service
+	chk *authz.Checker
 }
 
-func NewCustomFieldHandler(svc *customfield.Service) *CustomFieldHandler {
-	return &CustomFieldHandler{svc: svc}
+func NewCustomFieldHandler(svc *customfield.Service, chk *authz.Checker) *CustomFieldHandler {
+	return &CustomFieldHandler{svc: svc, chk: chk}
 }
 
 func (h *CustomFieldHandler) ListFields(w http.ResponseWriter, r *http.Request) {
@@ -74,8 +78,27 @@ func (h *CustomFieldHandler) AddOption(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(o)
 }
 
+// RemoveOption: two-hop authorization (option -> field -> project), enforced
+// in-handler because DELETE /custom-fields/options/{optionID} has no single
+// path-resolvable project (left unwrapped by the router decorator, per the
+// Round 11 plan).
 func (h *CustomFieldHandler) RemoveOption(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.RemoveOption(r.PathValue("optionID")); err != nil {
+	opt, err := h.svc.GetOption(r.PathValue("optionID"))
+	if err != nil {
+		http.Error(w, `{"error":"option not found"}`, http.StatusNotFound)
+		return
+	}
+	field, err := h.svc.GetField(opt.FieldID)
+	if err != nil {
+		http.Error(w, `{"error":"option not found"}`, http.StatusNotFound)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, field.ProjectID, permission.AdministerProjects); err != nil {
+		authz.WriteForbidden(w)
+		return
+	}
+	if err := h.svc.RemoveOption(opt.ID); err != nil {
 		http.Error(w, `{"error":"failed to remove option"}`, http.StatusInternalServerError)
 		return
 	}

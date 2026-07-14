@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/user"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
@@ -20,11 +22,12 @@ type IssueHandler struct {
 	svc        *issue.Service
 	projectSvc *project.Service
 	wfSvc      *workflow.Service
+	chk        *authz.Checker
 	baseURL    string
 }
 
-func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *workflow.Service, baseURL string) *IssueHandler {
-	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc, baseURL: baseURL}
+func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *workflow.Service, chk *authz.Checker, baseURL string) *IssueHandler {
+	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc, chk: chk, baseURL: baseURL}
 }
 
 // resolveIssue trova un'issue per SeqID numerico (id v3) o per Key. Le issue
@@ -212,6 +215,12 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil || proj == nil {
 		v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"project": "The project does not exist."})
+		return
+	}
+
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, proj.ID, permission.CreateIssues); err != nil {
+		authz.WriteForbidden(w)
 		return
 	}
 

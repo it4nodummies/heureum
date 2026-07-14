@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
@@ -15,10 +18,11 @@ type BoardHandler struct {
 	issueSvc    *issue.Service
 	projectSvc  *project.Service
 	workflowSvc *workflow.Service
+	chk         *authz.Checker
 }
 
-func NewBoardHandler(issueSvc *issue.Service, projectSvc *project.Service, workflowSvc *workflow.Service) *BoardHandler {
-	return &BoardHandler{issueSvc: issueSvc, projectSvc: projectSvc, workflowSvc: workflowSvc}
+func NewBoardHandler(issueSvc *issue.Service, projectSvc *project.Service, workflowSvc *workflow.Service, chk *authz.Checker) *BoardHandler {
+	return &BoardHandler{issueSvc: issueSvc, projectSvc: projectSvc, workflowSvc: workflowSvc, chk: chk}
 }
 
 type BoardColumn struct {
@@ -93,6 +97,18 @@ func (h *BoardHandler) RankIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.IssueID == "" {
 		http.Error(w, `{"error":"issue_id is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// project resolved from the target issue (body: issue_id) -> MANAGE_SPRINTS.
+	var targetIss issue.Issue
+	if err := h.issueSvc.DB().First(&targetIss, "id = ?", req.IssueID).Error; err != nil {
+		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, targetIss.ProjectID, permission.ManageSprints); err != nil {
+		authz.WriteForbidden(w)
 		return
 	}
 

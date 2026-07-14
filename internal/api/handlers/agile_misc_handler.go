@@ -5,8 +5,11 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 )
 
@@ -14,11 +17,12 @@ type AgileMiscHandler struct {
 	issueSvc  *issue.Service
 	sprintSvc *sprint.Service
 	issueH    *IssueHandler
+	chk       *authz.Checker
 	baseURL   string
 }
 
-func NewAgileMiscHandler(issueSvc *issue.Service, sprintSvc *sprint.Service, issueH *IssueHandler, baseURL string) *AgileMiscHandler {
-	return &AgileMiscHandler{issueSvc: issueSvc, sprintSvc: sprintSvc, issueH: issueH, baseURL: baseURL}
+func NewAgileMiscHandler(issueSvc *issue.Service, sprintSvc *sprint.Service, issueH *IssueHandler, chk *authz.Checker, baseURL string) *AgileMiscHandler {
+	return &AgileMiscHandler{issueSvc: issueSvc, sprintSvc: sprintSvc, issueH: issueH, chk: chk, baseURL: baseURL}
 }
 
 func (h *AgileMiscHandler) resolveIssueID(idOrKey string) (string, bool) {
@@ -49,6 +53,16 @@ func (h *AgileMiscHandler) Rank(w http.ResponseWriter, r *http.Request) {
 	if len(req.Issues) == 0 {
 		v3.WriteError(w, http.StatusBadRequest, []string{"issues is required"}, nil)
 		return
+	}
+	// 1.0 simplification: enforce MANAGE_SPRINTS on the project of the first
+	// issue in the list only; a request ranking issues across multiple
+	// projects is not fully covered (see Round 11 plan, Task 5 notes).
+	if firstIss := h.resolveIssue(req.Issues[0]); firstIss != nil {
+		uid := middleware.UserIDFromContext(r.Context())
+		if err := h.chk.RequireProject(uid, firstIss.ProjectID, permission.ManageSprints); err != nil {
+			authz.WriteForbidden(w)
+			return
+		}
 	}
 	ids := make([]string, 0, len(req.Issues))
 	for _, k := range req.Issues {
@@ -82,6 +96,18 @@ func (h *AgileMiscHandler) MoveToBacklog(w http.ResponseWriter, r *http.Request)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
+	}
+	// 1.0 simplification: enforce MANAGE_SPRINTS on the project of the first
+	// issue in the list only; a request moving issues across multiple
+	// projects is not fully covered (see Round 11 plan, Task 5 notes).
+	if len(req.Issues) > 0 {
+		if firstIss := h.resolveIssue(req.Issues[0]); firstIss != nil {
+			uid := middleware.UserIDFromContext(r.Context())
+			if err := h.chk.RequireProject(uid, firstIss.ProjectID, permission.ManageSprints); err != nil {
+				authz.WriteForbidden(w)
+				return
+			}
+		}
 	}
 	for _, k := range req.Issues {
 		if id, ok := h.resolveIssueID(k); ok {

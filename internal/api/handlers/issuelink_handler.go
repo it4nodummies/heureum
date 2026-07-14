@@ -5,17 +5,21 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 )
 
 type IssueLinkHandler struct {
 	issueSvc *issue.Service
+	chk      *authz.Checker
 	baseURL  string
 }
 
-func NewIssueLinkHandler(issueSvc *issue.Service, baseURL string) *IssueLinkHandler {
-	return &IssueLinkHandler{issueSvc: issueSvc, baseURL: baseURL}
+func NewIssueLinkHandler(issueSvc *issue.Service, chk *authz.Checker, baseURL string) *IssueLinkHandler {
+	return &IssueLinkHandler{issueSvc: issueSvc, chk: chk, baseURL: baseURL}
 }
 
 type jiraLinkRequest struct {
@@ -105,6 +109,14 @@ func (h *IssueLinkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// outwardIss è la issue sorgente del link (diventerà SourceID in AddLink):
+	// il permesso EDIT_ISSUES si valuta sul suo progetto.
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, outwardIss.ProjectID, permission.EditIssues); err != nil {
+		authz.WriteForbidden(w)
+		return
+	}
+
 	internalType := issue.LinkType(v3.LinkTypeForName(req.Type.Name))
 	if _, err := h.issueSvc.AddLink(outwardIss.ID, inwardIss.ID, internalType); err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to create link"}, nil)
@@ -113,8 +125,26 @@ func (h *IssueLinkHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+// Delete: two-hop authorization (link -> source issue -> project), enforced
+// in-handler because DELETE /issueLink/{linkId} has no single path-resolvable
+// project (left unwrapped by the router decorator, per the Round 11 plan).
 func (h *IssueLinkHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.issueSvc.DeleteLink(r.PathValue("linkId")); err != nil {
+	link, err := h.issueSvc.GetLink(r.PathValue("linkId"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"link not found"}, nil)
+		return
+	}
+	srcIss, err := h.issueByID(link.SourceID)
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"link not found"}, nil)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, srcIss.ProjectID, permission.EditIssues); err != nil {
+		authz.WriteForbidden(w)
+		return
+	}
+	if err := h.issueSvc.DeleteLink(link.ID); err != nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"link not found"}, nil)
 		return
 	}

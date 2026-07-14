@@ -46,7 +46,21 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, cfg.BaseURL)
 	pcH := handlers.NewProjectCategoryHandler(db, cfg.BaseURL)
 	issueSvc := issue.NewService(db)
-	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, cfg.BaseURL)
+
+	// Authz checker: built early (before the handler constructors below) because
+	// several handlers (Task 5, Round 11 plan) need the *authz.Checker injected
+	// to enforce permissions in-handler for body-scoped/two-hop mutating routes
+	// (issue create, issueLink, attachment delete, agile board/sprint create,
+	// rank/backlog, custom-field option delete). Its dependent services below
+	// only need `db`, so they can be constructed ahead of their other uses.
+	boardSvc := board.NewService(db)
+	sprintSvc := sprint.NewService(db)
+	autoSvc := automation.NewService(db)
+	cfSvc := customfield.NewService(db)
+	userSvc := user.NewService(db)
+	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc)
+
+	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, cfg.BaseURL)
 	commentSvc := issue.NewCommentService(db)
 	commentH := handlers.NewCommentHandler(commentSvc, issueSvc, cfg.BaseURL)
 	worklogSvc := issue.NewWorklogService(db)
@@ -57,12 +71,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	remoteLinkH := handlers.NewRemoteLinkHandler(remoteLinkSvc, issueSvc, cfg.BaseURL)
 	historyH := handlers.NewHistoryHandler(db, issueSvc, cfg.BaseURL)
 	attachmentSvc := issue.NewAttachmentService(db)
-	attachmentH := handlers.NewAttachmentHandler(attachmentSvc, issueSvc)
-	issueLinkH := handlers.NewIssueLinkHandler(issueSvc, cfg.BaseURL)
+	attachmentH := handlers.NewAttachmentHandler(attachmentSvc, issueSvc, chk)
+	issueLinkH := handlers.NewIssueLinkHandler(issueSvc, chk, cfg.BaseURL)
 	wfH := handlers.NewWorkflowHandler(wfSvc, issueSvc, projectSvc, cfg.BaseURL)
-	sprintSvc := sprint.NewService(db)
 	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)
-	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc)
+	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc, chk)
 	searchSvc := search.NewService(db)
 	searchH := handlers.NewSearchHandler(searchSvc, issueH)
 	filterSvc := search.NewFilterService(db)
@@ -82,9 +95,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	commentSvc.SetNotifier(notifSvc)
 	sprintSvc.SetNotifier(notifSvc)
 
-	cfSvc := customfield.NewService(db)
-	cfH := handlers.NewCustomFieldHandler(cfSvc)
-	autoSvc := automation.NewService(db)
+	cfH := handlers.NewCustomFieldHandler(cfSvc, chk)
 	autoH := handlers.NewAutomationHandler(autoSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
@@ -99,13 +110,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	groupSvc := group.NewService(db)
 	groupH := handlers.NewGroupHandler(groupSvc, db, cfg.BaseURL)
 
-	boardSvc := board.NewService(db)
-	agileBoardH := handlers.NewAgileBoardHandler(boardSvc, projectSvc, issueSvc, sprintSvc, wfSvc, issueH, cfg.BaseURL)
-	agileSprintH := handlers.NewAgileSprintHandler(sprintSvc, boardSvc, issueSvc, issueH, cfg.BaseURL)
-	agileMiscH := handlers.NewAgileMiscHandler(issueSvc, sprintSvc, issueH, cfg.BaseURL)
-
-	userSvc := user.NewService(db)
-	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc)
+	agileBoardH := handlers.NewAgileBoardHandler(boardSvc, projectSvc, issueSvc, sprintSvc, wfSvc, issueH, chk, cfg.BaseURL)
+	agileSprintH := handlers.NewAgileSprintHandler(sprintSvc, boardSvc, issueSvc, issueH, chk, cfg.BaseURL)
+	agileMiscH := handlers.NewAgileMiscHandler(issueSvc, sprintSvc, issueH, chk, cfg.BaseURL)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -220,16 +227,17 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(attachmentH.Upload))))
 	mux.Handle("GET /rest/api/3/attachment/{id}", authMw(http.HandlerFunc(attachmentH.Get)))
 	// DELETE /attachment/{id}: two-hop resolver (attachment -> issue -> project);
-	// left for Task 5 in-handler enforcement per the plan.
+	// enforced in-handler (AttachmentHandler.Delete) per the Round 11 plan.
 	mux.Handle("DELETE /rest/api/3/attachment/{id}", authMw(http.HandlerFunc(attachmentH.Delete)))
 	mux.Handle("GET /rest/api/3/attachment/content/{id}", authMw(http.HandlerFunc(attachmentH.ServeFile)))
 	mux.Handle("GET /rest/api/3/attachment/meta", authMw(http.HandlerFunc(attachmentH.Meta)))
 
 	mux.Handle("GET /rest/api/3/issueLink/{linkId}", authMw(http.HandlerFunc(issueLinkH.Get)))
-	// POST /issueLink: project resolved from body (source issue) -> Task 5 in-handler.
+	// POST /issueLink: project resolved from body (source/outward issue) ->
+	// enforced in-handler (IssueLinkHandler.Create) per the Round 11 plan.
 	mux.Handle("POST /rest/api/3/issueLink", authMw(http.HandlerFunc(issueLinkH.Create)))
 	// DELETE /issueLink/{linkId}: two-hop resolver (link -> issue -> project);
-	// left for Task 5 in-handler enforcement per the plan.
+	// enforced in-handler (IssueLinkHandler.Delete) per the Round 11 plan.
 	mux.Handle("DELETE /rest/api/3/issueLink/{linkId}", authMw(http.HandlerFunc(issueLinkH.Delete)))
 
 	mux.Handle("GET /rest/api/3/project/{key}/workflow", authMw(http.HandlerFunc(wfH.GetWorkflow)))
@@ -265,12 +273,14 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/project/{key}/sprints/{id}/complete", authMw(chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Complete))))
 
 	mux.Handle("GET /rest/api/3/project/{key}/board", authMw(http.HandlerFunc(boardH.GetBoard)))
-	// POST /issues/rank: project resolved from body (issues involved) -> Task 5 in-handler.
+	// POST /issues/rank: project resolved from body (target issue_id) ->
+	// enforced in-handler (BoardHandler.RankIssue) per the Round 11 plan.
 	mux.Handle("POST /rest/api/3/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
 
 	// --- Agile API 1.0 (Round 5) ---
 	mux.Handle("GET /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.List)))
-	// POST /board: project resolved from body (projectKeyOrId) -> Task 5 in-handler.
+	// POST /board: project resolved from body (projectKeyOrId) ->
+	// enforced in-handler (AgileBoardHandler.Create) per the Round 11 plan.
 	mux.Handle("POST /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.Create)))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}", authMw(http.HandlerFunc(agileBoardH.Get)))
 	mux.Handle("DELETE /rest/agile/1.0/board/{boardId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Delete))))
@@ -280,7 +290,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/sprint", authMw(http.HandlerFunc(agileBoardH.BoardSprints)))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/epic", authMw(http.HandlerFunc(agileBoardH.BoardEpics)))
 
-	// POST /sprint: project resolved from body (originBoardId -> board.ProjectID) -> Task 5 in-handler.
+	// POST /sprint: project resolved from body (originBoardId -> board.ProjectID) ->
+	// enforced in-handler (AgileSprintHandler.Create) per the Round 11 plan.
 	mux.Handle("POST /rest/agile/1.0/sprint", authMw(http.HandlerFunc(agileSprintH.Create)))
 	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Get)))
 	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.Update))))
@@ -289,7 +300,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}/issue", authMw(http.HandlerFunc(agileSprintH.SprintIssues)))
 	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.MoveToSprint))))
 
-	// PUT /issue/rank, POST /backlog/issue: project resolved from body (issues involved) -> Task 5 in-handler.
+	// PUT /issue/rank, POST /backlog/issue: project resolved from body (first
+	// issue in the list) -> enforced in-handler (AgileMiscHandler) per the
+	// Round 11 plan; see the 1.0 cross-project simplification comment there.
 	mux.Handle("PUT /rest/agile/1.0/issue/rank", authMw(http.HandlerFunc(agileMiscH.Rank)))
 	mux.Handle("GET /rest/agile/1.0/issue/{issueIdOrKey}", authMw(http.HandlerFunc(agileMiscH.GetIssue)))
 	mux.Handle("POST /rest/agile/1.0/backlog/issue", authMw(http.HandlerFunc(agileMiscH.MoveToBacklog)))
@@ -357,6 +370,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/custom-fields/{fieldID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.DeleteField))))
 	mux.Handle("GET /rest/api/3/custom-fields/{fieldID}/options", authMw(http.HandlerFunc(cfH.ListOptions)))
 	mux.Handle("POST /rest/api/3/custom-fields/{fieldID}/options", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.AddOption))))
+	// DELETE /custom-fields/options/{optionID}: two-hop resolver (option -> field -> project);
+	// enforced in-handler (CustomFieldHandler.RemoveOption) per the Round 11 plan
+	// (customfield.Service.GetOption added for the option->field lookup).
 	mux.Handle("DELETE /rest/api/3/custom-fields/options/{optionID}", authMw(http.HandlerFunc(cfH.RemoveOption)))
 	mux.Handle("GET /rest/api/3/issue/{issueID}/custom-values", authMw(http.HandlerFunc(cfH.GetValues)))
 	mux.Handle("PUT /rest/api/3/issue/{issueID}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueUUID, http.HandlerFunc(cfH.SetValue))))

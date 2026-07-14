@@ -6,9 +6,12 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/board"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
@@ -23,11 +26,12 @@ type AgileBoardHandler struct {
 	sprintSvc   *sprint.Service
 	workflowSvc *workflow.Service
 	issueH      *IssueHandler
+	chk         *authz.Checker
 	baseURL     string
 }
 
-func NewAgileBoardHandler(boardSvc *board.Service, projectSvc *project.Service, issueSvc *issue.Service, sprintSvc *sprint.Service, workflowSvc *workflow.Service, issueH *IssueHandler, baseURL string) *AgileBoardHandler {
-	return &AgileBoardHandler{boardSvc: boardSvc, projectSvc: projectSvc, issueSvc: issueSvc, sprintSvc: sprintSvc, workflowSvc: workflowSvc, issueH: issueH, baseURL: baseURL}
+func NewAgileBoardHandler(boardSvc *board.Service, projectSvc *project.Service, issueSvc *issue.Service, sprintSvc *sprint.Service, workflowSvc *workflow.Service, issueH *IssueHandler, chk *authz.Checker, baseURL string) *AgileBoardHandler {
+	return &AgileBoardHandler{boardSvc: boardSvc, projectSvc: projectSvc, issueSvc: issueSvc, sprintSvc: sprintSvc, workflowSvc: workflowSvc, issueH: issueH, chk: chk, baseURL: baseURL}
 }
 
 // boardInputFor costruisce il BoardInput risolvendo il progetto della board.
@@ -94,6 +98,11 @@ func (h *AgileBoardHandler) Create(w http.ResponseWriter, r *http.Request) {
 	p, err := h.resolveProject(req.ProjectKeyOrID)
 	if err != nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, p.ID, permission.AdministerProjects); err != nil {
+		authz.WriteForbidden(w)
 		return
 	}
 	if req.Type == "" {

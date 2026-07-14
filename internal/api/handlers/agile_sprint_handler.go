@@ -6,9 +6,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/board"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 )
 
@@ -17,11 +20,12 @@ type AgileSprintHandler struct {
 	boardSvc  *board.Service
 	issueSvc  *issue.Service
 	issueH    *IssueHandler
+	chk       *authz.Checker
 	baseURL   string
 }
 
-func NewAgileSprintHandler(sprintSvc *sprint.Service, boardSvc *board.Service, issueSvc *issue.Service, issueH *IssueHandler, baseURL string) *AgileSprintHandler {
-	return &AgileSprintHandler{sprintSvc: sprintSvc, boardSvc: boardSvc, issueSvc: issueSvc, issueH: issueH, baseURL: baseURL}
+func NewAgileSprintHandler(sprintSvc *sprint.Service, boardSvc *board.Service, issueSvc *issue.Service, issueH *IssueHandler, chk *authz.Checker, baseURL string) *AgileSprintHandler {
+	return &AgileSprintHandler{sprintSvc: sprintSvc, boardSvc: boardSvc, issueSvc: issueSvc, issueH: issueH, chk: chk, baseURL: baseURL}
 }
 
 func (h *AgileSprintHandler) resolveSprint(r *http.Request) *sprint.Sprint {
@@ -68,6 +72,11 @@ func (h *AgileSprintHandler) Create(w http.ResponseWriter, r *http.Request) {
 	b, err := h.boardSvc.GetBySeqID(req.OriginBoardID)
 	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"originBoardId not found"}, nil)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, b.ProjectID, permission.ManageSprints); err != nil {
+		authz.WriteForbidden(w)
 		return
 	}
 	obid := req.OriginBoardID

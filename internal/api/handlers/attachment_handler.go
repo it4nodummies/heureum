@@ -5,17 +5,20 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 )
 
 type AttachmentHandler struct {
 	svc      *issue.AttachmentService
 	issueSvc *issue.Service
+	chk      *authz.Checker
 }
 
-func NewAttachmentHandler(svc *issue.AttachmentService, issueSvc *issue.Service) *AttachmentHandler {
-	return &AttachmentHandler{svc: svc, issueSvc: issueSvc}
+func NewAttachmentHandler(svc *issue.AttachmentService, issueSvc *issue.Service, chk *authz.Checker) *AttachmentHandler {
+	return &AttachmentHandler{svc: svc, issueSvc: issueSvc, chk: chk}
 }
 
 func (h *AttachmentHandler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -56,8 +59,26 @@ func (h *AttachmentHandler) Get(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(att)
 }
 
+// Delete: two-hop authorization (attachment -> issue -> project), enforced
+// in-handler because DELETE /attachment/{id} has no single path-resolvable
+// project (left unwrapped by the router decorator, per the Round 11 plan).
 func (h *AttachmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteAttachment(r.PathValue("id")); err != nil {
+	att, err := h.svc.GetAttachment(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, `{"error":"attachment not found"}`, http.StatusNotFound)
+		return
+	}
+	var iss issue.Issue
+	if err := h.issueSvc.DB().First(&iss, "id = ?", att.IssueID).Error; err != nil {
+		http.Error(w, `{"error":"attachment not found"}`, http.StatusNotFound)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if err := h.chk.RequireProject(uid, iss.ProjectID, permission.EditIssues); err != nil {
+		authz.WriteForbidden(w)
+		return
+	}
+	if err := h.svc.DeleteAttachment(att.ID); err != nil {
 		http.Error(w, `{"error":"attachment not found"}`, http.StatusNotFound)
 		return
 	}
