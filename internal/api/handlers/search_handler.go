@@ -66,17 +66,7 @@ func (h *SearchHandler) readParams(r *http.Request) (jqlBody, error) {
 
 // renderIssues costruisce gli IssueBean con proiezione dei fields richiesti.
 func (h *SearchHandler) renderIssues(issues []issue.Issue, fields []string) ([]map[string]any, error) {
-	f := v3.ParseFieldsFromList(fields)
-	out := make([]map[string]any, 0, len(issues))
-	for i := range issues {
-		bean := v3.JiraIssue(h.issueH.buildIssueInput(&issues[i]))
-		m, err := v3.ProjectIssue(bean, f)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, nil
+	return renderIssueList(h.issueH, issues, fields)
 }
 
 // SearchJQL gestisce GET/POST /rest/api/3/search/jql (token-paginato).
