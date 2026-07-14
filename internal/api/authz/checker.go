@@ -67,3 +67,10 @@ func (c *Checker) isGlobalAdmin(userID string) bool {
 	u, err := c.users.GetByID(userID)
 	return err == nil && u.IsAdmin
 }
+
+// IsGlobalAdmin espone isGlobalAdmin agli handler che devono applicare un
+// bypass admin-globale su controlli di ownership eseguiti in-handler (es.
+// filtri/dashboard: solo il proprietario, o un admin globale, può mutarli).
+func (c *Checker) IsGlobalAdmin(userID string) bool {
+	return c.isGlobalAdmin(userID)
+}

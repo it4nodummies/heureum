@@ -112,6 +112,17 @@ func (s *Service) GetWidgets(dashboardID string) ([]DashboardWidget, error) {
 	return widgets, nil
 }
 
+// GetWidget carica un singolo widget per id, usato dagli handler per risalire
+// al dashboard proprietario prima di autorizzare una mutazione (add/remove
+// widget) sul dashboard genitore.
+func (s *Service) GetWidget(widgetID string) (*DashboardWidget, error) {
+	var w DashboardWidget
+	if err := s.db.First(&w, "id = ?", widgetID).Error; err != nil {
+		return nil, errors.New("widget not found")
+	}
+	return &w, nil
+}
+
 func (s *Service) UpdateWidget(widgetID string, configJSON string, positionJSON string) (*DashboardWidget, error) {
 	var w DashboardWidget
 	if err := s.db.First(&w, "id = ?", widgetID).Error; err != nil {

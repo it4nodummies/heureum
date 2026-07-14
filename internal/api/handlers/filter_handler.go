@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/search"
@@ -15,10 +16,29 @@ type FilterHandler struct {
 	svc     *search.FilterService
 	db      *gorm.DB
 	baseURL string
+	chk     *authz.Checker
 }
 
-func NewFilterHandler(svc *search.FilterService, db *gorm.DB, baseURL string) *FilterHandler {
-	return &FilterHandler{svc: svc, db: db, baseURL: baseURL}
+func NewFilterHandler(svc *search.FilterService, db *gorm.DB, baseURL string, chk *authz.Checker) *FilterHandler {
+	return &FilterHandler{svc: svc, db: db, baseURL: baseURL, chk: chk}
+}
+
+// requireOwner carica il filtro id e verifica che l'utente autenticato ne sia
+// il proprietario (o admin globale). Scrive 404 se il filtro non esiste, 403
+// se esiste ma appartiene a un altro utente. Ritorna (filtro, true) solo se
+// l'operazione può procedere.
+func (h *FilterHandler) requireOwner(w http.ResponseWriter, r *http.Request, id string) (*search.SavedFilter, bool) {
+	f, err := h.svc.Get(id)
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"filter not found"}, nil)
+		return nil, false
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	if f.OwnerID != uid && !h.chk.IsGlobalAdmin(uid) {
+		authz.WriteForbidden(w)
+		return nil, false
+	}
+	return f, true
 }
 
 // ownerRef costruisce lo User v3 del proprietario (nil se non trovato).
@@ -81,7 +101,11 @@ func (h *FilterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
-	f, err := h.svc.Update(r.PathValue("id"), b.Name, b.Description, b.JQL, nil)
+	id := r.PathValue("id")
+	if _, ok := h.requireOwner(w, r, id); !ok {
+		return
+	}
+	f, err := h.svc.Update(id, b.Name, b.Description, b.JQL, nil)
 	if err != nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"filter not found"}, nil)
 		return
@@ -90,7 +114,11 @@ func (h *FilterHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FilterHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	if _, ok := h.requireOwner(w, r, id); !ok {
+		return
+	}
+	if err := h.svc.Delete(id); err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete filter"}, nil)
 		return
 	}
@@ -145,6 +173,9 @@ func (h *FilterHandler) RemoveFavourite(w http.ResponseWriter, r *http.Request) 
 
 func (h *FilterHandler) setFav(w http.ResponseWriter, r *http.Request, fav bool) {
 	id := r.PathValue("id")
+	if _, ok := h.requireOwner(w, r, id); !ok {
+		return
+	}
 	if err := h.svc.ToggleFavourite(id, fav); err != nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"filter not found"}, nil)
 		return
