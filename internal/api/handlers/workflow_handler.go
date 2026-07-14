@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/workflow"
@@ -13,10 +14,11 @@ type WorkflowHandler struct {
 	wfSvc      *workflow.Service
 	issueSvc   *issue.Service
 	projectSvc *project.Service
+	baseURL    string
 }
 
-func NewWorkflowHandler(wfSvc *workflow.Service, issueSvc *issue.Service, projectSvc *project.Service) *WorkflowHandler {
-	return &WorkflowHandler{wfSvc: wfSvc, issueSvc: issueSvc, projectSvc: projectSvc}
+func NewWorkflowHandler(wfSvc *workflow.Service, issueSvc *issue.Service, projectSvc *project.Service, baseURL string) *WorkflowHandler {
+	return &WorkflowHandler{wfSvc: wfSvc, issueSvc: issueSvc, projectSvc: projectSvc, baseURL: baseURL}
 }
 
 func (h *WorkflowHandler) GetWorkflow(w http.ResponseWriter, r *http.Request) {
@@ -122,39 +124,138 @@ func (h *WorkflowHandler) AddTransition(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(tr)
 }
 
-func (h *WorkflowHandler) TransitionIssue(w http.ResponseWriter, r *http.Request) {
-	iss, err := h.issueSvc.GetByKey(r.PathValue("issueKey"))
+// issueAndWorkflow trova la issue e il suo workflow.
+func (h *WorkflowHandler) issueAndWorkflow(issueKey string) (*issue.Issue, *workflow.Workflow, error) {
+	iss, err := h.issueSvc.GetByKey(issueKey)
 	if err != nil {
-		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
-		return
-	}
-	var req struct {
-		StatusID string `json:"status_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
-	}
-	fromStatusID := ""
-	if iss.StatusID != nil {
-		fromStatusID = *iss.StatusID
+		return nil, nil, err
 	}
 	wf, err := h.wfSvc.GetWorkflow(iss.ProjectID)
 	if err != nil {
-		http.Error(w, `{"error":"workflow not found"}`, http.StatusNotFound)
-		return
+		return nil, nil, err
 	}
-	if err := h.wfSvc.ValidateTransition(wf.ID, fromStatusID, req.StatusID); err != nil {
-		http.Error(w, `{"error":"invalid transition"}`, http.StatusBadRequest)
-		return
+	return iss, wf, nil
+}
+
+// statusByID cerca uno stato nel workflow.
+func statusByID(wf *workflow.Workflow, id string) *workflow.WorkflowStatus {
+	for i := range wf.Statuses {
+		if wf.Statuses[i].ID == id {
+			return &wf.Statuses[i]
+		}
 	}
-	updated, err := h.issueSvc.Update(iss.Key, nil, nil, nil, nil, &req.StatusID, nil)
+	return nil
+}
+
+// AvailableTransitions gestisce GET /rest/api/3/issue/{issueKey}/transitions.
+func (h *WorkflowHandler) AvailableTransitions(w http.ResponseWriter, r *http.Request) {
+	iss, wf, err := h.issueAndWorkflow(r.PathValue("issueKey"))
 	if err != nil {
-		http.Error(w, `{"error":"failed to update issue"}`, http.StatusInternalServerError)
+		v3.WriteError(w, http.StatusNotFound, []string{"issue or workflow not found"}, nil)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updated)
+	from := ""
+	if iss.StatusID != nil {
+		from = *iss.StatusID
+	}
+	trs, err := h.wfSvc.GetAvailableTransitions(wf.ID, from)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list transitions"}, nil)
+		return
+	}
+	out := make([]v3.IssueTransition, 0, len(trs))
+	for _, tr := range trs {
+		to := statusByID(wf, tr.ToStatusID)
+		if to == nil {
+			continue
+		}
+		name := tr.Name
+		if name == "" {
+			name = "→ " + to.Name
+		}
+		out = append(out, v3.MakeTransition(v3.TransitionInput{
+			ID: tr.ID, Name: name, ToID: to.ID, ToName: to.Name,
+			ToCategory: string(to.Category), Available: true, BaseURL: h.baseURL,
+		}))
+	}
+	v3.WriteJSON(w, http.StatusOK, v3.Transitions{Transitions: out})
+}
+
+// DoTransition gestisce POST /rest/api/3/issue/{issueKey}/transitions.
+// Accetta lo shape Jira {transition:{id}} e l'estensione {status_id} (usata dalla board).
+func (h *WorkflowHandler) DoTransition(w http.ResponseWriter, r *http.Request) {
+	iss, wf, err := h.issueAndWorkflow(r.PathValue("issueKey"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"issue or workflow not found"}, nil)
+		return
+	}
+	var req struct {
+		Transition struct {
+			ID string `json:"id"`
+		} `json:"transition"`
+		StatusID string `json:"status_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
+		return
+	}
+	from := ""
+	if iss.StatusID != nil {
+		from = *iss.StatusID
+	}
+
+	// Risolvi la transizione target.
+	var tr *workflow.WorkflowTransition
+	switch {
+	case req.Transition.ID != "":
+		t, err := h.wfSvc.GetTransitionByID(req.Transition.ID)
+		if err != nil || t.WorkflowID != wf.ID || t.FromStatusID != from {
+			v3.WriteError(w, http.StatusBadRequest, []string{"invalid transition"}, nil)
+			return
+		}
+		tr = t
+	case req.StatusID != "":
+		avail, _ := h.wfSvc.GetAvailableTransitions(wf.ID, from)
+		for i := range avail {
+			if avail[i].ToStatusID == req.StatusID {
+				tr = &avail[i]
+				break
+			}
+		}
+		if tr == nil {
+			v3.WriteError(w, http.StatusBadRequest, []string{"invalid transition"}, nil)
+			return
+		}
+	default:
+		v3.WriteError(w, http.StatusBadRequest, []string{"transition.id or status_id is required"}, nil)
+		return
+	}
+
+	// Validator: require_assignee.
+	if tr.RequireAssignee && (iss.AssigneeID == nil || *iss.AssigneeID == "") {
+		v3.WriteError(w, http.StatusBadRequest, []string{"assignee is required for this transition"}, nil)
+		return
+	}
+
+	// Applica il cambio di stato.
+	if _, err := h.issueSvc.Update(iss.Key, nil, nil, nil, nil, &tr.ToStatusID, nil); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to update issue"}, nil)
+		return
+	}
+
+	// Post-function: set_resolution in base alla categoria dello stato destinazione.
+	if tr.SetResolution {
+		toStatus := statusByID(wf, tr.ToStatusID)
+		if toStatus != nil && toStatus.Category == workflow.CategoryDone {
+			if resID, ok := h.issueSvc.ResolutionIDByName("Done"); ok {
+				_ = h.issueSvc.SetResolution(iss.Key, &resID)
+			}
+		} else {
+			_ = h.issueSvc.SetResolution(iss.Key, nil)
+		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *WorkflowHandler) ListStatuses(w http.ResponseWriter, r *http.Request) {

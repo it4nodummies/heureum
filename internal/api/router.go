@@ -51,7 +51,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	attachmentSvc := issue.NewAttachmentService(db)
 	attachmentH := handlers.NewAttachmentHandler(attachmentSvc, issueSvc)
 	issueLinkH := handlers.NewIssueLinkHandler(issueSvc, cfg.BaseURL)
-	wfH := handlers.NewWorkflowHandler(wfSvc, issueSvc, projectSvc)
+	wfH := handlers.NewWorkflowHandler(wfSvc, issueSvc, projectSvc, cfg.BaseURL)
 	sprintSvc := sprint.NewService(db)
 	sprintH := handlers.NewSprintHandler(sprintSvc, projectSvc)
 	boardH := handlers.NewBoardHandler(issueSvc, projectSvc, wfSvc)
@@ -206,7 +206,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("PATCH /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.UpdateStatus)))
 	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.DeleteStatus)))
 	mux.Handle("POST /rest/api/3/project/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.AddTransition)))
-	mux.Handle("POST /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.TransitionIssue)))
+	mux.Handle("GET /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.AvailableTransitions)))
+	mux.Handle("POST /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.DoTransition)))
 	// /status (collezione) è servito da ReferenceHandler per rispettare lo
 	// schema v3 StatusDetails (statusCategory come oggetto {self,id,key,colorName,name});
 	// il vecchio wfH.ListStatuses restituiva la forma di dominio grezza (workflow_id,category,...).

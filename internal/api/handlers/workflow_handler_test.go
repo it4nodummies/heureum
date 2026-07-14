@@ -31,7 +31,7 @@ func TestGetWorkflowHandler(t *testing.T) {
 	p, _ := projectSvc.Create("Test", "TEST", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
 	wfSvc.CreateDefaultWorkflow(p.ID)
-	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc, "")
 
 	req := httptest.NewRequest("GET", "/rest/api/3/project/TEST/workflow", nil)
 	req.SetPathValue("key", "TEST")
@@ -54,7 +54,7 @@ func TestAddStatusHandler(t *testing.T) {
 	p, _ := projectSvc.Create("Proj2", "PROJ2", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
 	wfSvc.CreateWorkflow(p.ID, "WF")
-	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc, "")
 
 	body := map[string]string{"name": "Review", "category": "inprogress", "color": "#FF0000"}
 	b, _ := json.Marshal(body)
@@ -76,7 +76,7 @@ func TestUpdateStatusHandler(t *testing.T) {
 	wfSvc := workflow.NewService(db)
 	wf, _ := wfSvc.CreateWorkflow(p.ID, "WF")
 	s, _ := wfSvc.AddStatus(wf.ID, "Old", workflow.CategoryTodo, "#111")
-	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc, "")
 
 	body := map[string]string{"name": "New", "category": "inprogress", "color": "#222"}
 	b, _ := json.Marshal(body)
@@ -104,7 +104,7 @@ func TestDeleteStatusHandler(t *testing.T) {
 	wfSvc := workflow.NewService(db)
 	wf, _ := wfSvc.CreateWorkflow(p.ID, "WF")
 	s, _ := wfSvc.AddStatus(wf.ID, "Extra", workflow.CategoryTodo, "#111")
-	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc, "")
 
 	req := httptest.NewRequest("DELETE", "/rest/api/3/project/PROJ/workflow/statuses/"+s.ID, nil)
 	req.SetPathValue("key", "PROJ4")
@@ -125,7 +125,7 @@ func TestAddTransitionHandler(t *testing.T) {
 	wf, _ := wfSvc.CreateWorkflow(p.ID, "WF")
 	s1, _ := wfSvc.AddStatus(wf.ID, "Todo", workflow.CategoryTodo, "#AAA")
 	s2, _ := wfSvc.AddStatus(wf.ID, "Done", workflow.CategoryDone, "#BBB")
-	h := NewWorkflowHandler(wfSvc, nil, projectSvc)
+	h := NewWorkflowHandler(wfSvc, nil, projectSvc, "")
 
 	body := map[string]string{"from_status_id": s1.ID, "to_status_id": s2.ID}
 	b, _ := json.Marshal(body)
@@ -152,7 +152,7 @@ func TestTransitionIssueHandler(t *testing.T) {
 	iss, _ := issueSvc.Create("PROJ6", p.ID, "Test", "desc", issue.PriorityMedium, nil, nil)
 	iss, _ = issueSvc.Update(iss.Key, nil, nil, nil, nil, &wfForIssue.Statuses[0].ID, nil)
 
-	h := NewWorkflowHandler(wfSvc, issueSvc, projectSvc)
+	h := NewWorkflowHandler(wfSvc, issueSvc, projectSvc, "")
 
 	progStatus := wfForIssue.Statuses[1]
 
@@ -162,10 +162,10 @@ func TestTransitionIssueHandler(t *testing.T) {
 	req.SetPathValue("issueKey", iss.Key)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	h.TransitionIssue(w, req)
+	h.DoTransition(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -180,7 +180,7 @@ func TestTransitionIssueHandlerInvalid(t *testing.T) {
 	issueSvc := issue.NewService(db)
 	iss, _ := issueSvc.Create("PROJ7", p.ID, "Test", "desc", issue.PriorityMedium, nil, nil)
 
-	h := NewWorkflowHandler(wfSvc, issueSvc, projectSvc)
+	h := NewWorkflowHandler(wfSvc, issueSvc, projectSvc, "")
 
 	doneStatus := wfForIssue.Statuses[2]
 
@@ -190,7 +190,7 @@ func TestTransitionIssueHandlerInvalid(t *testing.T) {
 	req.SetPathValue("issueKey", iss.Key)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	h.TransitionIssue(w, req)
+	h.DoTransition(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
