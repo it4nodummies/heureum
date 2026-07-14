@@ -645,3 +645,95 @@ export const dashboards = {
   create: (name: string) =>
     apiFetch<Dashboard>("/rest/api/3/dashboards", { method: "POST", body: JSON.stringify({ name }) }),
 };
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string;
+  link: string;
+  is_read: boolean;
+  created_at: number;
+}
+
+export interface NotificationSetting {
+  user_id: string;
+  project_id: string;
+  event_type: string;
+  via_email: boolean;
+  via_app: boolean;
+}
+
+export const notifications = {
+  list: () => apiFetch<AppNotification[]>("/rest/api/3/notifications"),
+  unreadCount: () => apiFetch<{ count: number }>("/rest/api/3/notifications/unread-count"),
+  markRead: (id: string) => apiFetch<void>(`/rest/api/3/notifications/${id}/read`, { method: "PATCH" }),
+  markAllRead: () => apiFetch<void>("/rest/api/3/notifications/read-all", { method: "PATCH" }),
+  settings: () => apiFetch<NotificationSetting[]>("/rest/api/3/notifications/settings"),
+  // Handler decodes {project_id, event_type(required), via_email, via_app}; user_id
+  // comes from the auth context, not the body.
+  updateSettings: (s: { project_id?: string; event_type: string; via_email: boolean; via_app: boolean }) =>
+    apiFetch<{ status: string }>("/rest/api/3/notifications/settings", { method: "PATCH", body: JSON.stringify(s) }),
+};
+
+// ── Profile ──────────────────────────────────────────────────────────────────
+
+// Shape of v3.User (internal/api/v3/user.go), returned by /myself, /user/search, etc.
+export interface JiraUser {
+  self: string;
+  accountId: string;
+  accountType: string;
+  emailAddress?: string;
+  displayName: string;
+  active: boolean;
+  timeZone?: string;
+  locale?: string;
+  avatarUrls: Record<string, string>;
+}
+
+export const profile = {
+  me: () => apiFetch<JiraUser>("/rest/api/3/myself"),
+  update: (patch: { displayName?: string; timeZone?: string; locale?: string; avatarUrl?: string }) =>
+    apiFetch<JiraUser>("/rest/api/3/myself", { method: "PUT", body: JSON.stringify(patch) }),
+  searchUsers: (query: string) => apiFetch<JiraUser[]>(`/rest/api/3/user/search?query=${encodeURIComponent(query)}`),
+};
+
+// ── Permissions ──────────────────────────────────────────────────────────────
+
+export interface UserPermission {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  type: string;
+  // Handler tags this `omitempty`: absent (not just false) when the caller
+  // lacks the permission.
+  havePermission?: boolean;
+}
+
+export const permissions = {
+  mine: (projectKey?: string) =>
+    apiFetch<{ permissions: Record<string, UserPermission> }>(
+      `/rest/api/3/mypermissions${projectKey ? `?projectKey=${encodeURIComponent(projectKey)}` : ""}`
+    ),
+};
+
+// ── Groups ───────────────────────────────────────────────────────────────────
+
+export interface GroupRef {
+  name: string;
+  groupId: string;
+  self: string;
+}
+
+export const groups = {
+  picker: (query: string) =>
+    apiFetch<{ header: string; total: number; groups: { name: string; groupId: string }[] }>(
+      `/rest/api/3/groups/picker?query=${encodeURIComponent(query)}`
+    ),
+  create: (name: string) =>
+    apiFetch<GroupRef>("/rest/api/3/group", { method: "POST", body: JSON.stringify({ name }) }),
+};
