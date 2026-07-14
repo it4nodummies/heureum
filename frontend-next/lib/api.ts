@@ -539,3 +539,83 @@ export const workflow = {
   deleteTransition: (projectKey: string, id: string) =>
     apiFetch<void>(`/rest/api/3/project/${projectKey}/workflow/transitions/${id}`, { method: "DELETE" }),
 };
+
+// ── Reports ──────────────────────────────────────────────────────────────────
+
+export interface BurndownData { labels: string[]; ideal: number[]; actual: number[] }
+
+export interface SprintVelocity {
+  sprint_id: string;
+  sprint_name: string;
+  completed: number;
+  total_planned: number;
+}
+export interface VelocityData { sprints: SprintVelocity[] }
+
+export interface CFDData { categories: string[]; dates: string[]; data: Record<string, number[]> }
+
+export interface PieSlice { label: string; count: number }
+
+export interface CreatedVsResolvedData { dates: string[]; created: number[]; resolved: number[] }
+
+// Sottoinsieme di sprint.Sprint (internal/domain/sprint/model.go) usato dal Summary.
+export interface ReportActiveSprint {
+  id: string;
+  name: string;
+  state: "future" | "active" | "closed";
+  goal?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface ProjectSummary {
+  issue_count_by_status: Record<string, number>;
+  created_last_7_days: number;
+  updated_last_7_days: number;
+  completed_last_7_days: number;
+  active_sprint?: ReportActiveSprint | null;
+}
+
+export const reports = {
+  burndown: (key: string, sprintId: string) =>
+    apiFetch<BurndownData>(`/rest/api/3/project/${key}/reports/burndown?sprintId=${sprintId}`),
+  velocity: (key: string) => apiFetch<VelocityData>(`/rest/api/3/project/${key}/reports/velocity`),
+  cfd: (key: string) => apiFetch<CFDData>(`/rest/api/3/project/${key}/reports/cfd`),
+  pie: (key: string, field: string) => apiFetch<PieSlice[]>(`/rest/api/3/project/${key}/reports/pie?field=${field}`),
+  createdVsResolved: (key: string, days = 30) =>
+    apiFetch<CreatedVsResolvedData>(`/rest/api/3/project/${key}/reports/created-vs-resolved?days=${days}`),
+  summary: (key: string) => apiFetch<ProjectSummary>(`/rest/api/3/project/${key}/summary`),
+};
+
+// ── Dashboards ───────────────────────────────────────────────────────────────
+//
+// Il backend espone due famiglie di rotte parallele per le dashboard
+// (`/rest/api/3/dashboards` custom e `/rest/api/3/dashboard` v3-shaped, vedi
+// internal/api/router.go); usiamo quella plurale perché List/Get/Create
+// rispondono con lo shape "piatto" (array/oggetto nudo, non wrappato in
+// {values,total} come /dashboard/search).
+
+export interface Dashboard {
+  id: string;
+  name: string;
+  owner_id: string;
+  is_public: boolean;
+  layout_json: string;
+  created_at: string;
+}
+
+export interface DashboardWidget {
+  id: string;
+  dashboard_id: string;
+  widget_type: string;
+  config_json: string;
+  position_json: string;
+  data?: unknown;
+}
+
+export const dashboards = {
+  list: () => apiFetch<Dashboard[]>("/rest/api/3/dashboards"),
+  get: (id: string) => apiFetch<Dashboard & { widgets: DashboardWidget[] }>(`/rest/api/3/dashboards/${id}`),
+  create: (name: string) =>
+    apiFetch<Dashboard>("/rest/api/3/dashboards", { method: "POST", body: JSON.stringify({ name }) }),
+};
