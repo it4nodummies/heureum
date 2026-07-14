@@ -158,6 +158,24 @@ func main() {
 		}
 	}
 
+	// Resolution demo "Done" (idempotente): senza questa riga il post-function
+	// set_resolution sulla transizione "Done" del workflow di default non-oppa
+	// silenziosamente, perché ResolutionIDByName("Done") non trova nulla.
+	var doneResCount int64
+	if err := s.DB.Table("resolutions").Where("LOWER(name) = LOWER(?)", "Done").Count(&doneResCount).Error; err != nil {
+		log.Fatalf("check demo resolution: %v", err)
+	}
+	if doneResCount == 0 {
+		if err := s.DB.Table("resolutions").Create(map[string]any{
+			"id":          uuid.NewString(),
+			"name":        "Done",
+			"description": "Work is complete",
+		}).Error; err != nil {
+			log.Fatalf("seed demo resolution: %v", err)
+		}
+		fmt.Println("created demo resolution")
+	}
+
 	var demo1 issue.Issue
 	switch err := s.DB.Where("key = ?", "DEMO-1").First(&demo1).Error; {
 	case err == nil:

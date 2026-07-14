@@ -2,9 +2,9 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **100**
-- Nel contratto ma mancanti: **621**
-- Implementati ma fuori contratto (estensioni): **74**
+- Nel contratto e implementati (path match): **103**
+- Nel contratto ma mancanti: **618**
+- Implementati ma fuori contratto (estensioni): **78**
 
 ## Mancanti (dal contratto)
 
@@ -199,7 +199,6 @@
 - `GET /rest/api/3/issue/{issueIdOrKey}/properties` — Get issue property keys
 - `GET /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Get issue property
 - `GET /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}` — Get remote issue link by ID
-- `GET /rest/api/3/issue/{issueIdOrKey}/transitions` — Get transitions
 - `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` — Get worklog
 - `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties` — Get worklog property keys
 - `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}/properties/{propertyKey}` — Get worklog property
@@ -295,8 +294,6 @@
 - `GET /rest/api/3/securitylevel/{id}` — Get issue security level
 - `GET /rest/api/3/serverInfo` — Get Jira instance info
 - `GET /rest/api/3/settings/columns` — Get issue navigator default columns
-- `GET /rest/api/3/statuscategory` — Get all status categories
-- `GET /rest/api/3/statuscategory/{idOrKey}` — Get status category
 - `GET /rest/api/3/statuses` — Bulk get statuses
 - `GET /rest/api/3/statuses/byNames` — Bulk get statuses by name
 - `GET /rest/api/3/statuses/search` — Search statuses paginated
@@ -641,6 +638,7 @@
 - `DELETE /rest/api/3/project/{}/members/{}`
 - `DELETE /rest/api/3/project/{}/star`
 - `DELETE /rest/api/3/project/{}/workflow/statuses/{}`
+- `DELETE /rest/api/3/project/{}/workflow/transitions/{}`
 - `GET /healthz`
 - `GET /rest/api/3/auth/oauth/{}/callback`
 - `GET /rest/api/3/auth/oauth/{}/redirect`
@@ -673,6 +671,7 @@
 - `GET /rest/api/3/project/{}/summary`
 - `GET /rest/api/3/project/{}/timeline`
 - `GET /rest/api/3/project/{}/workflow`
+- `GET /rest/api/3/project/{}/workflow/transitions`
 - `GET /rest/api/3/users/me`
 - `GET /static/default-avatar.svg`
 - `GET /static/default-project-avatar.svg`
@@ -684,6 +683,7 @@
 - `PATCH /rest/api/3/notifications/{}/read`
 - `PATCH /rest/api/3/project/{}/sprints/{}`
 - `PATCH /rest/api/3/project/{}/workflow/statuses/{}`
+- `PATCH /rest/api/3/project/{}/workflow/transitions/{}`
 - `POST /rest/api/3/auth/api-tokens`
 - `POST /rest/api/3/auth/login`
 - `POST /rest/api/3/auth/register`
@@ -706,3 +706,4 @@
 - `POST /rest/api/3/webhooks/git/{}`
 - `PUT /rest/api/3/issue/{}/custom-values/{}`
 - `PUT /rest/api/3/project/{}/star`
+- `PUT /rest/api/3/project/{}/workflow/statuses/order`
