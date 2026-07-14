@@ -294,8 +294,9 @@ func TestProjectTypeByKey_ConformsToContract(t *testing.T) {
 }
 
 func TestProjectCategories_ConformsToContract(t *testing.T) {
-	srv, authSvc := newTestServer(t)
+	srv, authSvc, db := newTestServerDB(t)
 	jwt := registerAndLogin(t, authSvc)
+	promoteAdmin(t, db, "alice@example.com")
 	// create one
 	creq, _ := http.NewRequest("POST", srv.URL+"/rest/api/3/projectCategory", strings.NewReader(`{"name":"Ops","description":"operations"}`))
 	creq.Header.Set("Authorization", "Bearer "+jwt)

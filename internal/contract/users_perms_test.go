@@ -12,8 +12,9 @@ import (
 // valida ogni risposta contro lo schema Jira v3 (GroupRef, PageBeanUserDetails,
 // FoundGroups).
 func TestGroups_CRUDConformant(t *testing.T) {
-	srv, authSvc := newTestServer(t)
+	srv, authSvc, db := newTestServerDB(t)
 	tok := registerAndLogin(t, authSvc)
+	promoteAdmin(t, db, "alice@example.com")
 	v := MustLoad(t, specPath)
 
 	// create

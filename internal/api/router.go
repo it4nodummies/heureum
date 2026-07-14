@@ -169,7 +169,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 		projectH.ProjectTypeByKey(w, r)
 	})))
 	mux.Handle("GET /rest/api/3/projectCategory", authMw(http.HandlerFunc(pcH.List)))
-	mux.Handle("POST /rest/api/3/projectCategory", authMw(http.HandlerFunc(pcH.Create)))
+	mux.Handle("POST /rest/api/3/projectCategory", authMw(chk.EnforceGlobalAdmin(http.HandlerFunc(pcH.Create))))
 	mux.Handle("GET /rest/api/3/project/{key}", authMw(http.HandlerFunc(projectH.Get)))
 	mux.Handle("PUT /rest/api/3/project/{key}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Update))))
 	mux.Handle("DELETE /rest/api/3/project/{key}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Delete))))
@@ -390,11 +390,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	// --- Gruppi (Round 8) ---
 	mux.Handle("GET /rest/api/3/group", authMw(http.HandlerFunc(groupH.Get)))
-	mux.Handle("POST /rest/api/3/group", authMw(http.HandlerFunc(groupH.Create)))
-	mux.Handle("DELETE /rest/api/3/group", authMw(http.HandlerFunc(groupH.Delete)))
+	mux.Handle("POST /rest/api/3/group", authMw(chk.EnforceGlobalAdmin(http.HandlerFunc(groupH.Create))))
+	mux.Handle("DELETE /rest/api/3/group", authMw(chk.EnforceGlobalAdmin(http.HandlerFunc(groupH.Delete))))
 	mux.Handle("GET /rest/api/3/group/member", authMw(http.HandlerFunc(groupH.Members)))
-	mux.Handle("POST /rest/api/3/group/user", authMw(http.HandlerFunc(groupH.AddUser)))
-	mux.Handle("DELETE /rest/api/3/group/user", authMw(http.HandlerFunc(groupH.RemoveUser)))
+	mux.Handle("POST /rest/api/3/group/user", authMw(chk.EnforceGlobalAdmin(http.HandlerFunc(groupH.AddUser))))
+	mux.Handle("DELETE /rest/api/3/group/user", authMw(chk.EnforceGlobalAdmin(http.HandlerFunc(groupH.RemoveUser))))
 	mux.Handle("GET /rest/api/3/groups/picker", authMw(http.HandlerFunc(groupH.Picker)))
 
 	return corsMiddleware(mux)
