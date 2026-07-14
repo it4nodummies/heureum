@@ -42,6 +42,14 @@ func (h *AgileBoardHandler) boardInputFor(b *board.Board) v3.BoardInput {
 	return in
 }
 
+// resolveProject risolve un progetto da key o da id numerico (seq_id).
+func (h *AgileBoardHandler) resolveProject(keyOrID string) (*project.Project, error) {
+	if n, err := strconv.ParseInt(keyOrID, 10, 64); err == nil {
+		return h.projectSvc.GetBySeqID(n)
+	}
+	return h.projectSvc.GetByKey(keyOrID)
+}
+
 // resolveBoard trova la board dal path param boardId (intero seq_id).
 func (h *AgileBoardHandler) resolveBoard(r *http.Request) *board.Board {
 	n, err := strconv.ParseInt(r.PathValue("boardId"), 10, 64)
@@ -83,7 +91,7 @@ func (h *AgileBoardHandler) Create(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{"name and projectKeyOrId are required"}, nil)
 		return
 	}
-	p, err := h.projectSvc.GetByKey(req.ProjectKeyOrID)
+	p, err := h.resolveProject(req.ProjectKeyOrID)
 	if err != nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
 		return
