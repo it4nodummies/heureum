@@ -12,6 +12,7 @@ import (
 
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
+	"github.com/open-jira/open-jira/internal/domain/board"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/search"
@@ -130,8 +131,27 @@ func main() {
 	if err := s.DB.Model(&issue.Issue{}).Where("project_id = ? AND (type_id IS NULL OR type_id = '')", demo.ID).Update("type_id", taskType.ID).Error; err != nil {
 		log.Fatalf("assign issue type: %v", err)
 	}
-	var todo workflow.WorkflowStatus
-	if err := s.DB.Where("name = ?", "TO DO").First(&todo).Error; err == nil {
+	// Workflow di default per DEMO (idempotente). project.Service.Create non
+	// crea un workflow (lo fa solo l'handler HTTP di creazione progetto), quindi
+	// il seed deve garantirlo esplicitamente: senza workflow/status la board
+	// agile non ha colonne e le issue restano senza status.
+	wfSvc := workflow.NewService(s.DB)
+	wf, err := wfSvc.GetWorkflow(demo.ID)
+	if err != nil {
+		wf, err = wfSvc.CreateDefaultWorkflow(demo.ID)
+		if err != nil {
+			log.Fatalf("seed default workflow: %v", err)
+		}
+		fmt.Println("created default workflow for DEMO")
+	}
+	var todo *workflow.WorkflowStatus
+	for i := range wf.Statuses {
+		if wf.Statuses[i].Name == "TO DO" {
+			todo = &wf.Statuses[i]
+			break
+		}
+	}
+	if todo != nil {
 		if uerr := s.DB.Model(&issue.Issue{}).Where("project_id = ? AND (status_id IS NULL OR status_id = '')", demo.ID).Update("status_id", todo.ID).Error; uerr != nil {
 			log.Fatalf("assign status: %v", uerr)
 		}
@@ -174,6 +194,19 @@ func main() {
 		fmt.Println("created demo filter")
 	} else if err != nil {
 		log.Fatalf("check demo filter: %v", err)
+	}
+
+	// Board demo (idempotente)
+	boardSvc := board.NewService(s.DB)
+	var existingB board.Board
+	err = s.DB.Where("project_id = ? AND name = ?", demo.ID, "DEMO board").First(&existingB).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if _, err := boardSvc.Create(demo.ID, "DEMO board", "scrum", nil); err != nil {
+			log.Fatalf("seed board: %v", err)
+		}
+		fmt.Println("created demo board")
+	} else if err != nil {
+		log.Fatalf("check demo board: %v", err)
 	}
 
 	fmt.Println("seed complete")
