@@ -5,12 +5,12 @@ async function login(page: Page) {
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/jira\/projects/);
+  await page.waitForURL(/\/app\/projects/);
 }
 
 test("JQL search on filters page returns seeded issues", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/filters");
+  await page.goto("/app/filters");
   await page.getByLabel("JQL").fill("project = DEMO");
   await page.getByRole("button", { name: "Search" }).click();
 
@@ -20,7 +20,7 @@ test("JQL search on filters page returns seeded issues", async ({ page }) => {
 
 test("column toggle hides a column", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/filters");
+  await page.goto("/app/filters");
   await page.getByLabel("JQL").fill("project = DEMO");
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByRole("columnheader", { name: "Priority" })).toBeVisible();
@@ -33,7 +33,7 @@ test("column toggle hides a column", async ({ page }) => {
 
 test("save filter then run it from the sidebar", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/filters");
+  await page.goto("/app/filters");
   await page.getByLabel("JQL").fill("project = DEMO ORDER BY created DESC");
 
   page.once("dialog", (d) => d.accept("E2E filter")); // prompt del nome

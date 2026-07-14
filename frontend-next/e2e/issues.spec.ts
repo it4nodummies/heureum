@@ -5,12 +5,12 @@ async function login(page: Page) {
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/jira\/projects/);
+  await page.waitForURL(/\/app\/projects/);
 }
 
 test("apre la vista di una issue seedata e mostra i campi", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/browse/DEMO-1");
+  await page.goto("/app/browse/DEMO-1");
 
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByText("Status", { exact: false })).toBeVisible();
@@ -19,7 +19,7 @@ test("apre la vista di una issue seedata e mostra i campi", async ({ page }) => 
 
 test("modifica inline del summary di una issue", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/browse/DEMO-2");
+  await page.goto("/app/browse/DEMO-2");
 
   const h1 = page.getByRole("heading", { level: 1 });
   await expect(h1).toBeVisible();

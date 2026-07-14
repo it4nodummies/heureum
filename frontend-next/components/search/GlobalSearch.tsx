@@ -15,7 +15,7 @@ export function GlobalSearch() {
     if (!trimmed) return;
     const isJql = /[=~<>]|\b(AND|OR|ORDER BY)\b/i.test(trimmed);
     const jql = isJql ? trimmed : `text ~ "${trimmed.replace(/"/g, "")}"`;
-    router.push(`/jira/filters?jql=${encodeURIComponent(jql)}`);
+    router.push(`/app/filters?jql=${encodeURIComponent(jql)}`);
   };
 
   return (

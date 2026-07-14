@@ -40,7 +40,7 @@ export default function DashboardsPage() {
       <ul className="space-y-1" data-testid="dashboards-list">
         {items.map((d) => (
           <li key={d.id}>
-            <a href={`/jira/dashboards/${d.id}`} className="text-[#0052cc] hover:underline">
+            <a href={`/app/dashboards/${d.id}`} className="text-[#0052cc] hover:underline">
               {d.name}
             </a>
           </li>

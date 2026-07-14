@@ -31,7 +31,7 @@ export default function LoginPage() {
         const user = await auth.me();
         saveUser(user);
       }
-      router.push("/jira/projects");
+      router.push("/app/projects");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {

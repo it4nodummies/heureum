@@ -60,7 +60,7 @@ function ProjectActionsMenu({ project, onArchive }: { project: Project; onArchiv
       {open && (
         <div className="absolute right-0 top-8 w-44 bg-white rounded-xl shadow-lg shadow-slate-200/80 border border-slate-100 py-1.5 z-30">
           <button
-            onClick={() => { setOpen(false); router.push(`/jira/projects/${project.key}/settings`); }}
+            onClick={() => { setOpen(false); router.push(`/app/projects/${project.key}/settings`); }}
             className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] hover:bg-slate-50 transition-colors"
           >
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400">

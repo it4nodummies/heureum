@@ -5,7 +5,7 @@ async function login(page: Page) {
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/jira\/projects/);
+  await page.waitForURL(/\/app\/projects/);
 }
 
 test("crea un nuovo progetto e lo vede nella lista", async ({ page }) => {
@@ -37,7 +37,7 @@ test("apre le impostazioni del progetto DEMO dal menu azioni e rinomina", async 
   await demoRow.getByRole("button", { name: /project actions/i }).click();
   await demoRow.getByRole("button", { name: /project settings/i }).click();
 
-  await page.waitForURL(/\/jira\/projects\/DEMO\/settings/);
+  await page.waitForURL(/\/app\/projects\/DEMO\/settings/);
   const nameInput = page.locator("#proj-name");
   await expect(nameInput).toHaveValue(/Demo Project/);
   await nameInput.fill("Demo Project Renamed");

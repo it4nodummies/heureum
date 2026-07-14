@@ -44,7 +44,7 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     <div className="mx-auto max-w-3xl p-4">
       <div className="mb-3 flex items-center gap-3">
         <h1 className="text-xl font-semibold text-[#1a1f36]">Backlog</h1>
-        <a href={`/jira/boards/${id}`} className="text-sm text-[#0052cc] hover:underline">
+        <a href={`/app/boards/${id}`} className="text-sm text-[#0052cc] hover:underline">
           Board
         </a>
       </div>

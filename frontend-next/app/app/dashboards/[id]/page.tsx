@@ -11,7 +11,7 @@ function Gadget({ widget }: { widget: DashboardWidget }) {
       <ul className="space-y-1 text-sm">
         {issues.map((i) => (
           <li key={i.id} className="flex justify-between gap-2">
-            <a href={`/jira/browse/${i.key}`} className="truncate text-[#0052cc] hover:underline">
+            <a href={`/app/browse/${i.key}`} className="truncate text-[#0052cc] hover:underline">
               {i.key} {i.title}
             </a>
             <span className="shrink-0 text-xs text-slate-400">{i.status_name}</span>
@@ -29,7 +29,7 @@ function Gadget({ widget }: { widget: DashboardWidget }) {
         {activity.map((a) => (
           <li key={a.id}>
             <span className="font-medium">{a.actor_name}</span> changed {a.field_name} on{" "}
-            <a href={`/jira/browse/${a.issue_key}`} className="text-[#0052cc] hover:underline">
+            <a href={`/app/browse/${a.issue_key}`} className="text-[#0052cc] hover:underline">
               {a.issue_key}
             </a>
             : {a.old_value} → {a.new_value}

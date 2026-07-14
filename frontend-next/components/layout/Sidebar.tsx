@@ -32,7 +32,7 @@ function JiraLogo() {
 const NAV_ITEMS: NavItem[] = [
   {
     label: "For you",
-    href: "/jira",
+    href: "/app",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path
@@ -65,7 +65,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Apps",
-    href: "/jira/apps",
+    href: "/app/apps",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
@@ -74,7 +74,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Plans",
-    href: "/jira/plans",
+    href: "/app/plans",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path
@@ -87,7 +87,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Projects",
-    href: "/jira/projects",
+    href: "/app/projects",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
@@ -96,7 +96,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Filters",
-    href: "/jira/filters",
+    href: "/app/filters",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path
@@ -109,7 +109,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Dashboards",
-    href: "/jira/dashboards",
+    href: "/app/dashboards",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
@@ -121,7 +121,7 @@ const NAV_ITEMS: NavItem[] = [
 const BOTTOM_ITEMS = [
   {
     label: "Goals",
-    href: "/jira/goals",
+    href: "/app/goals",
     external: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -135,7 +135,7 @@ const BOTTOM_ITEMS = [
   },
   {
     label: "Teams",
-    href: "/jira/teams",
+    href: "/app/teams",
     external: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">

@@ -44,7 +44,7 @@ export function ProjectSettings({ projectKey }: Props) {
     mutationFn: () => projectsApi.archive(projectKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      router.push("/jira/projects");
+      router.push("/app/projects");
     },
   });
 
@@ -193,7 +193,7 @@ export function ProjectSettings({ projectKey }: Props) {
           <div className="space-y-3">
             <ProjectSummary projectKey={projectKey} />
             <a
-              href={`/jira/projects/${projectKey}/reports`}
+              href={`/app/projects/${projectKey}/reports`}
               className="text-[#0052cc] hover:underline text-sm"
             >
               Open reports →

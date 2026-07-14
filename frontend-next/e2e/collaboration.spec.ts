@@ -5,12 +5,12 @@ async function login(page: Page) {
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/jira\/projects/);
+  await page.waitForURL(/\/app\/projects/);
 }
 
 test("mostra i commenti seedati e ne aggiunge uno", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/browse/DEMO-1");
+  await page.goto("/app/browse/DEMO-1");
 
   await expect(page.getByRole("heading", { name: /comments/i })).toBeVisible();
   await expect(page.getByText("Grazie, ci sto lavorando.")).toBeVisible();
@@ -24,7 +24,7 @@ test("mostra i commenti seedati e ne aggiunge uno", async ({ page }) => {
 
 test("watch e vote toggle", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/browse/DEMO-2");
+  await page.goto("/app/browse/DEMO-2");
 
   // IssueView.tsx renders "Watch (N)" / "Stop watching (N)" and
   // "Vote (N)" / "Unvote (N)" as the accessible button names, so anchor the

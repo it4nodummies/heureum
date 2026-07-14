@@ -5,12 +5,12 @@ async function login(page: Page) {
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/jira/);
+  await page.waitForURL(/\/app/);
 }
 
 test("project reports page renders charts", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/projects/DEMO/reports");
+  await page.goto("/app/projects/DEMO/reports");
   await expect(page.getByRole("heading", { name: /Reports/i })).toBeVisible();
   // almeno il grafico velocity o CFD o la torta rende un SVG con testid
   await expect(page.getByTestId("pie-chart")).toBeVisible();
@@ -21,7 +21,7 @@ test("project reports page renders charts", async ({ page }) => {
 
 test("dashboards page lists and creates a dashboard", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/dashboards");
+  await page.goto("/app/dashboards");
   await expect(page.getByRole("heading", { name: /Dashboards/i })).toBeVisible();
   await page.getByLabel("New dashboard name").fill("E2E Dashboard");
   await page.getByRole("main").getByRole("button", { name: "Create" }).click();

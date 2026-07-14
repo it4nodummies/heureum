@@ -5,12 +5,12 @@ async function login(page: Page) {
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/jira/);
+  await page.waitForURL(/\/app/);
 }
 
 test("workflow editor shows seeded statuses and adds a new one", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/projects/DEMO/settings");
+  await page.goto("/app/projects/DEMO/settings");
   await page.getByRole("button", { name: "Workflow" }).click();
 
   // the seeded default statuses are visible

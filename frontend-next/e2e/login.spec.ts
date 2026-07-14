@@ -6,7 +6,7 @@ test("login con utente demo e arrivo sui progetti", async ({ page }) => {
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
 
-  await page.waitForURL(/\/jira\/projects/);
+  await page.waitForURL(/\/app\/projects/);
   await expect(page.getByText("Demo Project")).toBeVisible();
 });
 

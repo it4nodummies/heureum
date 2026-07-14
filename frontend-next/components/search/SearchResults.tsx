@@ -31,7 +31,7 @@ export function SearchResults({ issues }: { issues: SearchIssue[] }) {
     switch (k) {
       case "key":
         return (
-          <a href={`/jira/browse/${iss.key}`} className="text-[#0052cc] hover:underline">
+          <a href={`/app/browse/${iss.key}`} className="text-[#0052cc] hover:underline">
             {iss.key}
           </a>
         );

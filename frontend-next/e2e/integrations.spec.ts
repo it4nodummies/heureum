@@ -5,12 +5,12 @@ async function login(page: Page) {
   await page.getByLabel(/email/i).fill("admin@example.com");
   await page.getByLabel(/password/i).fill("admin-demo-123");
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/jira\/projects/);
+  await page.waitForURL(/\/app\/projects/);
 }
 
 test("integrations tab adds and lists a webhook", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/projects/DEMO/settings");
+  await page.goto("/app/projects/DEMO/settings");
   await page.getByRole("button", { name: "Integrations" }).click();
   await expect(page.getByTestId("integrations-tab")).toBeVisible();
 
@@ -21,6 +21,6 @@ test("integrations tab adds and lists a webhook", async ({ page }) => {
 
 test("issue development panel renders", async ({ page }) => {
   await login(page);
-  await page.goto("/jira/browse/DEMO-1");
+  await page.goto("/app/browse/DEMO-1");
   await expect(page.getByTestId("development-panel")).toBeVisible();
 });
