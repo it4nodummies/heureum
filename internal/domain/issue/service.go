@@ -280,6 +280,26 @@ func (s *Service) Rank(issueIDs []string, beforeID, afterID *string) error {
 
 func (s *Service) DB() *gorm.DB { return s.db }
 
+// SetResolution imposta (o azzera, se resolutionID è nil) la resolution di una issue.
+func (s *Service) SetResolution(key string, resolutionID *string) error {
+	iss, err := s.GetByKey(key)
+	if err != nil {
+		return err
+	}
+	// Update esplicito su colonna: nil → NULL, valore → id.
+	return s.db.Model(&Issue{}).Where("id = ?", iss.ID).Update("resolution_id", resolutionID).Error
+}
+
+// ResolutionIDByName restituisce l'id della resolution con quel nome (case-insensitive).
+func (s *Service) ResolutionIDByName(name string) (string, bool) {
+	var row struct{ ID string }
+	err := s.db.Table("resolutions").Select("id").Where("LOWER(name) = LOWER(?)", name).Limit(1).Scan(&row).Error
+	if err != nil || row.ID == "" {
+		return "", false
+	}
+	return row.ID, true
+}
+
 func (s *Service) logHistory(issueID, actorID, field, oldVal, newVal string) {
 	h := &IssueHistory{ID: uuid.New().String(), IssueID: issueID, ActorID: &actorID, FieldName: field, OldValue: oldVal, NewValue: newVal}
 	s.db.Create(h)
