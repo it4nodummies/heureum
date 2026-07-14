@@ -1,6 +1,6 @@
 # Stato del progetto — punto di ripresa
 
-> Aggiornato: 2026-07-14 (dopo Round 6). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
+> Aggiornato: 2026-07-14 (dopo Round 7). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
 
 ## Obiettivo
 
@@ -28,13 +28,15 @@ Clone open source di Jira con **API drop-in compatibile con Jira Cloud REST API 
 
 - **Round 6 — Workflow** ✅ (piano: `docs/superpowers/plans/2026-07-14-round-6-workflow.md`): transizioni issue conformi v3 — `GET /rest/api/3/issue/{id}/transitions` (`Transitions`/`IssueTransition` con `to.statusCategory`) e `POST` nella shape Jira `{transition:{id}}` + estensione `{status_id}` (board), **204**. `GET /statuscategory` + `/statuscategory/{idOrKey}` (`CategoryFor` esportato). **Regole base transizione**: validator `require_assignee` (400 se manca assignee) + post-function `set_resolution` (setta/azzera la resolution su categoria `done`; risolve "Done" da `ResolutionIDByName`). Editing workflow per-progetto (rotte custom `/project/{key}/workflow/*`): statuses CRUD + transizioni nome/regole/list/delete + reorder. Migrazione 000013 (`workflow_transitions.name`+`require_assignee`+`set_resolution`). Nuovi mapper `internal/api/v3/transitions.go`; `issue.Service.SetResolution`/`ResolutionIDByName`; `workflow.Service.GetTransitionByID`/`GetAvailableTransitions`/`UpdateTransition`/`ReorderStatuses`. Seed: resolution "Done". UI: tab **Workflow** nelle impostazioni progetto (`WorkflowEditor`: stati add/remove + categoria/colore; transizioni con badge regole). E2E `workflow.spec.ts` (suite 14/14 verde).
 
+- **Round 7 — Viste & Report** ✅ (piano: `docs/superpowers/plans/2026-07-14-round-7-viste-report.md`): il backend report/dashboard esisteva già ma leggeva lo storico dal `field_name` sbagliato. **Fix correttezza**: burndown/velocity/burnup e CFD ora leggono `issue_history.field_name='status'` (non `'status_id'`), e la CFD fa join sullo **stato storico** (`ws.id = ih.new_value`) invece che sul corrente. Nuovi report: `GET /project/{key}/reports/pie?field=status|priority|assignee|type` e `.../reports/created-vs-resolved?days=N`. Test del report service (prima assenti): burndown/velocity/summary/CFD/pie/created-vs-resolved. Frontend greenfield: **grafici SVG dependency-free** (`components/charts/` Line/Bar/Pie/StackedArea — niente recharts, robusti su React 19), client `reports`+`dashboards`, pagina `/jira/projects/{key}/reports`, tab **Summary** nelle impostazioni, pagina **Dashboards** (`/jira/dashboards` — prima link morto) con gadget tipizzati (assigned_to_me/activity_stream). Seed: dashboard demo. E2E `reports.spec.ts` (suite 16/16 verde). **Nota**: i report sono estensioni custom (non nel contratto v3), la conformità v3 riguarda le dashboard/gadget.
+
 Gap report attuale: **103 endpoint path-match conformi** su ~500 del contratto (la conformità reale è garantita dai contract test in `internal/contract/`).
 
-## Prossimo: Round 7 — Viste & Report (DA PIANIFICARE)
+## Prossimo: Round 8 — Utenti & permessi (DA PIANIFICARE)
 
-Dalla roadmap: Timeline/Gantt, Calendar, Summary progetto, Dashboard con gadget, report (Burndown, Velocity, Cumulative Flow, pie, created vs resolved). UI-intensivo con grafici (Recharts nella roadmap). Il piano NON è ancora scritto — creare con `superpowers:writing-plans`, poi eseguire con `superpowers:subagent-driven-development`.
+Dalla roadmap: gruppi, ruoli progetto, permission scheme, profilo utente, notifiche in-app + email (worker Redis), preferenze notifica. Il piano NON è ancora scritto — creare con `superpowers:writing-plans`, poi eseguire con `superpowers:subagent-driven-development`.
 
-Contesto utile: le issue hanno `StartDate`/`DueDate`/`SprintID`/`StoryPoints`/`CreatedAt`/`UpdatedAt` (per timeline/calendar/report); gli sprint hanno date + state (per burndown/velocity); il changelog (`issue_history`) traccia i cambi di stato (per CFD/created-vs-resolved). Endpoint v3 rilevanti: `/dashboard`, `/dashboard/{id}/gadget`; ma molti report Jira sono UI-side su dati già esposti — valutare quanto è drop-in v3 vs UI-only. Riusare il motore `internal/jql` per aggregare le issue dei report.
+Contesto utile: esiste già `internal/domain/user` (`User{ID,Username,Email,DisplayName}`), auth Basic+API token (Round 0), `project.ProjectMember`/`Invite` (Round 1), e un `notifSvc` usato da comment/issue services (notifiche "commented"/"assigned"/"status changed"). Endpoint v3 rilevanti: `/rest/api/3/group`, `/group/member`, `/role`, `/project/{key}/role`, `/permissionscheme`, `/mypermissions`, `/user` (già parziale), `/notification`. Valutare worker/coda per le email (Redis già citato in roadmap).
 
 Nota: **allegati** ancora rinviati (richiedono storage file).
 
@@ -63,10 +65,13 @@ Nota: **allegati** ancora rinviati (richiedono storage file).
 - **(R6)** Workflow CRUD bulk v3 (`/workflows/create`, `/workflows`, shape `statusReference` + arrays conditions/validators/actions); `/workflowscheme` (mappa workflow→tipi issue).
 - **(R6)** **Condizioni** di transizione che filtrano `isAvailable` in GET (ora sempre true); rule-engine generico oltre ai due flag base (`require_assignee`/`set_resolution`); transizioni `isGlobal`/`isInitial`; screen sulle transizioni (`hasScreen`/fields).
 - **(R6)** `WorkflowHandler.ListTransitions` può emettere `null` invece di `[]` a zero transizioni (l'editor usa `GetWorkflow`, non impattato); normalizzare a slice vuoto.
+- **(R7)** **Timeline/Gantt** e **Calendar** (issue per due date) — rinviati dal Round 7.
+- **(R7)** Loggare i cambi `sprint_id` nello storico (burndown con issue aggiunte/rimosse a metà sprint); gadget dashboard configurabili (report-gadget) con `moduleKey`/`uri` conformi v3; export report (CSV/PDF); `GetCreatedVsResolved` usa il giorno-calendario UTC (label vs wall-clock locale può sfasare di poche ore); instradare i vecchi handler report/dashboard attraverso `v3.WriteJSON`.
+- **(R7)** Rendering `fields.resolution` sulle issue aggiunto (commit `20a02a3`): `buildIssueInput` ora risolve `resolution_id` (gap preesistente reso visibile dalla post-function R6).
 
 ## Come far ripartire il lavoro
 
 1. Apri Claude Code nella cartella del repo, sul branch `feat/frontend-next`.
-2. Prompt suggerito: _"Leggi docs/superpowers/STATE.md. Pianifica ed esegui il Round 7 (Viste & Report) con lo stesso metodo dei round precedenti (writing-plans → subagent-driven-development, gate a tre livelli)."_
+2. Prompt suggerito: _"Leggi docs/superpowers/STATE.md. Pianifica ed esegui il Round 8 (Utenti & permessi) con lo stesso metodo dei round precedenti (writing-plans → subagent-driven-development, gate a tre livelli)."_
 3. Comandi di verifica utili: `go build ./... && go vet ./... && go test ./...`; `go run ./cmd/gapreport`; per la UI `cd frontend-next && npm run build` e Playwright.
 4. Seed/avvio demo: `APP_SECRET=dev DB_DRIVER=sqlite DB_DSN=./dev.db go run ./cmd/seed` poi `... go run ./cmd/server` (utente demo `admin@example.com` / `admin-demo-123`).
