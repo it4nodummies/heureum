@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { projects as projectsApi } from "@/lib/api";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
 import { ProjectSummary } from "@/components/projects/ProjectSummary";
+import { IntegrationsTab } from "@/components/projects/IntegrationsTab";
 
 interface Props {
   projectKey: string;
@@ -22,7 +23,7 @@ export function ProjectSettings({ projectKey }: Props) {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [tab, setTab] = useState<"general" | "workflow" | "summary">("general");
+  const [tab, setTab] = useState<"general" | "workflow" | "summary" | "integrations">("general");
 
   useEffect(() => {
     if (project) {
@@ -102,6 +103,12 @@ export function ProjectSettings({ projectKey }: Props) {
             className={tab === "summary" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
             Summary
+          </button>
+          <button
+            onClick={() => setTab("integrations")}
+            className={tab === "integrations" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
+          >
+            Integrations
           </button>
         </div>
 
@@ -193,6 +200,8 @@ export function ProjectSettings({ projectKey }: Props) {
             </a>
           </div>
         )}
+
+        {tab === "integrations" && <IntegrationsTab projectKey={projectKey} />}
       </div>
     </div>
   );
