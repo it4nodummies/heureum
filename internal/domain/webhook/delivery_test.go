@@ -25,8 +25,8 @@ func TestSign(t *testing.T) {
 func TestDeliver_PostsSignedPayload(t *testing.T) {
 	var gotSig, gotBody, gotEvent string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotSig = r.Header.Get("X-OpenJira-Signature")
-		gotEvent = r.Header.Get("X-OpenJira-Event")
+		gotSig = r.Header.Get("X-Heureum-Signature")
+		gotEvent = r.Header.Get("X-Heureum-Event")
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
 		w.WriteHeader(200)

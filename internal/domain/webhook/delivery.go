@@ -27,8 +27,8 @@ func Deliver(client *http.Client, hook Webhook, eventType string, body []byte) D
 		return d
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-OpenJira-Event", eventType)
-	req.Header.Set("X-OpenJira-Signature", Sign(hook.Secret, body))
+	req.Header.Set("X-Heureum-Event", eventType)
+	req.Header.Set("X-Heureum-Signature", Sign(hook.Secret, body))
 	resp, err := client.Do(req)
 	if err != nil {
 		d.Error = err.Error()

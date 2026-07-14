@@ -37,7 +37,7 @@ export function IntegrationsTab({ projectKey }: { projectKey: string }) {
           <input aria-label="Webhook URL" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hook" className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm" />
           <button onClick={() => url && create.mutate()} disabled={create.isPending} className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60">Add webhook</button>
         </div>
-        <p className="mt-1 text-xs text-slate-400">Fires on issue created / updated / transitioned. Payload is signed with HMAC-SHA256 (X-OpenJira-Signature).</p>
+        <p className="mt-1 text-xs text-slate-400">Fires on issue created / updated / transitioned. Payload is signed with HMAC-SHA256 (X-Heureum-Signature).</p>
       </section>
     </div>
   );

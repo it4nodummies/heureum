@@ -45,7 +45,7 @@ func TestWebhook_FiresOnIssueCreate(t *testing.T) {
 	received := make(chan string, 4)
 	recv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
-		case received <- r.Header.Get("X-OpenJira-Event"):
+		case received <- r.Header.Get("X-Heureum-Event"):
 		default:
 		}
 		w.WriteHeader(200)
