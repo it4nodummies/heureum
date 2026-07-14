@@ -11,6 +11,7 @@ import (
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/automation"
+	"github.com/open-jira/open-jira/internal/domain/board"
 	"github.com/open-jira/open-jira/internal/domain/calendar"
 	"github.com/open-jira/open-jira/internal/domain/customfield"
 	"github.com/open-jira/open-jira/internal/domain/dashboard"
@@ -82,6 +83,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	calendarSvc := calendar.NewService(db)
 	calendarH := handlers.NewCalendarHandler(calendarSvc)
 	refH := handlers.NewReferenceHandler(db, cfg.BaseURL)
+
+	boardSvc := board.NewService(db)
+	agileBoardH := handlers.NewAgileBoardHandler(boardSvc, projectSvc, issueSvc, sprintSvc, wfSvc, issueH, cfg.BaseURL)
+	agileSprintH := handlers.NewAgileSprintHandler(sprintSvc, boardSvc, issueSvc, issueH, cfg.BaseURL)
+	agileMiscH := handlers.NewAgileMiscHandler(issueSvc, sprintSvc, issueH, cfg.BaseURL)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -222,6 +228,30 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	mux.Handle("GET /rest/api/3/project/{key}/board", authMw(http.HandlerFunc(boardH.GetBoard)))
 	mux.Handle("POST /rest/api/3/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
+
+	// --- Agile API 1.0 (Round 5) ---
+	mux.Handle("GET /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.List)))
+	mux.Handle("POST /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.Create)))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}", authMw(http.HandlerFunc(agileBoardH.Get)))
+	mux.Handle("DELETE /rest/agile/1.0/board/{boardId}", authMw(http.HandlerFunc(agileBoardH.Delete)))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/configuration", authMw(http.HandlerFunc(agileBoardH.Configuration)))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/backlog", authMw(http.HandlerFunc(agileBoardH.Backlog)))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/issue", authMw(http.HandlerFunc(agileBoardH.BoardIssues)))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/sprint", authMw(http.HandlerFunc(agileBoardH.BoardSprints)))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/epic", authMw(http.HandlerFunc(agileBoardH.BoardEpics)))
+
+	mux.Handle("POST /rest/agile/1.0/sprint", authMw(http.HandlerFunc(agileSprintH.Create)))
+	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Get)))
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Update)))
+	mux.Handle("PUT /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Update)))
+	mux.Handle("DELETE /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Delete)))
+	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}/issue", authMw(http.HandlerFunc(agileSprintH.SprintIssues)))
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", authMw(http.HandlerFunc(agileSprintH.MoveToSprint)))
+
+	mux.Handle("PUT /rest/agile/1.0/issue/rank", authMw(http.HandlerFunc(agileMiscH.Rank)))
+	mux.Handle("GET /rest/agile/1.0/issue/{issueIdOrKey}", authMw(http.HandlerFunc(agileMiscH.GetIssue)))
+	mux.Handle("POST /rest/agile/1.0/backlog/issue", authMw(http.HandlerFunc(agileMiscH.MoveToBacklog)))
+	mux.Handle("GET /rest/agile/1.0/epic/{epicIdOrKey}", authMw(http.HandlerFunc(agileMiscH.GetEpic)))
 
 	// --- Ricerca (Round 4) ---
 	mux.Handle("GET /rest/api/3/search/jql", authMw(http.HandlerFunc(searchH.SearchJQL)))
