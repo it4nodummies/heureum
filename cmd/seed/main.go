@@ -65,6 +65,14 @@ func main() {
 	if err := s.DB.Where("email = ?", "admin@example.com").First(&admin).Error; err != nil {
 		log.Fatalf("load admin user: %v", err)
 	}
+	// L'admin demo è un amministratore globale (per /mypermissions e i permessi).
+	if !admin.IsAdmin {
+		if err := s.DB.Model(&user.User{}).Where("id = ?", admin.ID).Update("is_admin", true).Error; err != nil {
+			log.Fatalf("set admin is_admin: %v", err)
+		}
+		admin.IsAdmin = true
+		fmt.Println("set admin as global admin")
+	}
 
 	projSvc := project.NewService(s.DB, &admin)
 	var demo *project.Project
@@ -80,6 +88,23 @@ func main() {
 		fmt.Println("created project DEMO")
 	default:
 		log.Fatalf("check project DEMO: %v", err)
+	}
+
+	// Membri del progetto DEMO (idempotente): admin=admin, dev/pm=member.
+	// NB: project.Service.Create NON aggiunge il creatore come membro (gap noto,
+	// follow-up) — qui lo compensiamo per rendere significativa la demo permessi.
+	for email, role := range map[string]string{"admin@example.com": "admin", "dev@example.com": "member", "pm@example.com": "member"} {
+		var u user.User
+		if s.DB.Where("email = ?", email).First(&u).Error != nil {
+			continue
+		}
+		var cnt int64
+		s.DB.Table("project_members").Where("project_id = ? AND user_id = ?", demo.ID, u.ID).Count(&cnt)
+		if cnt == 0 {
+			if err := projSvc.AddMember(demo.ID, u.ID, project.MemberRole(role)); err != nil {
+				log.Fatalf("add member %s: %v", email, err)
+			}
+		}
 	}
 
 	var cat project.ProjectCategory
