@@ -250,9 +250,36 @@ func (h *GitHandler) commentCommitReference(issueID, sha, message string) {
 	if len(short) > 8 {
 		short = short[:8]
 	}
-	body := fmt.Sprintf(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":%q}]}]}`,
-		fmt.Sprintf("Commit %s referenced this issue: %s", short, message))
+	body, err := buildCommitCommentADF(short, message)
+	if err != nil {
+		return
+	}
 	_, _ = h.commentSvc.AddComment(issueID, "", body)
+}
+
+// buildCommitCommentADF builds the ADF (Atlassian Document Format) JSON body
+// for an auto-generated "commit referenced this issue" comment. It marshals
+// via encoding/json rather than string interpolation so that commit messages
+// containing control bytes or invalid UTF-8 still produce valid JSON.
+func buildCommitCommentADF(shortSHA, message string) (string, error) {
+	text := fmt.Sprintf("Commit %s referenced this issue: %s", shortSHA, message)
+	doc := map[string]any{
+		"type":    "doc",
+		"version": 1,
+		"content": []any{
+			map[string]any{
+				"type": "paragraph",
+				"content": []any{
+					map[string]any{"type": "text", "text": text},
+				},
+			},
+		},
+	}
+	body, err := json.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
 }
 
 func uniqueKeys(keys []string) []string {
