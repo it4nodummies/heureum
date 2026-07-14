@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/handlers"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/api/ws"
@@ -20,11 +21,13 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/group"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/notification"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/report"
 	"github.com/it4nodummies/heureum/internal/domain/search"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/timeline"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 	"github.com/it4nodummies/heureum/internal/integration"
@@ -101,6 +104,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	agileSprintH := handlers.NewAgileSprintHandler(sprintSvc, boardSvc, issueSvc, issueH, cfg.BaseURL)
 	agileMiscH := handlers.NewAgileMiscHandler(issueSvc, sprintSvc, issueH, cfg.BaseURL)
 
+	userSvc := user.NewService(db)
+	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc)
+
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
@@ -158,22 +164,22 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/projectCategory", authMw(http.HandlerFunc(pcH.List)))
 	mux.Handle("POST /rest/api/3/projectCategory", authMw(http.HandlerFunc(pcH.Create)))
 	mux.Handle("GET /rest/api/3/project/{key}", authMw(http.HandlerFunc(projectH.Get)))
-	mux.Handle("PUT /rest/api/3/project/{key}", authMw(http.HandlerFunc(projectH.Update)))
-	mux.Handle("DELETE /rest/api/3/project/{key}", authMw(http.HandlerFunc(projectH.Delete)))
-	mux.Handle("POST /rest/api/3/project/{key}/archive", authMw(http.HandlerFunc(projectH.Archive)))
-	mux.Handle("POST /rest/api/3/project/{key}/restore", authMw(http.HandlerFunc(projectH.Restore)))
+	mux.Handle("PUT /rest/api/3/project/{key}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Update))))
+	mux.Handle("DELETE /rest/api/3/project/{key}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Delete))))
+	mux.Handle("POST /rest/api/3/project/{key}/archive", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Archive))))
+	mux.Handle("POST /rest/api/3/project/{key}/restore", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Restore))))
 	mux.Handle("GET /rest/api/3/project/{key}/members", authMw(http.HandlerFunc(projectH.ListMembers)))
-	mux.Handle("POST /rest/api/3/project/{key}/members", authMw(http.HandlerFunc(projectH.AddMember)))
-	mux.Handle("DELETE /rest/api/3/project/{key}/members/{userId}", authMw(http.HandlerFunc(projectH.RemoveMember)))
-	mux.Handle("POST /rest/api/3/project/{key}/invites", authMw(http.HandlerFunc(projectH.Invite)))
-	mux.Handle("PUT /rest/api/3/project/{key}/star", authMw(http.HandlerFunc(projectH.StarProject)))
-	mux.Handle("DELETE /rest/api/3/project/{key}/star", authMw(http.HandlerFunc(projectH.UnstarProject)))
+	mux.Handle("POST /rest/api/3/project/{key}/members", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.AddMember))))
+	mux.Handle("DELETE /rest/api/3/project/{key}/members/{userId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.RemoveMember))))
+	mux.Handle("POST /rest/api/3/project/{key}/invites", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Invite))))
+	mux.Handle("PUT /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.StarProject))))
+	mux.Handle("DELETE /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.UnstarProject))))
 	mux.Handle("GET /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.GetProvider)))
-	mux.Handle("POST /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.ConfigureProvider)))
-	mux.Handle("DELETE /rest/api/3/project/{key}/git/providers", authMw(http.HandlerFunc(gitH.DeleteProvider)))
+	mux.Handle("POST /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.ConfigureProvider))))
+	mux.Handle("DELETE /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.DeleteProvider))))
 	mux.Handle("GET /rest/api/3/project/{key}/webhooks", authMw(http.HandlerFunc(webhookH.List)))
-	mux.Handle("POST /rest/api/3/project/{key}/webhooks", authMw(http.HandlerFunc(webhookH.Create)))
-	mux.Handle("DELETE /rest/api/3/project/{key}/webhooks/{id}", authMw(http.HandlerFunc(webhookH.Delete)))
+	mux.Handle("POST /rest/api/3/project/{key}/webhooks", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(webhookH.Create))))
+	mux.Handle("DELETE /rest/api/3/project/{key}/webhooks/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(webhookH.Delete))))
 
 	mux.Handle("GET /rest/api/3/project/{key}/issues", authMw(http.HandlerFunc(issueH.List)))
 	mux.Handle("POST /rest/api/3/issue", authMw(http.HandlerFunc(issueH.Create)))
@@ -183,55 +189,60 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/issue/createmeta", authMw(http.HandlerFunc(refH.CreateMeta)))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}", authMw(http.HandlerFunc(issueH.Get)))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/editmeta", authMw(http.HandlerFunc(refH.EditMeta)))
-	mux.Handle("PUT /rest/api/3/issue/{issueKey}", authMw(http.HandlerFunc(issueH.Update)))
-	mux.Handle("DELETE /rest/api/3/issue/{issueKey}", authMw(http.HandlerFunc(issueH.Delete)))
-	mux.Handle("POST /rest/api/3/issue/{issueKey}/labels", authMw(http.HandlerFunc(issueH.AddLabel)))
+	mux.Handle("PUT /rest/api/3/issue/{issueKey}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueKey"), http.HandlerFunc(issueH.Update))))
+	mux.Handle("DELETE /rest/api/3/issue/{issueKey}", authMw(chk.Enforce(permission.DeleteIssues, chk.ByIssueParam("issueKey"), http.HandlerFunc(issueH.Delete))))
+	mux.Handle("POST /rest/api/3/issue/{issueKey}/labels", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueKey"), http.HandlerFunc(issueH.AddLabel))))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/changelog", authMw(http.HandlerFunc(historyH.GetHistory)))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/git", authMw(http.HandlerFunc(gitH.GetIssueGitInfo)))
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(http.HandlerFunc(issueH.GetWatchers)))
-	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(http.HandlerFunc(issueH.AddWatcher)))
-	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(http.HandlerFunc(issueH.RemoveWatcher)))
+	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.AddWatcher))))
+	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.RemoveWatcher))))
 
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/comment", authMw(http.HandlerFunc(commentH.List)))
-	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/comment", authMw(http.HandlerFunc(commentH.Create)))
+	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/comment", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(commentH.Create))))
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/comment/{id}", authMw(http.HandlerFunc(commentH.Get)))
-	mux.Handle("PUT /rest/api/3/issue/{issueIdOrKey}/comment/{id}", authMw(http.HandlerFunc(commentH.Update)))
-	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/comment/{id}", authMw(http.HandlerFunc(commentH.Delete)))
+	mux.Handle("PUT /rest/api/3/issue/{issueIdOrKey}/comment/{id}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(commentH.Update))))
+	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/comment/{id}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(commentH.Delete))))
 	mux.Handle("POST /rest/api/3/comment/list", authMw(http.HandlerFunc(commentH.ListByIDs)))
 
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/worklog", authMw(http.HandlerFunc(worklogH.List)))
-	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/worklog", authMw(http.HandlerFunc(worklogH.Create)))
-	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}", authMw(http.HandlerFunc(worklogH.Delete)))
+	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/worklog", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(worklogH.Create))))
+	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(worklogH.Delete))))
 
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/votes", authMw(http.HandlerFunc(votesH.List)))
-	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/votes", authMw(http.HandlerFunc(votesH.Add)))
-	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/votes", authMw(http.HandlerFunc(votesH.Remove)))
+	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/votes", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(votesH.Add))))
+	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/votes", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(votesH.Remove))))
 
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/remotelink", authMw(http.HandlerFunc(remoteLinkH.List)))
-	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/remotelink", authMw(http.HandlerFunc(remoteLinkH.Create)))
-	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink/{id}", authMw(http.HandlerFunc(remoteLinkH.Delete)))
+	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/remotelink", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(remoteLinkH.Create))))
+	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink/{id}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(remoteLinkH.Delete))))
 
-	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(http.HandlerFunc(attachmentH.Upload)))
+	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(attachmentH.Upload))))
 	mux.Handle("GET /rest/api/3/attachment/{id}", authMw(http.HandlerFunc(attachmentH.Get)))
+	// DELETE /attachment/{id}: two-hop resolver (attachment -> issue -> project);
+	// left for Task 5 in-handler enforcement per the plan.
 	mux.Handle("DELETE /rest/api/3/attachment/{id}", authMw(http.HandlerFunc(attachmentH.Delete)))
 	mux.Handle("GET /rest/api/3/attachment/content/{id}", authMw(http.HandlerFunc(attachmentH.ServeFile)))
 	mux.Handle("GET /rest/api/3/attachment/meta", authMw(http.HandlerFunc(attachmentH.Meta)))
 
 	mux.Handle("GET /rest/api/3/issueLink/{linkId}", authMw(http.HandlerFunc(issueLinkH.Get)))
+	// POST /issueLink: project resolved from body (source issue) -> Task 5 in-handler.
 	mux.Handle("POST /rest/api/3/issueLink", authMw(http.HandlerFunc(issueLinkH.Create)))
+	// DELETE /issueLink/{linkId}: two-hop resolver (link -> issue -> project);
+	// left for Task 5 in-handler enforcement per the plan.
 	mux.Handle("DELETE /rest/api/3/issueLink/{linkId}", authMw(http.HandlerFunc(issueLinkH.Delete)))
 
 	mux.Handle("GET /rest/api/3/project/{key}/workflow", authMw(http.HandlerFunc(wfH.GetWorkflow)))
-	mux.Handle("POST /rest/api/3/project/{key}/workflow/statuses", authMw(http.HandlerFunc(wfH.AddStatus)))
-	mux.Handle("PATCH /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.UpdateStatus)))
-	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(http.HandlerFunc(wfH.DeleteStatus)))
-	mux.Handle("POST /rest/api/3/project/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.AddTransition)))
+	mux.Handle("POST /rest/api/3/project/{key}/workflow/statuses", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(wfH.AddStatus))))
+	mux.Handle("PATCH /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(wfH.UpdateStatus))))
+	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/statuses/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(wfH.DeleteStatus))))
+	mux.Handle("POST /rest/api/3/project/{key}/workflow/transitions", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(wfH.AddTransition))))
 	mux.Handle("GET /rest/api/3/project/{key}/workflow/transitions", authMw(http.HandlerFunc(wfH.ListTransitions)))
-	mux.Handle("PATCH /rest/api/3/project/{key}/workflow/transitions/{id}", authMw(http.HandlerFunc(wfH.UpdateTransition)))
-	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/transitions/{id}", authMw(http.HandlerFunc(wfH.DeleteTransition)))
-	mux.Handle("PUT /rest/api/3/project/{key}/workflow/statuses/order", authMw(http.HandlerFunc(wfH.ReorderStatuses)))
+	mux.Handle("PATCH /rest/api/3/project/{key}/workflow/transitions/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(wfH.UpdateTransition))))
+	mux.Handle("DELETE /rest/api/3/project/{key}/workflow/transitions/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(wfH.DeleteTransition))))
+	mux.Handle("PUT /rest/api/3/project/{key}/workflow/statuses/order", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(wfH.ReorderStatuses))))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.AvailableTransitions)))
-	mux.Handle("POST /rest/api/3/issue/{issueKey}/transitions", authMw(http.HandlerFunc(wfH.DoTransition)))
+	mux.Handle("POST /rest/api/3/issue/{issueKey}/transitions", authMw(chk.Enforce(permission.TransitionIssues, chk.ByIssueParam("issueKey"), http.HandlerFunc(wfH.DoTransition))))
 	// /status (collezione) è servito da ReferenceHandler per rispettare lo
 	// schema v3 StatusDetails (statusCategory come oggetto {self,id,key,colorName,name});
 	// il vecchio wfH.ListStatuses restituiva la forma di dominio grezza (workflow_id,category,...).
@@ -247,34 +258,38 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/workflow/search", authMw(http.HandlerFunc(wfH.SearchWorkflows)))
 
 	mux.Handle("GET /rest/api/3/project/{key}/sprints", authMw(http.HandlerFunc(sprintH.List)))
-	mux.Handle("POST /rest/api/3/project/{key}/sprints", authMw(http.HandlerFunc(sprintH.Create)))
+	mux.Handle("POST /rest/api/3/project/{key}/sprints", authMw(chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Create))))
 	mux.Handle("GET /rest/api/3/project/{key}/sprints/{id}", authMw(http.HandlerFunc(sprintH.Get)))
-	mux.Handle("PATCH /rest/api/3/project/{key}/sprints/{id}", authMw(http.HandlerFunc(sprintH.Update)))
-	mux.Handle("POST /rest/api/3/project/{key}/sprints/{id}/start", authMw(http.HandlerFunc(sprintH.Start)))
-	mux.Handle("POST /rest/api/3/project/{key}/sprints/{id}/complete", authMw(http.HandlerFunc(sprintH.Complete)))
+	mux.Handle("PATCH /rest/api/3/project/{key}/sprints/{id}", authMw(chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Update))))
+	mux.Handle("POST /rest/api/3/project/{key}/sprints/{id}/start", authMw(chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Start))))
+	mux.Handle("POST /rest/api/3/project/{key}/sprints/{id}/complete", authMw(chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Complete))))
 
 	mux.Handle("GET /rest/api/3/project/{key}/board", authMw(http.HandlerFunc(boardH.GetBoard)))
+	// POST /issues/rank: project resolved from body (issues involved) -> Task 5 in-handler.
 	mux.Handle("POST /rest/api/3/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
 
 	// --- Agile API 1.0 (Round 5) ---
 	mux.Handle("GET /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.List)))
+	// POST /board: project resolved from body (projectKeyOrId) -> Task 5 in-handler.
 	mux.Handle("POST /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.Create)))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}", authMw(http.HandlerFunc(agileBoardH.Get)))
-	mux.Handle("DELETE /rest/agile/1.0/board/{boardId}", authMw(http.HandlerFunc(agileBoardH.Delete)))
+	mux.Handle("DELETE /rest/agile/1.0/board/{boardId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Delete))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/configuration", authMw(http.HandlerFunc(agileBoardH.Configuration)))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/backlog", authMw(http.HandlerFunc(agileBoardH.Backlog)))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/issue", authMw(http.HandlerFunc(agileBoardH.BoardIssues)))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/sprint", authMw(http.HandlerFunc(agileBoardH.BoardSprints)))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/epic", authMw(http.HandlerFunc(agileBoardH.BoardEpics)))
 
+	// POST /sprint: project resolved from body (originBoardId -> board.ProjectID) -> Task 5 in-handler.
 	mux.Handle("POST /rest/agile/1.0/sprint", authMw(http.HandlerFunc(agileSprintH.Create)))
 	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Get)))
-	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Update)))
-	mux.Handle("PUT /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Update)))
-	mux.Handle("DELETE /rest/agile/1.0/sprint/{sprintId}", authMw(http.HandlerFunc(agileSprintH.Delete)))
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.Update))))
+	mux.Handle("PUT /rest/agile/1.0/sprint/{sprintId}", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.Update))))
+	mux.Handle("DELETE /rest/agile/1.0/sprint/{sprintId}", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.Delete))))
 	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}/issue", authMw(http.HandlerFunc(agileSprintH.SprintIssues)))
-	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", authMw(http.HandlerFunc(agileSprintH.MoveToSprint)))
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.MoveToSprint))))
 
+	// PUT /issue/rank, POST /backlog/issue: project resolved from body (issues involved) -> Task 5 in-handler.
 	mux.Handle("PUT /rest/agile/1.0/issue/rank", authMw(http.HandlerFunc(agileMiscH.Rank)))
 	mux.Handle("GET /rest/agile/1.0/issue/{issueIdOrKey}", authMw(http.HandlerFunc(agileMiscH.GetIssue)))
 	mux.Handle("POST /rest/agile/1.0/backlog/issue", authMw(http.HandlerFunc(agileMiscH.MoveToBacklog)))
@@ -338,20 +353,20 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/project/{key}/issues/export", authMw(http.HandlerFunc(issueH.ExportCSV)))
 
 	mux.Handle("GET /rest/api/3/project/{projectID}/custom-fields", authMw(http.HandlerFunc(cfH.ListFields)))
-	mux.Handle("POST /rest/api/3/project/{projectID}/custom-fields", authMw(http.HandlerFunc(cfH.CreateField)))
-	mux.Handle("DELETE /rest/api/3/custom-fields/{fieldID}", authMw(http.HandlerFunc(cfH.DeleteField)))
+	mux.Handle("POST /rest/api/3/project/{projectID}/custom-fields", authMw(chk.Enforce(permission.AdministerProjects, chk.ByProjectID, http.HandlerFunc(cfH.CreateField))))
+	mux.Handle("DELETE /rest/api/3/custom-fields/{fieldID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.DeleteField))))
 	mux.Handle("GET /rest/api/3/custom-fields/{fieldID}/options", authMw(http.HandlerFunc(cfH.ListOptions)))
-	mux.Handle("POST /rest/api/3/custom-fields/{fieldID}/options", authMw(http.HandlerFunc(cfH.AddOption)))
+	mux.Handle("POST /rest/api/3/custom-fields/{fieldID}/options", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.AddOption))))
 	mux.Handle("DELETE /rest/api/3/custom-fields/options/{optionID}", authMw(http.HandlerFunc(cfH.RemoveOption)))
 	mux.Handle("GET /rest/api/3/issue/{issueID}/custom-values", authMw(http.HandlerFunc(cfH.GetValues)))
-	mux.Handle("PUT /rest/api/3/issue/{issueID}/custom-values/{fieldID}", authMw(http.HandlerFunc(cfH.SetValue)))
+	mux.Handle("PUT /rest/api/3/issue/{issueID}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueUUID, http.HandlerFunc(cfH.SetValue))))
 
 	mux.Handle("GET /rest/api/3/project/{projectID}/automation", authMw(http.HandlerFunc(autoH.ListRules)))
-	mux.Handle("POST /rest/api/3/project/{projectID}/automation", authMw(http.HandlerFunc(autoH.CreateRule)))
+	mux.Handle("POST /rest/api/3/project/{projectID}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByProjectID, http.HandlerFunc(autoH.CreateRule))))
 	mux.Handle("GET /rest/api/3/automation/{ruleID}", authMw(http.HandlerFunc(autoH.GetRule)))
-	mux.Handle("PATCH /rest/api/3/automation/{ruleID}", authMw(http.HandlerFunc(autoH.UpdateRule)))
-	mux.Handle("DELETE /rest/api/3/automation/{ruleID}", authMw(http.HandlerFunc(autoH.DeleteRule)))
-	mux.Handle("POST /rest/api/3/automation/{ruleID}/execute", authMw(http.HandlerFunc(autoH.ExecuteRule)))
+	mux.Handle("PATCH /rest/api/3/automation/{ruleID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.UpdateRule))))
+	mux.Handle("DELETE /rest/api/3/automation/{ruleID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.DeleteRule))))
+	mux.Handle("POST /rest/api/3/automation/{ruleID}/execute", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.ExecuteRule))))
 	mux.Handle("GET /rest/api/3/automation/{ruleID}/runs", authMw(http.HandlerFunc(autoH.ListRuns)))
 
 	mux.Handle("GET /rest/api/3/project/{projectID}/timeline", authMw(http.HandlerFunc(timelineH.GetTimeline)))
