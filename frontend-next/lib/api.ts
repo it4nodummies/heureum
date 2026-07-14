@@ -385,3 +385,73 @@ export const filters = {
 export function textToADF(text: string): ADFNode {
   return { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text }] }] };
 }
+
+// ── Agile (Boards & Sprints) ─────────────────────────────────────────────────
+
+export interface AgileBoard {
+  id: number;
+  name: string;
+  type: string;
+  location?: { projectKey: string; projectName: string };
+}
+
+export interface AgileSprint {
+  id: number;
+  name: string;
+  state: "future" | "active" | "closed";
+  goal?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+// Le liste issue agili usano lo shape SearchResults (issues+total).
+export interface AgileIssueList {
+  issues: SearchIssue[];
+  total: number;
+}
+
+export const boards = {
+  list: () => apiFetch<{ values: AgileBoard[] }>("/rest/agile/1.0/board"),
+  create: (name: string, projectKeyOrId: string, type = "scrum") =>
+    apiFetch<AgileBoard>("/rest/agile/1.0/board", {
+      method: "POST",
+      body: JSON.stringify({ name, projectKeyOrId, type }),
+    }),
+  get: (boardId: number) => apiFetch<AgileBoard>(`/rest/agile/1.0/board/${boardId}`),
+  issues: (boardId: number) => apiFetch<AgileIssueList>(`/rest/agile/1.0/board/${boardId}/issue`),
+  backlog: (boardId: number) => apiFetch<AgileIssueList>(`/rest/agile/1.0/board/${boardId}/backlog`),
+  sprints: (boardId: number) => apiFetch<{ values: AgileSprint[] }>(`/rest/agile/1.0/board/${boardId}/sprint`),
+  configuration: (boardId: number) =>
+    apiFetch<{ columnConfig: { columns: { name: string; statuses: { id: string }[] }[] } }>(
+      `/rest/agile/1.0/board/${boardId}/configuration`,
+    ),
+};
+
+export const sprints = {
+  create: (name: string, originBoardId: number, goal?: string) =>
+    apiFetch<AgileSprint>("/rest/agile/1.0/sprint", {
+      method: "POST",
+      body: JSON.stringify({ name, originBoardId, goal }),
+    }),
+  issues: (sprintId: number) => apiFetch<AgileIssueList>(`/rest/agile/1.0/sprint/${sprintId}/issue`),
+  setState: (sprintId: number, state: "active" | "closed") =>
+    apiFetch<AgileSprint>(`/rest/agile/1.0/sprint/${sprintId}`, {
+      method: "POST",
+      body: JSON.stringify({ state }),
+    }),
+  moveIssues: (sprintId: number, issues: string[]) =>
+    apiFetch<void>(`/rest/agile/1.0/sprint/${sprintId}/issue`, {
+      method: "POST",
+      body: JSON.stringify({ issues }),
+    }),
+};
+
+export const agileIssues = {
+  moveToBacklog: (issues: string[]) =>
+    apiFetch<void>("/rest/agile/1.0/backlog/issue", { method: "POST", body: JSON.stringify({ issues }) }),
+  rank: (issues: string[], rankBeforeIssue?: string, rankAfterIssue?: string) =>
+    apiFetch<void>("/rest/agile/1.0/issue/rank", {
+      method: "PUT",
+      body: JSON.stringify({ issues, rankBeforeIssue, rankAfterIssue }),
+    }),
+};
