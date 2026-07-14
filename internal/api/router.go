@@ -37,7 +37,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux := http.NewServeMux()
 
 	authSvc := auth.NewService(db, cfg.Secret)
-	authH := handlers.NewAuthHandler(authSvc)
+	authH := handlers.NewAuthHandler(authSvc, cfg.SignupOpen)
 	userH := handlers.NewUserHandler(db, cfg.BaseURL)
 	oauthH := handlers.NewOAuthHandler(db, cfg.Secret, cfg.BaseURL)
 	projectSvc := project.NewService(db, nil)
@@ -70,7 +70,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	remoteLinkSvc := issue.NewRemoteLinkService(db)
 	remoteLinkH := handlers.NewRemoteLinkHandler(remoteLinkSvc, issueSvc, cfg.BaseURL)
 	historyH := handlers.NewHistoryHandler(db, issueSvc, cfg.BaseURL)
-	attachmentSvc := issue.NewAttachmentService(db)
+	attachmentSvc := issue.NewAttachmentService(db, cfg.UploadsDir)
 	attachmentH := handlers.NewAttachmentHandler(attachmentSvc, issueSvc, chk)
 	issueLinkH := handlers.NewIssueLinkHandler(issueSvc, chk, cfg.BaseURL)
 	wfH := handlers.NewWorkflowHandler(wfSvc, issueSvc, projectSvc, cfg.BaseURL)

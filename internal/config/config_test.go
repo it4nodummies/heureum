@@ -59,6 +59,30 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Redis.URL != "redis://localhost:6379/0" {
 		t.Errorf("default Redis.URL = %s, want redis://localhost:6379/0", cfg.Redis.URL)
 	}
+	if cfg.UploadsDir != "./data/uploads" {
+		t.Errorf("default UploadsDir = %s, want ./data/uploads", cfg.UploadsDir)
+	}
+	if !cfg.SignupOpen {
+		t.Errorf("default SignupOpen = %v, want true", cfg.SignupOpen)
+	}
+}
+
+func TestLoadConfigUploadsDirAndSignupFromEnv(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_UPLOADS_DIR", "/var/data/attachments")
+	t.Setenv("APP_SIGNUP", "closed")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.UploadsDir != "/var/data/attachments" {
+		t.Errorf("UploadsDir = %s, want /var/data/attachments", cfg.UploadsDir)
+	}
+	if cfg.SignupOpen {
+		t.Errorf("SignupOpen = %v, want false when APP_SIGNUP=closed", cfg.SignupOpen)
+	}
 }
 
 func TestLoadConfigMissingSecret(t *testing.T) {

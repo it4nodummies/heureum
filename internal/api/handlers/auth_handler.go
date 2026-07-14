@@ -11,14 +11,21 @@ import (
 )
 
 type AuthHandler struct {
-	svc *auth.Service
+	svc        *auth.Service
+	signupOpen bool
 }
 
-func NewAuthHandler(svc *auth.Service) *AuthHandler {
-	return &AuthHandler{svc: svc}
+// NewAuthHandler builds the auth handler. signupOpen controls whether
+// Register accepts new users; when false, Register returns 403.
+func NewAuthHandler(svc *auth.Service, signupOpen bool) *AuthHandler {
+	return &AuthHandler{svc: svc, signupOpen: signupOpen}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	if !h.signupOpen {
+		v3.WriteError(w, http.StatusForbidden, []string{"signup is disabled on this instance"}, nil)
+		return
+	}
 	var req struct {
 		Email    string `json:"email"`
 		Username string `json:"username"`

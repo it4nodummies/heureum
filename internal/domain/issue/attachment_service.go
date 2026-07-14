@@ -10,16 +10,25 @@ import (
 	"gorm.io/gorm"
 )
 
+const defaultUploadDir = "./data/uploads"
+
 type AttachmentService struct {
-	db *gorm.DB
+	db        *gorm.DB
+	uploadDir string
 }
 
-func NewAttachmentService(db *gorm.DB) *AttachmentService {
-	return &AttachmentService{db: db}
+// NewAttachmentService builds the attachment service. uploadsDir is the
+// directory attachments are written to; an empty string falls back to
+// defaultUploadDir for backward compatibility.
+func NewAttachmentService(db *gorm.DB, uploadsDir string) *AttachmentService {
+	if uploadsDir == "" {
+		uploadsDir = defaultUploadDir
+	}
+	return &AttachmentService{db: db, uploadDir: uploadsDir}
 }
 
 func (s *AttachmentService) UploadAttachment(issueID, uploaderID, filename string, file multipart.File) (*IssueAttachment, error) {
-	uploadDir := "./data/uploads"
+	uploadDir := s.uploadDir
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		return nil, err
 	}

@@ -19,6 +19,11 @@ import (
 
 func setupAuthHandler(t *testing.T) (*AuthHandler, *store.Store) {
 	t.Helper()
+	return setupAuthHandlerWithSignup(t, true)
+}
+
+func setupAuthHandlerWithSignup(t *testing.T, signupOpen bool) (*AuthHandler, *store.Store) {
+	t.Helper()
 	os.Setenv("APP_SECRET", "test-secret-min-32-chars-long-key!!")
 	os.Setenv("DB_DRIVER", "sqlite")
 	os.Setenv("DB_DSN", "file::memory:?cache=shared")
@@ -29,7 +34,7 @@ func setupAuthHandler(t *testing.T) (*AuthHandler, *store.Store) {
 	s, _ := store.New(cfg.DB, "test")
 	s.DB.AutoMigrate(&user.User{}, &auth.APIToken{})
 	svc := auth.NewService(s.DB, cfg.Secret)
-	return NewAuthHandler(svc), s
+	return NewAuthHandler(svc, signupOpen), s
 }
 
 func TestRegisterUser(t *testing.T) {
@@ -43,6 +48,35 @@ func TestRegisterUser(t *testing.T) {
 	h.Register(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Errorf("status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRegisterUser_SignupClosedReturns403AndDoesNotCreateUser(t *testing.T) {
+	h, s := setupAuthHandlerWithSignup(t, false)
+	defer s.Close()
+	body := map[string]string{"email": "blocked@example.com", "username": "blockeduser", "password": "password123"}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest("POST", "/register", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ErrorMessages []string `json:"errorMessages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v — body: %s", err, rec.Body.String())
+	}
+	if len(resp.ErrorMessages) == 0 || resp.ErrorMessages[0] != "signup is disabled on this instance" {
+		t.Errorf("errorMessages = %v, want [\"signup is disabled on this instance\"]", resp.ErrorMessages)
+	}
+
+	var count int64
+	s.DB.Model(&user.User{}).Where("email = ?", "blocked@example.com").Count(&count)
+	if count != 0 {
+		t.Errorf("user was created despite signup being closed, count = %d", count)
 	}
 }
 

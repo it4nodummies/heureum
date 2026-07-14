@@ -17,12 +17,14 @@ type RedisConfig struct {
 }
 
 type Config struct {
-	Port    int
-	Env     string
-	Secret  string
-	BaseURL string
-	DB      DBConfig
-	Redis   RedisConfig
+	Port       int
+	Env        string
+	Secret     string
+	BaseURL    string
+	UploadsDir string
+	SignupOpen bool
+	DB         DBConfig
+	Redis      RedisConfig
 }
 
 func Load() (*Config, error) {
@@ -32,10 +34,12 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Port:    port,
-		Env:     getEnv("APP_ENV", "development"),
-		Secret:  os.Getenv("APP_SECRET"),
-		BaseURL: getEnv("APP_BASE_URL", fmt.Sprintf("http://localhost:%d", port)),
+		Port:       port,
+		Env:        getEnv("APP_ENV", "development"),
+		Secret:     os.Getenv("APP_SECRET"),
+		BaseURL:    getEnv("APP_BASE_URL", fmt.Sprintf("http://localhost:%d", port)),
+		UploadsDir: getEnv("APP_UPLOADS_DIR", "./data/uploads"),
+		SignupOpen: getEnv("APP_SIGNUP", "open") != "closed",
 		DB: DBConfig{
 			Driver: getEnv("DB_DRIVER", "postgres"),
 			DSN:    os.Getenv("DB_DSN"),
