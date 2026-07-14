@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
-	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 )
 
 type AttachmentHandler struct {

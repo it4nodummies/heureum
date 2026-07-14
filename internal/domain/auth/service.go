@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 type Service struct {

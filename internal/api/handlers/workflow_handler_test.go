@@ -10,9 +10,9 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/project"
-	"github.com/open-jira/open-jira/internal/domain/workflow"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
 
 func setupWorkflowHandlerTestDB(t *testing.T) *gorm.DB {

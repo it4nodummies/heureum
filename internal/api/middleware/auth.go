@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/auth"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/auth"
 )
 
 type contextKey string

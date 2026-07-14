@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/open-jira/open-jira/internal/api"
-	"github.com/open-jira/open-jira/internal/config"
-	applog "github.com/open-jira/open-jira/internal/log"
-	"github.com/open-jira/open-jira/internal/store"
+	"github.com/it4nodummies/heureum/internal/api"
+	"github.com/it4nodummies/heureum/internal/config"
+	applog "github.com/it4nodummies/heureum/internal/log"
+	"github.com/it4nodummies/heureum/internal/store"
 )
 
 func main() {

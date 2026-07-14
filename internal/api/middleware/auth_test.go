@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/open-jira/open-jira/internal/domain/auth"
+	"github.com/it4nodummies/heureum/internal/domain/auth"
 )
 
 func noopVerify(string, string) (string, error) {

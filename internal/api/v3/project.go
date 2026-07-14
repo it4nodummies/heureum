@@ -3,8 +3,8 @@ package v3
 import (
 	"fmt"
 
-	"github.com/open-jira/open-jira/internal/domain/project"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 // ProjectCategory è la rappresentazione Jira v3 di una categoria progetto

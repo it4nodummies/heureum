@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/open-jira/open-jira/internal/domain/timeline"
+	"github.com/it4nodummies/heureum/internal/domain/timeline"
 )
 
 type TimelineHandler struct {

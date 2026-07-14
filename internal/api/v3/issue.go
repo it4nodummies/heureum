@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/open-jira/open-jira/internal/adf"
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/adf"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 // ProjectRef è la rappresentazione v3 minimale di un progetto, referenziata

@@ -3,7 +3,7 @@ package v3
 import (
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 func TestJiraUser(t *testing.T) {

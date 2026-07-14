@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/project"
-	"github.com/open-jira/open-jira/internal/domain/user"
-	"github.com/open-jira/open-jira/internal/domain/workflow"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
 
 type ProjectHandler struct {

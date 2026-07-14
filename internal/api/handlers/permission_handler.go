@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/permission"
-	"github.com/open-jira/open-jira/internal/domain/project"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
+	"github.com/it4nodummies/heureum/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 	"gorm.io/gorm"
 )
 

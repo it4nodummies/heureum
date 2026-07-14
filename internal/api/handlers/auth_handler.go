@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/auth"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/auth"
 )
 
 type AuthHandler struct {

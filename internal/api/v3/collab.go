@@ -3,8 +3,8 @@ package v3
 import (
 	"fmt"
 
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 // Votes è lo schema v3 dei voti di una issue (additionalProperties:false).

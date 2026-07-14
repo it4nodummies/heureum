@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/group"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/group"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 	"gorm.io/gorm"
 )
 

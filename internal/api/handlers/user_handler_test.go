@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 )
 
 const testBaseURL = "http://localhost:8080"

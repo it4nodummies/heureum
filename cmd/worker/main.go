@@ -8,10 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/open-jira/open-jira/internal/config"
-	"github.com/open-jira/open-jira/internal/domain/automation"
-	applog "github.com/open-jira/open-jira/internal/log"
-	"github.com/open-jira/open-jira/internal/store"
+	"github.com/it4nodummies/heureum/internal/config"
+	"github.com/it4nodummies/heureum/internal/domain/automation"
+	applog "github.com/it4nodummies/heureum/internal/log"
+	"github.com/it4nodummies/heureum/internal/store"
 	"gorm.io/gorm"
 )
 

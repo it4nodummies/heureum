@@ -3,8 +3,8 @@ package v3
 import (
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/domain/project"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 func TestJiraProject_Basic(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/open-jira/open-jira/internal/config"
+	"github.com/it4nodummies/heureum/internal/config"
 )
 
 type Store struct {

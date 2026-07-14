@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/domain/auth"
+	"github.com/it4nodummies/heureum/internal/domain/auth"
 )
 
 func registerAndLogin(t *testing.T, authSvc *auth.Service) string {

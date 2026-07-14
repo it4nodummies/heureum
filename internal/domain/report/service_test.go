@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/sprint"
-	"github.com/open-jira/open-jira/internal/domain/workflow"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/sprint"
+	"github.com/it4nodummies/heureum/internal/domain/workflow"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 func TestJiraVotes(t *testing.T) {

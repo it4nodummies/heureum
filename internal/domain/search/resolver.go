@@ -1,8 +1,8 @@
 package search
 
 import (
-	"github.com/open-jira/open-jira/internal/domain/project"
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 	"gorm.io/gorm"
 )
 

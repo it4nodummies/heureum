@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
-	"github.com/open-jira/open-jira/internal/domain/notification"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	"github.com/it4nodummies/heureum/internal/domain/notification"
 )
 
 type NotificationHandler struct {

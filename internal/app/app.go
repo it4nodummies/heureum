@@ -1,8 +1,8 @@
 package app
 
 import (
-	"github.com/open-jira/open-jira/internal/config"
-	"github.com/open-jira/open-jira/internal/store"
+	"github.com/it4nodummies/heureum/internal/config"
+	"github.com/it4nodummies/heureum/internal/store"
 )
 
 type App struct {

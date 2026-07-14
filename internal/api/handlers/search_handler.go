@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/search"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/search"
 )
 
 // SearchHandler implementa gli endpoint di ricerca JQL conformi a Jira Cloud

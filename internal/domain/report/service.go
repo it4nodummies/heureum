@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/sprint"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"gorm.io/gorm"
 )
 

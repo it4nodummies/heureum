@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/api"
-	"github.com/open-jira/open-jira/internal/config"
-	"github.com/open-jira/open-jira/internal/domain/auth"
-	"github.com/open-jira/open-jira/internal/store"
+	"github.com/it4nodummies/heureum/internal/api"
+	"github.com/it4nodummies/heureum/internal/config"
+	"github.com/it4nodummies/heureum/internal/domain/auth"
+	"github.com/it4nodummies/heureum/internal/store"
 )
 
 // newTestServer avvia il router reale su SQLite temporaneo con migrazioni.

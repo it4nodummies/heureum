@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/open-jira/open-jira/internal/domain/calendar"
+	"github.com/it4nodummies/heureum/internal/domain/calendar"
 )
 
 type CalendarHandler struct {

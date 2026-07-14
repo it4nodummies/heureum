@@ -6,12 +6,12 @@ import (
 	"sort"
 	"strconv"
 
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/board"
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/project"
-	"github.com/open-jira/open-jira/internal/domain/sprint"
-	"github.com/open-jira/open-jira/internal/domain/workflow"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/board"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/sprint"
+	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
 
 // AgileBoardHandler implementa gli endpoint /rest/agile/1.0/board/* (CRUD,

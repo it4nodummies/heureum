@@ -1,4 +1,4 @@
-module github.com/open-jira/open-jira
+module github.com/it4nodummies/heureum
 
 go 1.25.0
 

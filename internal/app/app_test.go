@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/config"
+	"github.com/it4nodummies/heureum/internal/config"
 )
 
 func TestNewSQLiteApp(t *testing.T) {

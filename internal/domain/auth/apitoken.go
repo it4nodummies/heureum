@@ -9,7 +9,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 type APIToken struct {

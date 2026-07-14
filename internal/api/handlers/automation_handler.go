@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/open-jira/open-jira/internal/domain/automation"
+	"github.com/it4nodummies/heureum/internal/domain/automation"
 )
 
 type AutomationHandler struct {

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/webhook"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/webhook"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

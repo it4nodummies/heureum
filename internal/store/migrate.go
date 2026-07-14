@@ -9,7 +9,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
-	"github.com/open-jira/open-jira/internal/config"
+	"github.com/it4nodummies/heureum/internal/config"
 )
 
 func RunMigrations(cfg config.DBConfig) error {

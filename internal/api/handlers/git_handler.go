@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/open-jira/open-jira/internal/domain/git"
-	"github.com/open-jira/open-jira/internal/domain/issue"
-	"github.com/open-jira/open-jira/internal/domain/project"
+	"github.com/it4nodummies/heureum/internal/domain/git"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/project"
 )
 
 type GitHandler struct {

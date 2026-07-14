@@ -3,7 +3,7 @@ package v3
 import (
 	"fmt"
 
-	"github.com/open-jira/open-jira/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
 // User è la rappresentazione Jira v3 di un utente (schema "User" nel contratto).

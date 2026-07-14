@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	v3 "github.com/open-jira/open-jira/internal/api/v3"
-	"github.com/open-jira/open-jira/internal/domain/issue"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 )
 
 // renderIssueList costruisce gli IssueBean (con proiezione dei fields) per una

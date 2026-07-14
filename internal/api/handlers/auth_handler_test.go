@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/open-jira/open-jira/internal/api/middleware"
-	"github.com/open-jira/open-jira/internal/config"
-	"github.com/open-jira/open-jira/internal/domain/auth"
-	"github.com/open-jira/open-jira/internal/domain/user"
-	"github.com/open-jira/open-jira/internal/store"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	"github.com/it4nodummies/heureum/internal/config"
+	"github.com/it4nodummies/heureum/internal/domain/auth"
+	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/store"
 )
 
 func setupAuthHandler(t *testing.T) (*AuthHandler, *store.Store) {
