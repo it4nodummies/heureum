@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { projects as projectsApi } from "@/lib/api";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
+import { ProjectSummary } from "@/components/projects/ProjectSummary";
 
 interface Props {
   projectKey: string;
@@ -21,7 +22,7 @@ export function ProjectSettings({ projectKey }: Props) {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [tab, setTab] = useState<"general" | "workflow">("general");
+  const [tab, setTab] = useState<"general" | "workflow" | "summary">("general");
 
   useEffect(() => {
     if (project) {
@@ -95,6 +96,12 @@ export function ProjectSettings({ projectKey }: Props) {
             className={tab === "workflow" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
             Workflow
+          </button>
+          <button
+            onClick={() => setTab("summary")}
+            className={tab === "summary" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
+          >
+            Summary
           </button>
         </div>
 
@@ -174,6 +181,18 @@ export function ProjectSettings({ projectKey }: Props) {
         )}
 
         {tab === "workflow" && <WorkflowEditor projectKey={projectKey} />}
+
+        {tab === "summary" && (
+          <div className="space-y-3">
+            <ProjectSummary projectKey={projectKey} />
+            <a
+              href={`/jira/projects/${projectKey}/reports`}
+              className="text-[#0052cc] hover:underline text-sm"
+            >
+              Open reports →
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
