@@ -43,13 +43,22 @@ parity effort.
   report against the official OpenAPI specs.
 - **Frontend**: a Next.js (App Router) frontend served under `/app`, covering the above
   functionality end-to-end.
+- **Issue attachments**: upload/download/delete for issue attachments, stored on local disk
+  under the configurable `APP_UPLOADS_DIR` (default `./data/uploads`).
+- **Closable signup**: `APP_SIGNUP` flag (`open`/`closed`) to disable public registration
+  on instances that are provisioned out-of-band.
+- **Deployment hardening**: release-aware Helm chart resource names (multiple releases can
+  coexist in the same or different namespaces without collisions), corrected liveness/
+  readiness probe endpoints for the api/worker/frontend components, and a PVC (Helm) /
+  named volume (Compose) for the uploads directory so attachments survive restarts.
 
 ### Known limitations
 
 - **Reads are not yet permission-gated.** Authorization is enforced on mutations, but any
   authenticated user can still read any project's data (issues, comments, boards, reports).
   Read-side authorization (`BROWSE_PROJECTS`) is planned for a future release.
-- **Attachments are not implemented.**
+- **No object storage for attachments yet.** Attachments are stored on local disk only;
+  S3-compatible storage is a planned enhancement.
 - **SMTP and OAuth are not wired up.** The corresponding environment variables are
   reserved but not yet read by the server.
 

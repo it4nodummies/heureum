@@ -29,7 +29,10 @@ deployment, restrict access at the network layer until read enforcement ships.
 
 Other things to be aware of when evaluating deployment risk:
 
-- Attachments are not yet implemented.
+- Issue attachments are implemented (upload/download/delete), but are stored on local disk
+  under `APP_UPLOADS_DIR` — mount a persistent volume (Docker) or PVC (the Helm chart does
+  this by default) so uploads survive restarts. Object-storage (S3-compatible) backing is
+  a planned enhancement.
 - SMTP and OAuth integrations are not yet wired up (see the Configuration section of the
   [README](README.md)).
 

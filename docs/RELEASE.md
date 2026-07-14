@@ -48,10 +48,14 @@ After the release workflow finishes, confirm the packages exist and are public:
 ## Pre-publication checklist
 
 - [ ] Three-level gate green: `go build ./... && go vet ./... && go test ./...`; `cd frontend-next && npm run build && npx playwright test`; `go run ./cmd/gapreport` leaves no diff.
-- [ ] `helm lint deploy/helm/heureum` passes (run where Helm is installed — it was not available in the build environment during Round 10).
+- [ ] `helm lint deploy/helm/heureum` passes (it was not available in the build environment during Round 10; it ran clean, with the chart templating correctly under distinct release names, as of Round 12).
 - [ ] `docker compose -f deploy/docker/docker-compose.yml config` and `...prod.yml config` parse (run where Docker is installed).
 - [ ] `CHANGELOG.md` `[1.0.0]` date set.
 - [ ] Confirm no Atlassian/Jira trademarked assets remain (branding is text "Heureum"; the `/rest/api/3` + `/rest/agile/1.0` + JQL surfaces are deliberate API-compatibility and are documented as such with the trademark disclaimer in `README.md`).
+- [ ] Multi-tenant deployments: install **one Helm release per tenant/namespace** (each with
+      its own `ingress.host`, database, and `APP_SECRET`) — Heureum has no application-level
+      tenant isolation (see the README's Multi-tenancy section). Set `APP_SIGNUP=closed` on
+      any instance exposed to the public internet once its users are provisioned.
 
 ## Known limitation to disclose
 

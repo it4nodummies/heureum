@@ -107,6 +107,22 @@ helm install heureum deploy/helm/heureum
 
 See the chart's `values.yaml` for configurable settings.
 
+## Multi-tenancy
+
+Heureum is **single-tenant per instance**: users, projects, groups and API keys are global
+to the running instance, and there is no application-level isolation between
+organizations (the `organizations` table exists in the schema but is currently vestigial
+and unused). To serve multiple organizations, run **one instance per tenant**, each with
+its own database, its own `APP_SECRET`, and its own hostname:
+
+- **Helm**: install one release per tenant/namespace, each with its own `ingress.host`
+  (chart resource names are release-aware, so multiple releases coexist without collisions).
+- **Docker Compose**: use a distinct Compose project name (`-p`/`COMPOSE_PROJECT_NAME`) per
+  tenant stack, and set `API_PORT` to avoid host port collisions between stacks.
+
+For any instance exposed to the public internet, set `APP_SIGNUP=closed` once your users are
+provisioned, so registration doesn't leak into a shared instance.
+
 ## API compatibility & gap report
 
 Heureum's route coverage against the official Jira Cloud v3 / Agile 1.0 OpenAPI specs is
