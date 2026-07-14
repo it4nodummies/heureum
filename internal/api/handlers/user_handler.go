@@ -138,6 +138,8 @@ func (h *UserHandler) SearchV3(w http.ResponseWriter, r *http.Request) {
 // Il chiamante deve poter vedere il progetto (BROWSE_PROJECTS): senza,
 // risponde 404 (stesso stile di EnforceNotFound, per non rivelare tramite
 // un 403 l'esistenza del progetto).
+// Email è azzerata prima del mapping se il chiamante non è admin globale,
+// tranne sulla propria entry (stessa policy di SearchV3/GetUser).
 func (h *UserHandler) AssignableSearch(w http.ResponseWriter, r *http.Request) {
 	uid := middleware.UserIDFromContext(r.Context())
 	key := r.URL.Query().Get("project")
@@ -158,8 +160,12 @@ func (h *UserHandler) AssignableSearch(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"search failed"}, nil)
 		return
 	}
+	includeEmail := h.isGlobalAdmin(uid)
 	out := make([]v3.User, 0, len(users))
 	for _, u := range users {
+		if !includeEmail && u.ID != uid {
+			u.Email = ""
+		}
 		out = append(out, v3.JiraUser(u, h.BaseURL))
 	}
 	v3.WriteJSON(w, http.StatusOK, out)
