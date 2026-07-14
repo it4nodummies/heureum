@@ -212,6 +212,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	// il vecchio wfH.ListStatuses restituiva la forma di dominio grezza (workflow_id,category,...).
 	mux.Handle("GET /rest/api/3/status", authMw(http.HandlerFunc(refH.Statuses)))
 	mux.Handle("GET /rest/api/3/status/{idOrName}", authMw(http.HandlerFunc(wfH.GetStatus)))
+	mux.Handle("GET /rest/api/3/statuscategory", authMw(http.HandlerFunc(refH.StatusCategories)))
+	mux.Handle("GET /rest/api/3/statuscategory/{idOrKey}", authMw(http.HandlerFunc(refH.StatusCategoryByID)))
 	mux.Handle("GET /rest/api/3/priority", authMw(http.HandlerFunc(refH.Priorities)))
 	mux.Handle("GET /rest/api/3/issuetype", authMw(http.HandlerFunc(refH.IssueTypes)))
 	mux.Handle("GET /rest/api/3/resolution", authMw(http.HandlerFunc(refH.Resolutions)))

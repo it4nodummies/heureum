@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	v3 "github.com/open-jira/open-jira/internal/api/v3"
 	"github.com/open-jira/open-jira/internal/domain/issue"
@@ -103,6 +104,32 @@ func (h *ReferenceHandler) Statuses(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	v3.WriteJSON(w, http.StatusOK, out)
+}
+
+// allCategories restituisce le 3 status-category emesse dal sistema.
+func (h *ReferenceHandler) allCategories() []v3.StatusCategoryRef {
+	return []v3.StatusCategoryRef{
+		v3.CategoryFor("todo", h.baseURL),
+		v3.CategoryFor("inprogress", h.baseURL),
+		v3.CategoryFor("done", h.baseURL),
+	}
+}
+
+// StatusCategories → GET /rest/api/3/statuscategory.
+func (h *ReferenceHandler) StatusCategories(w http.ResponseWriter, r *http.Request) {
+	v3.WriteJSON(w, http.StatusOK, h.allCategories())
+}
+
+// StatusCategoryByID → GET /rest/api/3/statuscategory/{idOrKey} (per id numerico o key).
+func (h *ReferenceHandler) StatusCategoryByID(w http.ResponseWriter, r *http.Request) {
+	idOrKey := r.PathValue("idOrKey")
+	for _, c := range h.allCategories() {
+		if idOrKey == c.Key || idOrKey == strconv.Itoa(c.ID) {
+			v3.WriteJSON(w, http.StatusOK, c)
+			return
+		}
+	}
+	v3.WriteError(w, http.StatusNotFound, []string{"status category not found"}, nil)
 }
 
 // resolutionRow mappa la tabella "resolutions" (id, name, description): non

@@ -71,8 +71,8 @@ type StatusRef struct {
 	StatusCategory StatusCategoryRef `json:"statusCategory"`
 }
 
-// categoryFor mappa la categoria interna (todo|inprogress|done) allo statusCategory Jira.
-func categoryFor(internal, baseURL string) StatusCategoryRef {
+// CategoryFor mappa la categoria interna (todo|inprogress|done) allo statusCategory Jira.
+func CategoryFor(internal, baseURL string) StatusCategoryRef {
 	switch internal {
 	case "done":
 		return StatusCategoryRef{Self: baseURL + "/rest/api/3/statuscategory/3", ID: 3, Key: "done", ColorName: "green", Name: "Done"}
@@ -89,7 +89,7 @@ func JiraStatus(id, name, internalCategory, baseURL string) StatusRef {
 		Self:           fmt.Sprintf("%s/rest/api/3/status/%s", baseURL, id),
 		ID:             id,
 		Name:           name,
-		StatusCategory: categoryFor(internalCategory, baseURL),
+		StatusCategory: CategoryFor(internalCategory, baseURL),
 	}
 }
 
