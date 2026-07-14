@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+node_modules
+frontend-next/node_modules
+frontend-next/.next
+frontend-next/test-results
+frontend-next/playwright-report
+*.db
+dev.db
+docs
+deploy
+*.md
