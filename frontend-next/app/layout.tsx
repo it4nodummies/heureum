@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Open Jira",
+  title: "Heureum",
   description: "Modern project management",
 };
 

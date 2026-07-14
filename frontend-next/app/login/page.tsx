@@ -59,7 +59,7 @@ export default function LoginPage() {
               </svg>
             </div>
             <span className="text-xl font-bold text-[#1a1f36] tracking-tight">
-              Open Jira
+              Heureum
             </span>
           </div>
           <p className="text-sm text-[#64748b]">Project management, modernized</p>

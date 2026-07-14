@@ -168,7 +168,7 @@ export default function Sidebar() {
           </div>
           {!collapsed && (
             <span className="font-bold text-sm text-[#1a1f36] whitespace-nowrap">
-              Open Jira
+              Heureum
             </span>
           )}
         </div>

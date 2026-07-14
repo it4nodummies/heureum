@@ -1,6 +1,6 @@
 openapi: "3.0.3"
 info:
-  title: Open Jira API — Jira Cloud v3 Compatible
+  title: Heureum API — Jira Cloud v3 Compatible
   description: Open-source Jira clone REST API compatible with Jira Cloud REST API v3
   version: 3.0.0
 servers:

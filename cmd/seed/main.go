@@ -307,11 +307,11 @@ func main() {
 	// Notifica demo per l'admin (idempotente), così la campanella mostra qualcosa
 	notifSvc := notification.NewService(s.DB)
 	var existingN int64
-	if err := s.DB.Model(&notification.Notification{}).Where("user_id = ? AND title = ?", admin.ID, "Welcome to Open Jira").Count(&existingN).Error; err != nil {
+	if err := s.DB.Model(&notification.Notification{}).Where("user_id = ? AND title = ?", admin.ID, "Welcome to Heureum").Count(&existingN).Error; err != nil {
 		log.Fatalf("check demo notification: %v", err)
 	}
 	if existingN == 0 {
-		if err := notifSvc.Create(admin.ID, "welcome", "Welcome to Open Jira", "Your demo workspace is ready", "/jira/projects"); err != nil {
+		if err := notifSvc.Create(admin.ID, "welcome", "Welcome to Heureum", "Your demo workspace is ready", "/jira/projects"); err != nil {
 			log.Fatalf("seed notification: %v", err)
 		}
 		fmt.Println("created demo notification")
