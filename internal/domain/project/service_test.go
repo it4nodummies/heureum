@@ -147,6 +147,37 @@ func TestAddMember_IsIdempotentAndUpdatesRole(t *testing.T) {
 	}
 }
 
+func TestMembershipSubquery_FiltersToMemberProjects(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+
+	p1, err := svc.CreateProject(CreateInput{Key: "MSQ1", Name: "One", Type: TypeScrum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := svc.CreateProject(CreateInput{Key: "MSQ2", Name: "Two", Type: TypeScrum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember(p1.ID, "user-1", RoleMember); err != nil {
+		t.Fatal(err)
+	}
+
+	sub := svc.MembershipSubquery("user-1")
+
+	var got []Project
+	if err := db.Where("id IN (?)", sub).Find(&got).Error; err != nil {
+		t.Fatalf("query with subquery: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 project for user-1, got %d", len(got))
+	}
+	if got[0].ID != p1.ID {
+		t.Errorf("expected project %s, got %s", p1.ID, got[0].ID)
+	}
+	_ = p2
+}
+
 func TestCreateProject_AddsCreatorAsAdmin(t *testing.T) {
 	db := setupTestDB(t)
 	svc := NewService(db, nil)

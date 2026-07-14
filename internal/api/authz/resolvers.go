@@ -134,3 +134,47 @@ func (c *Checker) ByCustomField(param string) Resolver {
 		return f.ProjectID, true
 	}
 }
+
+// ByAttachment risolve il progetto a due hop dal path param allegato (UUID,
+// es. {id}): attachment -> issue (via IssueID) -> project. Il servizio
+// attachment non è montato sul Checker, quindi si interroga direttamente la
+// tabella issue_attachments via issues.DB() (stesso pattern di ByIssueUUID).
+func (c *Checker) ByAttachment(param string) Resolver {
+	return func(r *http.Request) (string, bool) {
+		id := r.PathValue(param)
+		if id == "" {
+			return "", false
+		}
+		var att issue.IssueAttachment
+		if err := c.issues.DB().First(&att, "id = ?", id).Error; err != nil {
+			return "", false
+		}
+		var iss issue.Issue
+		if err := c.issues.DB().First(&iss, "id = ?", att.IssueID).Error; err != nil {
+			return "", false
+		}
+		return iss.ProjectID, true
+	}
+}
+
+// ByIssueLink risolve il progetto a due hop dal path param link (UUID, es.
+// {linkId}): link -> issue sorgente (SourceID) -> project. Stesso pattern di
+// issuelink_handler.go (Get/issueByID): il permesso si valuta sul progetto
+// della issue sorgente del link.
+func (c *Checker) ByIssueLink(param string) Resolver {
+	return func(r *http.Request) (string, bool) {
+		id := r.PathValue(param)
+		if id == "" {
+			return "", false
+		}
+		link, err := c.issues.GetLink(id)
+		if err != nil {
+			return "", false
+		}
+		var iss issue.Issue
+		if err := c.issues.DB().First(&iss, "id = ?", link.SourceID).Error; err != nil {
+			return "", false
+		}
+		return iss.ProjectID, true
+	}
+}

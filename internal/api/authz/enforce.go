@@ -34,6 +34,26 @@ func (c *Checker) Enforce(permKey string, resolve Resolver, next http.Handler) h
 	})
 }
 
+// EnforceNotFound richiede permKey sul progetto risolto da resolve, come
+// Enforce, ma nega con 404 invece di 403 (semantica Jira sulle letture: non
+// rivelare tramite un 403 l'esistenza di una risorsa che l'utente non
+// potrebbe vedere). Resolver ok=false → pass-through al handler, invariato.
+func (c *Checker) EnforceNotFound(permKey string, resolve Resolver, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uid := middleware.UserIDFromContext(r.Context())
+		projectID, ok := resolve(r)
+		if !ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if err := c.RequireProject(uid, projectID, permKey); err != nil {
+			v3.WriteError(w, http.StatusNotFound, []string{"the resource does not exist or you do not have permission to view it"}, nil)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // EnforceGlobalAdmin richiede che l'utente autenticato sia admin globale
 // (flag is_admin), a prescindere da qualunque progetto.
 func (c *Checker) EnforceGlobalAdmin(next http.Handler) http.Handler {

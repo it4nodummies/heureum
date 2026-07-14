@@ -315,6 +315,14 @@ func (s *Service) Archive(key string) error {
 	}).Error
 }
 
+// MembershipSubquery returns a subquery of the project IDs userID is a
+// member of, usable in a caller's query as e.g.
+// db.Where("id IN (?)", svc.MembershipSubquery(userID)) to scope reads
+// (project lists, JQL search) to only the projects the user can see.
+func (s *Service) MembershipSubquery(userID string) *gorm.DB {
+	return s.db.Model(&ProjectMember{}).Select("project_id").Where("user_id = ?", userID)
+}
+
 // AddMember adds userID as a member of projectID with the given role. It is
 // idempotent: re-adding an existing member upserts (updates) their role
 // rather than erroring on the composite primary key conflict.
