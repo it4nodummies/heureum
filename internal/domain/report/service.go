@@ -326,13 +326,15 @@ func (s *Service) GetCFD(projectID string) (*CFDData, error) {
 	s.db.Raw(`
 		SELECT
 			DATE(ih.created_at) as date,
-			COALESCE(ws.category, 'inprogress') as category,
+			CASE WHEN ih.field_name = 'created' THEN 'todo'
+			     ELSE COALESCE(ws.category, 'inprogress') END as category,
 			COUNT(DISTINCT ih.issue_id) as count
 		FROM issue_history ih
 		JOIN issues i ON ih.issue_id = i.id
-		LEFT JOIN workflow_statuses ws ON i.status_id = ws.id
-		WHERE i.project_id = ? AND i.is_archived = FALSE AND ih.field_name IN ('status_id', 'created')
-		GROUP BY DATE(ih.created_at), COALESCE(ws.category, 'inprogress')
+		LEFT JOIN workflow_statuses ws ON ws.id = ih.new_value
+		WHERE i.project_id = ? AND i.is_archived = FALSE AND ih.field_name IN ('status', 'created')
+		GROUP BY DATE(ih.created_at), CASE WHEN ih.field_name = 'created' THEN 'todo'
+		     ELSE COALESCE(ws.category, 'inprogress') END
 		ORDER BY date ASC
 	`, projectID).Scan(&dayCounts)
 

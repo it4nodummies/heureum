@@ -107,3 +107,42 @@ func TestProjectSummary_Counts(t *testing.T) {
 		t.Errorf("attese 2 issue nei conteggi per stato, got %d (%v)", total, sum.IssueCountByStatus)
 	}
 }
+
+func TestCFD_ReadsHistoricalStatus(t *testing.T) {
+	db := newDB(t)
+	todoID, doneID := seedWorkflow(t, db, "proj-1")
+	iss := &issue.Issue{ID: uuid.NewString(), ProjectID: "proj-1", Key: "P-1", Title: "x", SeqID: 1, StatusID: &doneID}
+	db.Create(iss)
+	// evento 'created' (entra in todo) e 'status' → done
+	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: iss.ID, FieldName: "created", OldValue: "", NewValue: "P-1", CreatedAt: time.Now().AddDate(0, 0, -2)})
+	db.Create(&issue.IssueHistory{ID: uuid.NewString(), IssueID: iss.ID, FieldName: "status", OldValue: todoID, NewValue: doneID, CreatedAt: time.Now().AddDate(0, 0, -1)})
+
+	svc := NewService(db)
+	cfd, err := svc.GetCFD("proj-1")
+	if err != nil {
+		t.Fatalf("GetCFD: %v", err)
+	}
+	if len(cfd.Dates) == 0 {
+		t.Fatal("CFD senza date")
+	}
+	// deve esistere un conteggio non-zero per la categoria 'done' (dallo status storico)
+	done, ok := cfd.Data["done"]
+	if !ok {
+		t.Fatalf("categoria 'done' assente nel CFD: chiavi %v", keysOf(cfd.Data))
+	}
+	sum := 0
+	for _, n := range done {
+		sum += n
+	}
+	if sum == 0 {
+		t.Errorf("la categoria done deve avere conteggi > 0 dallo status storico")
+	}
+}
+
+func keysOf(m map[string][]int) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
