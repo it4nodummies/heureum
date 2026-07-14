@@ -2,9 +2,9 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **103**
-- Nel contratto ma mancanti: **618**
-- Implementati ma fuori contratto (estensioni): **80**
+- Nel contratto e implementati (path match): **114**
+- Nel contratto ma mancanti: **607**
+- Implementati ma fuori contratto (estensioni): **81**
 
 ## Mancanti (dal contratto)
 
@@ -27,8 +27,6 @@
 - `DELETE /rest/api/3/fieldconfigurationscheme/{id}` — Delete field configuration scheme
 - `DELETE /rest/api/3/filter/{id}/columns` — Reset columns
 - `DELETE /rest/api/3/filter/{id}/permission/{permissionId}` — Delete share permission
-- `DELETE /rest/api/3/group` — Remove group
-- `DELETE /rest/api/3/group/user` — Remove user from group
 - `DELETE /rest/api/3/issue/properties/{propertyKey}` — Bulk delete issue property
 - `DELETE /rest/api/3/issue/{issueIdOrKey}/properties/{propertyKey}` — Delete issue property
 - `DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink` — Delete remote issue link by global ID
@@ -186,10 +184,7 @@
 - `GET /rest/api/3/filter/{id}/columns` — Get columns
 - `GET /rest/api/3/filter/{id}/permission` — Get share permissions
 - `GET /rest/api/3/filter/{id}/permission/{permissionId}` — Get share permission
-- `GET /rest/api/3/group` — Get group
 - `GET /rest/api/3/group/bulk` — Bulk get groups
-- `GET /rest/api/3/group/member` — Get users from group
-- `GET /rest/api/3/groups/picker` — Find groups
 - `GET /rest/api/3/groupuserpicker` — Find users and groups
 - `GET /rest/api/3/instance/license` — Get license
 - `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes` — Get create metadata issue types for a project
@@ -227,13 +222,11 @@
 - `GET /rest/api/3/jql/function/computation` — Get precomputations (apps)
 - `GET /rest/api/3/license/approximateLicenseCount` — Get approximate license count
 - `GET /rest/api/3/license/approximateLicenseCount/product/{applicationKey}` — Get approximate application license count
-- `GET /rest/api/3/mypermissions` — Get my permissions
 - `GET /rest/api/3/mypreferences` — Get preference
 - `GET /rest/api/3/mypreferences/locale` — Get locale
 - `GET /rest/api/3/notificationscheme` — Get notification schemes paginated
 - `GET /rest/api/3/notificationscheme/project` — Get projects using notification schemes paginated
 - `GET /rest/api/3/notificationscheme/{id}` — Get notification scheme
-- `GET /rest/api/3/permissions` — Get all permissions
 - `GET /rest/api/3/permissionscheme` — Get all permission schemes
 - `GET /rest/api/3/permissionscheme/{schemeId}` — Get permission scheme
 - `GET /rest/api/3/permissionscheme/{schemeId}/permission` — Get permission scheme grants
@@ -307,7 +300,6 @@
 - `GET /rest/api/3/universal_avatar/view/type/{type}/avatar/{id}` — Get avatar image by ID
 - `GET /rest/api/3/universal_avatar/view/type/{type}/owner/{entityId}` — Get avatar image by owner
 - `GET /rest/api/3/user/assignable/multiProjectSearch` — Find users assignable to projects
-- `GET /rest/api/3/user/assignable/search` — Find users assignable to issues
 - `GET /rest/api/3/user/bulk` — Bulk get users
 - `GET /rest/api/3/user/bulk/migration` — Get account IDs for users
 - `GET /rest/api/3/user/columns` — Get user default columns
@@ -318,7 +310,6 @@
 - `GET /rest/api/3/user/picker` — Find users for picker
 - `GET /rest/api/3/user/properties` — Get user property keys
 - `GET /rest/api/3/user/properties/{propertyKey}` — Get user property
-- `GET /rest/api/3/user/search` — Find users
 - `GET /rest/api/3/user/search/query` — Find users by query
 - `GET /rest/api/3/user/search/query/key` — Find user keys by query
 - `GET /rest/api/3/user/viewissue/search` — Find users with browse permission
@@ -415,8 +406,6 @@
 - `POST /rest/api/3/fieldconfigurationscheme/{id}/mapping/delete` — Remove issue types from field configuration scheme
 - `POST /rest/api/3/filter/{id}/permission` — Add share permission
 - `POST /rest/api/3/forge/panel/action/bulk/async` — Bulk pin or unpin issue panel to projects
-- `POST /rest/api/3/group` — Create group
-- `POST /rest/api/3/group/user` — Add user to group
 - `POST /rest/api/3/issue/archive` — Archive issue(s) by JQL
 - `POST /rest/api/3/issue/bulk` — Bulk create issue
 - `POST /rest/api/3/issue/bulkfetch` — Bulk fetch issues
@@ -707,5 +696,6 @@
 - `POST /rest/api/3/project/{}/workflow/transitions`
 - `POST /rest/api/3/webhooks/git/{}`
 - `PUT /rest/api/3/issue/{}/custom-values/{}`
+- `PUT /rest/api/3/myself`
 - `PUT /rest/api/3/project/{}/star`
 - `PUT /rest/api/3/project/{}/workflow/statuses/order`

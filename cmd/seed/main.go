@@ -14,7 +14,9 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/board"
 	"github.com/open-jira/open-jira/internal/domain/dashboard"
+	"github.com/open-jira/open-jira/internal/domain/group"
 	"github.com/open-jira/open-jira/internal/domain/issue"
+	"github.com/open-jira/open-jira/internal/domain/notification"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/search"
 	"github.com/open-jira/open-jira/internal/domain/sprint"
@@ -258,6 +260,35 @@ func main() {
 		fmt.Println("created demo dashboard")
 	} else if err != nil {
 		log.Fatalf("check demo dashboard: %v", err)
+	}
+
+	// Gruppo demo "developers" (idempotente), con l'admin come membro
+	grpSvc := group.NewService(s.DB)
+	var existingG group.Group
+	if err := s.DB.Where("name = ?", "developers").First(&existingG).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		g, cerr := grpSvc.Create("developers")
+		if cerr != nil {
+			log.Fatalf("seed group: %v", cerr)
+		}
+		if aerr := grpSvc.AddUser(g.ID, admin.ID); aerr != nil {
+			log.Fatalf("seed group member: %v", aerr)
+		}
+		fmt.Println("created demo group")
+	} else if err != nil {
+		log.Fatalf("check demo group: %v", err)
+	}
+
+	// Notifica demo per l'admin (idempotente), così la campanella mostra qualcosa
+	notifSvc := notification.NewService(s.DB)
+	var existingN int64
+	if err := s.DB.Model(&notification.Notification{}).Where("user_id = ? AND title = ?", admin.ID, "Welcome to Open Jira").Count(&existingN).Error; err != nil {
+		log.Fatalf("check demo notification: %v", err)
+	}
+	if existingN == 0 {
+		if err := notifSvc.Create(admin.ID, "welcome", "Welcome to Open Jira", "Your demo workspace is ready", "/jira/projects"); err != nil {
+			log.Fatalf("seed notification: %v", err)
+		}
+		fmt.Println("created demo notification")
 	}
 
 	fmt.Println("seed complete")
