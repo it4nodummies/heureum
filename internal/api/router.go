@@ -16,6 +16,7 @@ import (
 	"github.com/open-jira/open-jira/internal/domain/customfield"
 	"github.com/open-jira/open-jira/internal/domain/dashboard"
 	"github.com/open-jira/open-jira/internal/domain/git"
+	"github.com/open-jira/open-jira/internal/domain/group"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/notification"
 	"github.com/open-jira/open-jira/internal/domain/project"
@@ -83,6 +84,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	calendarSvc := calendar.NewService(db)
 	calendarH := handlers.NewCalendarHandler(calendarSvc)
 	refH := handlers.NewReferenceHandler(db, cfg.BaseURL)
+
+	groupSvc := group.NewService(db)
+	groupH := handlers.NewGroupHandler(groupSvc, db, cfg.BaseURL)
 
 	boardSvc := board.NewService(db)
 	agileBoardH := handlers.NewAgileBoardHandler(boardSvc, projectSvc, issueSvc, sprintSvc, wfSvc, issueH, cfg.BaseURL)
@@ -336,6 +340,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	mux.Handle("GET /rest/api/3/project/{projectID}/timeline", authMw(http.HandlerFunc(timelineH.GetTimeline)))
 	mux.Handle("GET /rest/api/3/project/{projectID}/calendar", authMw(http.HandlerFunc(calendarH.GetCalendar)))
+
+	// --- Gruppi (Round 8) ---
+	mux.Handle("GET /rest/api/3/group", authMw(http.HandlerFunc(groupH.Get)))
+	mux.Handle("POST /rest/api/3/group", authMw(http.HandlerFunc(groupH.Create)))
+	mux.Handle("DELETE /rest/api/3/group", authMw(http.HandlerFunc(groupH.Delete)))
+	mux.Handle("GET /rest/api/3/group/member", authMw(http.HandlerFunc(groupH.Members)))
+	mux.Handle("POST /rest/api/3/group/user", authMw(http.HandlerFunc(groupH.AddUser)))
+	mux.Handle("DELETE /rest/api/3/group/user", authMw(http.HandlerFunc(groupH.RemoveUser)))
+	mux.Handle("GET /rest/api/3/groups/picker", authMw(http.HandlerFunc(groupH.Picker)))
 
 	return corsMiddleware(mux)
 }
