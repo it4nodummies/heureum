@@ -583,9 +583,12 @@ func rankDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+var rankSeqCounter int64 // seq_id univoco per i test (len(id) collide su id di pari lunghezza)
+
 func mk(t *testing.T, db *gorm.DB, id string, pos float64) {
 	t.Helper()
-	if err := db.Create(&Issue{ID: id, ProjectID: "p", Key: id, Title: id, Position: pos, SeqID: int64(len(id))}).Error; err != nil {
+	rankSeqCounter++
+	if err := db.Create(&Issue{ID: id, ProjectID: "p", Key: id, Title: id, Position: pos, SeqID: rankSeqCounter}).Error; err != nil {
 		t.Fatalf("create %s: %v", id, err)
 	}
 }
