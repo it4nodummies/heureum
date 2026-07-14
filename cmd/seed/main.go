@@ -13,6 +13,7 @@ import (
 	"github.com/open-jira/open-jira/internal/config"
 	"github.com/open-jira/open-jira/internal/domain/auth"
 	"github.com/open-jira/open-jira/internal/domain/board"
+	"github.com/open-jira/open-jira/internal/domain/dashboard"
 	"github.com/open-jira/open-jira/internal/domain/issue"
 	"github.com/open-jira/open-jira/internal/domain/project"
 	"github.com/open-jira/open-jira/internal/domain/search"
@@ -240,6 +241,23 @@ func main() {
 		fmt.Println("created demo sprint")
 	} else if err != nil {
 		log.Fatalf("check demo sprint: %v", err)
+	}
+
+	// Dashboard demo (idempotente), con widget "assigned_to_me"
+	dashSvc := dashboard.NewService(s.DB)
+	var existingD dashboard.Dashboard
+	err = s.DB.Where("owner_id = ? AND name = ?", admin.ID, "My Dashboard").First(&existingD).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		d, cerr := dashSvc.CreateDashboard(admin.ID, "My Dashboard")
+		if cerr != nil {
+			log.Fatalf("seed dashboard: %v", cerr)
+		}
+		if _, werr := dashSvc.AddWidget(d.ID, "assigned_to_me", "{}"); werr != nil {
+			log.Fatalf("seed widget: %v", werr)
+		}
+		fmt.Println("created demo dashboard")
+	} else if err != nil {
+		log.Fatalf("check demo dashboard: %v", err)
 	}
 
 	fmt.Println("seed complete")

@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **103**
 - Nel contratto ma mancanti: **618**
-- Implementati ma fuori contratto (estensioni): **78**
+- Implementati ma fuori contratto (estensioni): **80**
 
 ## Mancanti (dal contratto)
 
@@ -665,6 +665,8 @@
 - `GET /rest/api/3/project/{}/reports/burndown`
 - `GET /rest/api/3/project/{}/reports/burnup`
 - `GET /rest/api/3/project/{}/reports/cfd`
+- `GET /rest/api/3/project/{}/reports/created-vs-resolved`
+- `GET /rest/api/3/project/{}/reports/pie`
 - `GET /rest/api/3/project/{}/reports/velocity`
 - `GET /rest/api/3/project/{}/sprints`
 - `GET /rest/api/3/project/{}/sprints/{}`
