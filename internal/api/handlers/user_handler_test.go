@@ -16,7 +16,7 @@ func TestGetMe(t *testing.T) {
 	h, s := setupAuthHandler(t)
 	defer s.Close()
 	u, _ := h.svc.Register("me@test.com", "meuser", "Me User", "password123")
-	userH := NewUserHandler(s.DB, testBaseURL)
+	userH := NewUserHandler(s.DB, testBaseURL, nil)
 	req := httptest.NewRequest("GET", "/users/me", nil)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, u.ID)
 	req = req.WithContext(ctx)
@@ -33,7 +33,7 @@ func TestGetMe(t *testing.T) {
 func TestGetMyself_UserNotFound(t *testing.T) {
 	_, s := setupAuthHandler(t)
 	defer s.Close()
-	userH := NewUserHandler(s.DB, testBaseURL)
+	userH := NewUserHandler(s.DB, testBaseURL, nil)
 	req := httptest.NewRequest("GET", "/rest/api/3/myself", nil)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, "does-not-exist")
 	req = req.WithContext(ctx)

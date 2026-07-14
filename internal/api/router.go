@@ -38,7 +38,6 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	authSvc := auth.NewService(db, cfg.Secret)
 	authH := handlers.NewAuthHandler(authSvc, cfg.SignupOpen)
-	userH := handlers.NewUserHandler(db, cfg.BaseURL)
 	oauthH := handlers.NewOAuthHandler(db, cfg.Secret, cfg.BaseURL)
 	projectSvc := project.NewService(db, nil)
 	permH := handlers.NewPermissionHandler(db, projectSvc)
@@ -58,6 +57,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	cfSvc := customfield.NewService(db)
 	userSvc := user.NewService(db)
 	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc)
+	userH := handlers.NewUserHandler(db, cfg.BaseURL, chk)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
 
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, cfg.BaseURL)
@@ -105,7 +105,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	timelineH := handlers.NewTimelineHandler(timelineSvc)
 	calendarSvc := calendar.NewService(db)
 	calendarH := handlers.NewCalendarHandler(calendarSvc)
-	refH := handlers.NewReferenceHandler(db, cfg.BaseURL)
+	refH := handlers.NewReferenceHandler(db, cfg.BaseURL, chk, projectSvc)
 
 	groupSvc := group.NewService(db)
 	groupH := handlers.NewGroupHandler(groupSvc, db, cfg.BaseURL)
@@ -354,9 +354,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/dashboard/{dashboardId}/gadget", authMw(http.HandlerFunc(dashboardH.AddWidget)))
 	mux.Handle("DELETE /rest/api/3/dashboard/{dashboardId}/gadget/{gadgetId}", authMw(http.HandlerFunc(dashboardH.RemoveGadget)))
 
-	mux.HandleFunc("GET /ws/v1/projects/{key}/board", func(w http.ResponseWriter, r *http.Request) {
+	// Autenticata come le altre rotte REST (authMw legge il bearer token
+	// dall'header Authorization). FOLLOW-UP: nessun client browser consuma
+	// ancora questa rotta (i WebSocket browser non possono impostare header
+	// custom sull'handshake), quindi servirà un meccanismo dedicato — token
+	// short-lived in query string o subprotocol — quando un client verrà
+	// implementato.
+	mux.Handle("GET /ws/v1/projects/{key}/board", authMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws.ServeWs(wsHub, w, r)
-	})
+	})))
 
 	mux.Handle("GET /rest/api/3/notifications", authMw(http.HandlerFunc(notifH.List)))
 	mux.Handle("GET /rest/api/3/notifications/unread-count", authMw(http.HandlerFunc(notifH.UnreadCount)))

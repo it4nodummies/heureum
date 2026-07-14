@@ -7,19 +7,38 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 	"gorm.io/gorm"
 )
 
 type ReferenceHandler struct {
-	db      *gorm.DB
-	baseURL string
+	db         *gorm.DB
+	baseURL    string
+	chk        *authz.Checker
+	projectSvc *project.Service
 }
 
-func NewReferenceHandler(db *gorm.DB, baseURL string) *ReferenceHandler {
-	return &ReferenceHandler{db: db, baseURL: baseURL}
+// NewReferenceHandler costruisce lo handler. chk/projectSvc servono a
+// scopare i cataloghi /label e /field ai soli progetti browsable dal
+// chiamante (Task 8, Round 12): un admin globale vede tutto, invariato.
+func NewReferenceHandler(db *gorm.DB, baseURL string, chk *authz.Checker, projectSvc *project.Service) *ReferenceHandler {
+	return &ReferenceHandler{db: db, baseURL: baseURL, chk: chk, projectSvc: projectSvc}
+}
+
+// browsableProjectsScope restituisce la subquery dei progetti di cui uid è
+// membro, o nil (nessuno scoping) se uid è admin globale o se chk/projectSvc
+// non sono stati iniettati (compat test) — stesso pattern di
+// AgileBoardHandler.boardScope / SearchHandler.searchScope.
+func (h *ReferenceHandler) browsableProjectsScope(uid string) *gorm.DB {
+	if h.chk == nil || h.projectSvc == nil || h.chk.IsGlobalAdmin(uid) {
+		return nil
+	}
+	return h.projectSvc.MembershipSubquery(uid)
 }
 
 // Priorities → GET /rest/api/3/priority: le 5 priorità standard di Jira.
@@ -191,9 +210,14 @@ func (h *ReferenceHandler) Fields(w http.ResponseWriter, r *http.Request) {
 		{ID: "labels", Key: "labels", Name: "Labels", Navigable: true, Orderable: true, Searchable: true},
 		{ID: "description", Key: "description", Name: "Description", Navigable: true, Searchable: true},
 	}
+	uid := middleware.UserIDFromContext(r.Context())
 	type cf struct{ ID, Name string }
 	var customs []cf
-	h.db.Table("custom_fields").Select("id, name").Scan(&customs)
+	q := h.db.Table("custom_fields").Select("id, name")
+	if scope := h.browsableProjectsScope(uid); scope != nil {
+		q = q.Where("project_id IN (?)", scope)
+	}
+	q.Scan(&customs)
 	for _, c := range customs {
 		out = append(out, fieldOut{ID: "customfield_" + c.ID, Key: "customfield_" + c.ID, Name: c.Name, Custom: true, Navigable: true, Orderable: true, Searchable: true})
 	}
@@ -201,10 +225,17 @@ func (h *ReferenceHandler) Fields(w http.ResponseWriter, r *http.Request) {
 }
 
 // Labels → GET /rest/api/3/label: PageBeanString con i nomi distinti di label
-// esistenti (tabella labels, colonna name).
+// esistenti (tabella labels, colonna name, con project_id). Scopato ai
+// progetti browsable dal chiamante (non admin globale) per non far trapelare
+// nomi di label di progetti a cui non ha accesso.
 func (h *ReferenceHandler) Labels(w http.ResponseWriter, r *http.Request) {
+	uid := middleware.UserIDFromContext(r.Context())
 	var names []string
-	h.db.Table("labels").Distinct("name").Pluck("name", &names)
+	q := h.db.Table("labels").Distinct("name")
+	if scope := h.browsableProjectsScope(uid); scope != nil {
+		q = q.Where("project_id IN (?)", scope)
+	}
+	q.Pluck("name", &names)
 	if names == nil {
 		names = []string{}
 	}
