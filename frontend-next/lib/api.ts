@@ -288,6 +288,9 @@ export const issues = {
     }),
 
   del: (idOrKey: string) => apiFetch<void>(`/rest/api/3/issue/${idOrKey}`, { method: "DELETE" }),
+
+  availableTransitions: (idOrKey: string) =>
+    apiFetch<{ transitions: AvailableTransition[] }>(`/rest/api/3/issue/${idOrKey}/transitions`),
 };
 
 // ── Metadata (priorities, issue types, statuses) ────────────────────────────
@@ -463,4 +466,76 @@ export const agileIssues = {
       method: "PUT",
       body: JSON.stringify({ issues, rankBeforeIssue, rankAfterIssue }),
     }),
+};
+
+// ── Workflow ─────────────────────────────────────────────────────────────────
+
+export interface WorkflowStatus {
+  id: string;
+  name: string;
+  category: "todo" | "inprogress" | "done";
+  color: string;
+  position: number;
+}
+
+export interface WorkflowTransition {
+  id: string;
+  from_status_id: string;
+  to_status_id: string;
+  name: string;
+  require_assignee: boolean;
+  set_resolution: boolean;
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  statuses: WorkflowStatus[];
+  transitions: WorkflowTransition[];
+}
+
+export interface AvailableTransition {
+  id: string;
+  name: string;
+  to: { id: string; name: string; statusCategory: { key: string; name: string } };
+}
+
+export const workflow = {
+  get: (projectKey: string) => apiFetch<Workflow>(`/rest/api/3/project/${projectKey}/workflow`),
+  addStatus: (projectKey: string, name: string, category: string, color: string) =>
+    apiFetch<WorkflowStatus>(`/rest/api/3/project/${projectKey}/workflow/statuses`, {
+      method: "POST",
+      body: JSON.stringify({ name, category, color }),
+    }),
+  updateStatus: (projectKey: string, id: string, patch: { name?: string; category?: string; color?: string }) =>
+    apiFetch<WorkflowStatus>(`/rest/api/3/project/${projectKey}/workflow/statuses/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteStatus: (projectKey: string, id: string) =>
+    apiFetch<void>(`/rest/api/3/project/${projectKey}/workflow/statuses/${id}`, { method: "DELETE" }),
+  reorderStatuses: (projectKey: string, statusIds: string[]) =>
+    apiFetch<void>(`/rest/api/3/project/${projectKey}/workflow/statuses/order`, {
+      method: "PUT",
+      body: JSON.stringify({ status_ids: statusIds }),
+    }),
+  addTransition: (
+    projectKey: string,
+    t: { from_status_id: string; to_status_id: string; name: string; require_assignee?: boolean; set_resolution?: boolean }
+  ) =>
+    apiFetch<WorkflowTransition>(`/rest/api/3/project/${projectKey}/workflow/transitions`, {
+      method: "POST",
+      body: JSON.stringify(t),
+    }),
+  updateTransition: (
+    projectKey: string,
+    id: string,
+    patch: { name?: string; require_assignee?: boolean; set_resolution?: boolean }
+  ) =>
+    apiFetch<WorkflowTransition>(`/rest/api/3/project/${projectKey}/workflow/transitions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteTransition: (projectKey: string, id: string) =>
+    apiFetch<void>(`/rest/api/3/project/${projectKey}/workflow/transitions/${id}`, { method: "DELETE" }),
 };
