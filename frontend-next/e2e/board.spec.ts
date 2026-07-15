@@ -134,3 +134,50 @@ test("shared project header shows on board, backlog, reports and settings with t
   await expect(page.getByRole("heading", { name: /Demo Project/ }).first()).toBeVisible();
   await expect(tabs.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
 });
+
+async function dragElement(page: Page, fromTestId: string, toTestId: string) {
+  const source = page.getByTestId(fromTestId);
+  const target = page.getByTestId(toTestId);
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error("drag element bounding box not found");
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 10 });
+  await page.mouse.up();
+}
+
+test("dragging a card into a column with no valid transition shows an error", async ({ page }) => {
+  await login(page);
+
+  // Unique per run: the backend doesn't dedupe status names, and locally the
+  // Playwright webServer is reused across invocations (reuseExistingServer),
+  // so a fixed name would collide with a status left over from a prior run.
+  const statusName = `Blocked-${Date.now()}`;
+
+  // Add a status with no transitions to/from it via the Workflow settings panel.
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+  await page.getByLabel("New status name").fill(statusName);
+  await page.getByLabel("Category (reporting only)").selectOption("todo");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId(`status-${statusName}`)).toBeVisible();
+
+  // Go to the board: the new status appears as a column, but no transition
+  // reaches it, so dropping a card there must fail visibly instead of silently.
+  await page.goto("/app/boards/1");
+  const columnTestId = `column-${statusName}`;
+  await expect(page.locator(`[data-testid="${columnTestId}"]`)).toBeVisible();
+  const card = page.locator('[data-testid^="card-DEMO-"]').first();
+  const cardTestId = await card.getAttribute("data-testid");
+  if (!cardTestId) throw new Error("no seeded card found on board 1");
+
+  await dragElement(page, cardTestId, columnTestId);
+
+  await expect(page.getByTestId("move-error")).toBeVisible();
+  await expect(page.getByTestId("move-error")).toContainText("invalid transition");
+
+  // Dismissing clears the banner.
+  await page.getByRole("button", { name: "Dismiss error" }).click();
+  await expect(page.getByTestId("move-error")).not.toBeVisible();
+});
