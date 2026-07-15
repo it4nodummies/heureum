@@ -90,14 +90,43 @@ Attachments are stored on local disk under `APP_UPLOADS_DIR`; when running in Do
 
 ## Docker
 
-Local development stack (Postgres + Redis + API):
+### Prebuilt images (GHCR)
+
+Official images are published to the GitHub Container Registry on every release and are
+publicly pullable:
+
+```bash
+docker pull ghcr.io/it4nodummies/heureum-api:1.0.0
+docker pull ghcr.io/it4nodummies/heureum-worker:1.0.0
+docker pull ghcr.io/it4nodummies/heureum-frontend:1.0.0
+```
+
+Each image is also tagged `latest` and with the major.minor (`1.0`).
+
+### Run the full stack from GHCR
+
+`deploy/docker/docker-compose.prod.yml` wires the three images together with Postgres, Redis
+and an nginx reverse proxy. It references `nginx.conf` from the repo, so clone the repo first:
+
+```bash
+git clone https://github.com/it4nodummies/heureum.git
+cd heureum
+APP_SECRET="$(openssl rand -hex 32)" \
+  docker compose -f deploy/docker/docker-compose.prod.yml up -d
+```
+
+The API runs its migrations automatically on first start. Open **http://localhost** and
+create the first account via the sign-up screen (public registration is open by default —
+set `APP_SIGNUP=closed` on the `api` service once your users exist). No demo data is seeded
+in this stack; use the SQLite quick start above if you want the sample project.
+
+### Build locally instead
+
+Development stack that builds the images from source (Postgres + Redis + API + frontend + nginx):
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml up --build
 ```
-
-A production compose file with pre-built `heureum/*` images is provided as a starting point
-at `deploy/docker/docker-compose.prod.yml`.
 
 ## Kubernetes / Helm
 
