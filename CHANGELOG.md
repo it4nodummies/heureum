@@ -7,6 +7,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-14
+
+### Added
+
+- **Create board** from the project overview — unlocks the Board and Backlog once a project has one.
+- **Create issue** everywhere it's needed: a "Create" menu in the top bar (Issue, with a project
+  picker, or Project) plus contextual "Create issue" buttons on the project overview, board, and backlog.
+- **Editable issue detail**: an Edit mode for summary, description, priority, and labels.
+- **Story points** on issues (view and edit) and **breadcrumbs** on the issue detail to navigate
+  back to the project.
+- **Consistent project header** across all project pages (Board / Backlog / Reports / Settings tabs
+  with the current one highlighted) and a generated **default project avatar** (no more broken image).
+
+### Fixed
+
+- Issue **description** no longer renders raw JSON for issues created without one (shows a
+  placeholder instead).
+- `PUT /rest/api/3/issue/{key}` now persists **label** and **story point** changes (previously ignored).
+
 ## [1.0.1] - 2026-07-14
 
 ### Fixed
@@ -76,6 +95,7 @@ parity effort.
 - **SMTP and OAuth are not wired up.** The corresponding environment variables are
   reserved but not yet read by the server.
 
-[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.2
 [1.0.1]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.1
 [1.0.0]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.0
