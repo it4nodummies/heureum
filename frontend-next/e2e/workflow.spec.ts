@@ -76,3 +76,31 @@ test("workflow editor persists status order after drag-and-drop reorder", async 
     rowsAfter.findIndex((r) => r.includes("TO DO"))
   );
 });
+
+test("workflow editor creates and removes a transition between two statuses", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  // Two fresh statuses with no transitions between them yet.
+  await page.getByLabel("New status name").fill("Test A");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Test A")).toBeVisible();
+
+  await page.getByLabel("New status name").fill("Test B");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Test B")).toBeVisible();
+
+  // Create a transition Test A -> Test B.
+  await page.getByLabel("From status").selectOption({ label: "Test A" });
+  await page.getByLabel("To status").selectOption({ label: "Test B" });
+  await page.getByLabel("Transition name").fill("Test Transition");
+  await page.getByRole("button", { name: "Add transition" }).click();
+  await expect(page.getByTestId("transition-Test Transition")).toBeVisible();
+
+  // Remove it again.
+  await page.getByLabel("Delete transition Test Transition").click();
+  await expect(page.getByTestId("transition-Test Transition")).not.toBeVisible();
+});
