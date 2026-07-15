@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DndContext, DragEndEvent, closestCenter } from "@dnd-kit/core";
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { DndContext, DragEndEvent, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { workflow, type Workflow, type WorkflowStatus } from "@/lib/api";
 
@@ -88,6 +88,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
     onSettled: invalidate,
   });
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   const statuses = wf.data?.statuses ?? [];
   const nameByID = (id: string) => statuses.find((s) => s.id === id)?.name ?? id;
 
@@ -105,7 +110,7 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
     <div className="space-y-6">
       <section>
         <h3 className="mb-2 text-sm font-semibold text-slate-700">Statuses</h3>
-        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={statuses.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             <ul className="space-y-1" data-testid="workflow-statuses">
               {statuses.map((s) => (
