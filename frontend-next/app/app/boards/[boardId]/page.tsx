@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { boards, issues as issuesApi, type SearchIssue } from "@/lib/api";
 import { BoardColumns } from "@/components/board/BoardColumns";
@@ -11,6 +11,10 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
   const id = Number(boardId);
   const qc = useQueryClient();
   const [moveError, setMoveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMoveError(null);
+  }, [id]);
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   const config = useQuery({ queryKey: ["board", id, "config"], queryFn: () => boards.configuration(id) });
