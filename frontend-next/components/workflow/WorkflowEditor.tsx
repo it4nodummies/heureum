@@ -55,6 +55,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
   const qc = useQueryClient();
   const [newStatus, setNewStatus] = useState("");
   const [newCat, setNewCat] = useState("todo");
+  const [fromStatusId, setFromStatusId] = useState("");
+  const [toStatusId, setToStatusId] = useState("");
+  const [transitionName, setTransitionName] = useState("");
+  const [requireAssignee, setRequireAssignee] = useState(false);
+  const [setResolutionFlag, setSetResolutionFlag] = useState(false);
 
   const wf = useQuery({ queryKey: ["workflow", projectKey], queryFn: () => workflow.get(projectKey) });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["workflow", projectKey] });
@@ -86,6 +91,26 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
       if (context?.previous) qc.setQueryData(["workflow", projectKey], context.previous);
     },
     onSettled: invalidate,
+  });
+  const addTransition = useMutation({
+    mutationFn: () =>
+      workflow.addTransition(projectKey, {
+        from_status_id: fromStatusId,
+        to_status_id: toStatusId,
+        name: transitionName,
+        require_assignee: requireAssignee,
+        set_resolution: setResolutionFlag,
+      }),
+    onSuccess: () => {
+      setTransitionName("");
+      setRequireAssignee(false);
+      setSetResolutionFlag(false);
+      invalidate();
+    },
+  });
+  const delTransition = useMutation({
+    mutationFn: (id: string) => workflow.deleteTransition(projectKey, id),
+    onSuccess: invalidate,
   });
 
   const sensors = useSensors(
@@ -154,17 +179,83 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
       <section>
         <h3 className="mb-2 text-sm font-semibold text-slate-700">Transitions</h3>
         <ul className="space-y-1 text-sm" data-testid="workflow-transitions">
-          {(wf.data?.transitions ?? []).map((t) => (
-            <li key={t.id} className="flex items-center gap-2">
-              <span className="text-[#1a1f36]">{t.name || `${nameByID(t.from_status_id)} → ${nameByID(t.to_status_id)}`}</span>
-              <span className="text-xs text-slate-400">
-                {nameByID(t.from_status_id)} → {nameByID(t.to_status_id)}
-                {t.require_assignee ? " · requires assignee" : ""}
-                {t.set_resolution ? " · sets resolution" : ""}
-              </span>
-            </li>
-          ))}
+          {(wf.data?.transitions ?? []).map((t) => {
+            const label = t.name || `${nameByID(t.from_status_id)} → ${nameByID(t.to_status_id)}`;
+            return (
+              <li key={t.id} className="flex items-center gap-2" data-testid={`transition-${label}`}>
+                <span className="text-[#1a1f36]">{label}</span>
+                <span className="text-xs text-slate-400">
+                  {nameByID(t.from_status_id)} → {nameByID(t.to_status_id)}
+                  {t.require_assignee ? " · requires assignee" : ""}
+                  {t.set_resolution ? " · sets resolution" : ""}
+                </span>
+                <button
+                  onClick={() => delTransition.mutate(t.id)}
+                  className="ml-auto text-xs text-red-600 hover:underline"
+                  aria-label={`Delete transition ${label}`}
+                >
+                  Remove
+                </button>
+              </li>
+            );
+          })}
         </ul>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            aria-label="From status"
+            value={fromStatusId}
+            onChange={(e) => setFromStatusId(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">From status</option>
+            {statuses.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <select
+            aria-label="To status"
+            value={toStatusId}
+            onChange={(e) => setToStatusId(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">To status</option>
+            {statuses.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <input
+            aria-label="Transition name"
+            value={transitionName}
+            onChange={(e) => setTransitionName(e.target.value)}
+            placeholder="Transition name (optional)"
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              aria-label="Require assignee"
+              checked={requireAssignee}
+              onChange={(e) => setRequireAssignee(e.target.checked)}
+            />
+            Require assignee
+          </label>
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              aria-label="Set resolution"
+              checked={setResolutionFlag}
+              onChange={(e) => setSetResolutionFlag(e.target.checked)}
+            />
+            Set resolution
+          </label>
+          <button
+            onClick={() => fromStatusId && toStatusId && addTransition.mutate()}
+            disabled={!fromStatusId || !toStatusId || addTransition.isPending}
+            className="rounded bg-[#0052cc] px-3 py-1 text-sm text-white disabled:opacity-60"
+          >
+            Add transition
+          </button>
+        </div>
       </section>
     </div>
   );
