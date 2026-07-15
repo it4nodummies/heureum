@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { boards, sprints, type AgileSprint, type SearchIssue } from "@/lib/api";
+import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
 
 function IssueRow({ issue }: { issue: SearchIssue }) {
   return (
@@ -18,9 +19,12 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   const id = Number(boardId);
   const qc = useQueryClient();
   const [newSprint, setNewSprint] = useState("");
+  const [createIssueOpen, setCreateIssueOpen] = useState(false);
 
+  const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   const backlog = useQuery({ queryKey: ["board", id, "backlog"], queryFn: () => boards.backlog(id) });
   const sprintList = useQuery({ queryKey: ["board", id, "sprints"], queryFn: () => boards.sprints(id) });
+  const projectKey = board.data?.location?.projectKey;
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["board", id, "backlog"] });
@@ -47,6 +51,21 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
         <a href={`/app/boards/${id}`} className="text-sm text-[#0052cc] hover:underline">
           Board
         </a>
+        {projectKey && (
+          <button
+            onClick={() => setCreateIssueOpen(true)}
+            className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-semibold rounded-lg transition-colors"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path
+                fillRule="evenodd"
+                d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Create issue
+          </button>
+        )}
       </div>
 
       {/* sprint */}
@@ -88,6 +107,16 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
           <p className="py-2 text-sm text-slate-400">Backlog is empty</p>
         )}
       </div>
+
+      {createIssueOpen && projectKey && (
+        <CreateIssueModal
+          projectKey={projectKey}
+          onClose={() => setCreateIssueOpen(false)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ["board", id, "backlog"] });
+          }}
+        />
+      )}
     </div>
   );
 }

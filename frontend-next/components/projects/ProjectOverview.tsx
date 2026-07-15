@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, boards as boardsApi, search as searchApi } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
+import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
 
 interface Props {
   projectKey: string;
@@ -62,6 +63,8 @@ export function ProjectOverview({ projectKey }: Props) {
     queryFn: () => searchApi.jql(`project = ${projectKey} ORDER BY updated DESC`, { maxResults: 15 }),
   });
 
+  const [createIssueOpen, setCreateIssueOpen] = useState(false);
+
   if (project.isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -114,6 +117,19 @@ export function ProjectOverview({ projectKey }: Props) {
             )}
           </p>
         </div>
+        <button
+          onClick={() => setCreateIssueOpen(true)}
+          className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-semibold rounded-lg transition-colors"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+            <path
+              fillRule="evenodd"
+              d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          Create issue
+        </button>
       </div>
 
       {/* Section tabs */}
@@ -175,6 +191,16 @@ export function ProjectOverview({ projectKey }: Props) {
           )}
         </div>
       </div>
+
+      {createIssueOpen && (
+        <CreateIssueModal
+          projectKey={projectKey}
+          onClose={() => setCreateIssueOpen(false)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ["project", projectKey, "recent-issues"] });
+          }}
+        />
+      )}
     </div>
   );
 }

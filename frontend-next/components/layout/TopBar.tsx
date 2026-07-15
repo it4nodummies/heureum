@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getStoredUser, clearToken } from "@/lib/auth";
 import type { User } from "@/lib/api";
 import CreateProjectModal from "@/components/projects/CreateProjectModal";
+import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
 import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 
@@ -13,8 +14,11 @@ export default function TopBar() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [createIssueOpen, setCreateIssueOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const createMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setUser(getStoredUser());
@@ -24,6 +28,9 @@ export default function TopBar() {
     function handleClick(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
+      }
+      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+        setCreateMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -58,19 +65,44 @@ export default function TopBar() {
         {/* Right actions */}
         <div className="flex items-center gap-2">
           {/* Create button */}
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-              <path
-                fillRule="evenodd"
-                d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Create
-          </button>
+          <div className="relative" ref={createMenuRef}>
+            <button
+              onClick={() => setCreateMenuOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-semibold rounded-lg transition-colors"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path
+                  fillRule="evenodd"
+                  d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Create
+            </button>
+
+            {createMenuOpen && (
+              <div className="absolute left-0 top-10 w-44 bg-white rounded-xl shadow-lg shadow-slate-200/80 border border-slate-100 py-1.5 z-50">
+                <button
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setCreateIssueOpen(true);
+                  }}
+                  className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] hover:bg-slate-50 transition-colors"
+                >
+                  Issue
+                </button>
+                <button
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setCreateProjectOpen(true);
+                  }}
+                  className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] hover:bg-slate-50 transition-colors"
+                >
+                  Project
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Notification bell */}
           <NotificationBell />
@@ -158,12 +190,22 @@ export default function TopBar() {
         </div>
       </header>
 
-      {createOpen && (
+      {createProjectOpen && (
         <CreateProjectModal
-          onClose={() => setCreateOpen(false)}
+          onClose={() => setCreateProjectOpen(false)}
           onCreated={() => {
-            setCreateOpen(false);
+            setCreateProjectOpen(false);
             router.refresh();
+          }}
+        />
+      )}
+
+      {createIssueOpen && (
+        <CreateIssueModal
+          onClose={() => setCreateIssueOpen(false)}
+          onCreated={(key) => {
+            setCreateIssueOpen(false);
+            router.push(`/app/browse/${key}`);
           }}
         />
       )}

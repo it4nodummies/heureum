@@ -62,3 +62,31 @@ test("create board action on project overview unlocks board and backlog", async 
   expect(boardHref).toMatch(/^\/app\/boards\/\d+$/);
   await expect(tabs.getByRole("link", { name: "Backlog" })).toHaveAttribute("href", `${boardHref}/backlog`);
 });
+
+test("create issue from backlog appears in the backlog list", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/boards/1/backlog");
+
+  await page.getByRole("button", { name: "Create issue" }).click();
+  const modal = page.locator("div.fixed.inset-0.z-50");
+  await expect(modal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+  // Contesto board/backlog: nessun project picker, il progetto è già fissato.
+  await expect(modal.getByLabel("Project")).toHaveCount(0);
+  await modal.locator("#issue-summary").fill("E2E Backlog Issue");
+  await modal.getByRole("button", { name: "Create", exact: true }).click();
+
+  await expect(modal).toHaveCount(0);
+  await expect(page.getByText("E2E Backlog Issue")).toBeVisible();
+});
+
+test("topbar Create menu opens the issue modal with a project picker", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/projects");
+
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.getByRole("button", { name: "Issue", exact: true }).click();
+
+  const modal = page.locator("div.fixed.inset-0.z-50");
+  await expect(modal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+  await expect(modal.getByLabel("Project")).toBeVisible();
+});
