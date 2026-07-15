@@ -19,7 +19,7 @@ test("workflow editor shows seeded statuses and adds a new one", async ({ page }
 
   // add a new status
   await page.getByLabel("New status name").fill("Review");
-  await page.getByLabel("New status category").selectOption("inprogress");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
   await page.getByRole("button", { name: "Add status" }).click();
   await expect(page.getByTestId("status-Review")).toBeVisible();
 });
