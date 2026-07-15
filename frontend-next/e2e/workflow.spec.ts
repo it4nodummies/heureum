@@ -49,8 +49,17 @@ test("workflow editor persists status order after drag-and-drop reorder", async 
     rowsBefore.findIndex((r) => r.includes("TO DO"))
   );
 
-  // Drag "DONE" above "TO DO".
-  await dragStatus(page, "drag-handle-DONE", "drag-handle-TO DO");
+  // Drag "DONE" above "TO DO", and wait for the reorder PUT to actually resolve
+  // before reloading — otherwise the reload can race ahead of the backend commit
+  // and refetch the old order (the optimistic client-side update alone isn't proof
+  // of persistence).
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes("/workflow/statuses/order") && res.request().method() === "PUT"
+    ),
+    dragStatus(page, "drag-handle-DONE", "drag-handle-TO DO"),
+  ]);
+  expect(response.ok()).toBeTruthy();
 
   await expect(async () => {
     const rows = await page.getByTestId("workflow-statuses").locator("li").allTextContents();
