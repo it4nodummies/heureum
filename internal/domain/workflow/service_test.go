@@ -157,6 +157,36 @@ func TestGetWorkflow(t *testing.T) {
 	}
 }
 
+func TestGetWorkflowReturnsStatusesOrderedByPosition(t *testing.T) {
+	db := setupWorkflowTestDB(t)
+	svc := NewService(db)
+
+	wf, _ := svc.CreateWorkflow("proj-9", "WF")
+	s1, _ := svc.AddStatus(wf.ID, "Todo", CategoryTodo, "#111")
+	s2, _ := svc.AddStatus(wf.ID, "InProgress", CategoryInProgress, "#222")
+	s3, _ := svc.AddStatus(wf.ID, "Done", CategoryDone, "#333")
+
+	// Reorder to: Done, Todo, InProgress.
+	if err := svc.ReorderStatuses(wf.ID, []string{s3.ID, s1.ID, s2.ID}); err != nil {
+		t.Fatalf("ReorderStatuses() error = %v", err)
+	}
+
+	result, err := svc.GetWorkflow("proj-9")
+	if err != nil {
+		t.Fatalf("GetWorkflow() error = %v", err)
+	}
+	if len(result.Statuses) != 3 {
+		t.Fatalf("expected 3 statuses, got %d", len(result.Statuses))
+	}
+	got := []string{result.Statuses[0].Name, result.Statuses[1].Name, result.Statuses[2].Name}
+	want := []string{"Done", "Todo", "InProgress"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Statuses order = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestUpdateStatus(t *testing.T) {
 	db := setupWorkflowTestDB(t)
 	svc := NewService(db)
