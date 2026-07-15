@@ -23,3 +23,47 @@ test("workflow editor shows seeded statuses and adds a new one", async ({ page }
   await page.getByRole("button", { name: "Add status" }).click();
   await expect(page.getByTestId("status-Review")).toBeVisible();
 });
+
+async function dragStatus(page: Page, fromTestId: string, toTestId: string) {
+  const source = page.getByTestId(fromTestId);
+  const target = page.getByTestId(toTestId);
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error("drag handle bounding box not found");
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 10 });
+  await page.mouse.up();
+}
+
+test("workflow editor persists status order after drag-and-drop reorder", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  await expect(page.getByTestId("status-TO DO")).toBeVisible();
+  await expect(page.getByTestId("status-DONE")).toBeVisible();
+
+  const rowsBefore = await page.getByTestId("workflow-statuses").locator("li").allTextContents();
+  expect(rowsBefore.findIndex((r) => r.includes("DONE"))).toBeGreaterThan(
+    rowsBefore.findIndex((r) => r.includes("TO DO"))
+  );
+
+  // Drag "DONE" above "TO DO".
+  await dragStatus(page, "drag-handle-DONE", "drag-handle-TO DO");
+
+  await expect(async () => {
+    const rows = await page.getByTestId("workflow-statuses").locator("li").allTextContents();
+    expect(rows.findIndex((r) => r.includes("DONE"))).toBeLessThan(rows.findIndex((r) => r.includes("TO DO")));
+  }).toPass();
+
+  // Reload and verify the new order persisted server-side.
+  await page.reload();
+  await page.getByRole("button", { name: "Workflow" }).click();
+  await expect(page.getByTestId("status-TO DO")).toBeVisible();
+  await expect(page.getByTestId("status-DONE")).toBeVisible();
+  const rowsAfter = await page.getByTestId("workflow-statuses").locator("li").allTextContents();
+  expect(rowsAfter.findIndex((r) => r.includes("DONE"))).toBeLessThan(
+    rowsAfter.findIndex((r) => r.includes("TO DO"))
+  );
+});
