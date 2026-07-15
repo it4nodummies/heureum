@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { boards, sprints, type AgileSprint, type SearchIssue } from "@/lib/api";
-import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
+import { ProjectHeader } from "@/components/projects/ProjectHeader";
 
 function IssueRow({ issue }: { issue: SearchIssue }) {
   return (
@@ -19,7 +19,6 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   const id = Number(boardId);
   const qc = useQueryClient();
   const [newSprint, setNewSprint] = useState("");
-  const [createIssueOpen, setCreateIssueOpen] = useState(false);
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   const backlog = useQuery({ queryKey: ["board", id, "backlog"], queryFn: () => boards.backlog(id) });
@@ -45,78 +44,49 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   });
 
   return (
-    <div className="mx-auto max-w-3xl p-4">
-      <div className="mb-3 flex items-center gap-3">
-        <h1 className="text-xl font-semibold text-[#1a1f36]">Backlog</h1>
-        <a href={`/app/boards/${id}`} className="text-sm text-[#0052cc] hover:underline">
-          Board
-        </a>
-        {projectKey && (
+    <div>
+      {projectKey && <ProjectHeader projectKey={projectKey} active="backlog" />}
+      <div className="mx-auto max-w-3xl p-4">
+        {/* sprint */}
+        {sprintList.data?.values.map((sp: AgileSprint) => (
+          <SprintSection
+            key={sp.id}
+            sprint={sp}
+            onState={(state) => setState.mutate({ sprintId: sp.id, state })}
+          />
+        ))}
+
+        {/* crea sprint */}
+        <div className="my-3 flex gap-2">
+          <input
+            aria-label="New sprint name"
+            value={newSprint}
+            onChange={(e) => setNewSprint(e.target.value)}
+            placeholder="Sprint name"
+            className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+          />
           <button
-            onClick={() => setCreateIssueOpen(true)}
-            className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-semibold rounded-lg transition-colors"
+            onClick={() => newSprint && createSprint.mutate(newSprint)}
+            className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
+            disabled={createSprint.isPending}
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-              <path
-                fillRule="evenodd"
-                d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Create issue
+            Create sprint
           </button>
-        )}
-      </div>
+        </div>
 
-      {/* sprint */}
-      {sprintList.data?.values.map((sp: AgileSprint) => (
-        <SprintSection
-          key={sp.id}
-          sprint={sp}
-          onState={(state) => setState.mutate({ sprintId: sp.id, state })}
-        />
-      ))}
-
-      {/* crea sprint */}
-      <div className="my-3 flex gap-2">
-        <input
-          aria-label="New sprint name"
-          value={newSprint}
-          onChange={(e) => setNewSprint(e.target.value)}
-          placeholder="Sprint name"
-          className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
-        />
-        <button
-          onClick={() => newSprint && createSprint.mutate(newSprint)}
-          className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
-          disabled={createSprint.isPending}
-        >
-          Create sprint
-        </button>
+        {/* backlog: usiamo un div (non un heading) per il conteggio così l'unico
+            heading con testo "Backlog" resta il tab link nell'header condiviso
+            (evita ambiguità con getByRole("heading", { name: /Backlog/i }) nell'E2E). */}
+        <div className="mb-1 mt-4 text-sm font-semibold text-slate-500">
+          Backlog ({backlog.data?.issues.length ?? 0})
+        </div>
+        <div>
+          {backlog.data?.issues.map((iss) => <IssueRow key={iss.key} issue={iss} />)}
+          {backlog.data && backlog.data.issues.length === 0 && (
+            <p className="py-2 text-sm text-slate-400">Backlog is empty</p>
+          )}
+        </div>
       </div>
-
-      {/* backlog: usiamo un div (non un heading) per il conteggio così l'unico
-          heading con testo "Backlog" resta l'h1 sopra (evita ambiguità con
-          getByRole("heading", { name: /Backlog/i }) nell'E2E del Task 15). */}
-      <div className="mb-1 mt-4 text-sm font-semibold text-slate-500">
-        Backlog ({backlog.data?.issues.length ?? 0})
-      </div>
-      <div>
-        {backlog.data?.issues.map((iss) => <IssueRow key={iss.key} issue={iss} />)}
-        {backlog.data && backlog.data.issues.length === 0 && (
-          <p className="py-2 text-sm text-slate-400">Backlog is empty</p>
-        )}
-      </div>
-
-      {createIssueOpen && projectKey && (
-        <CreateIssueModal
-          projectKey={projectKey}
-          onClose={() => setCreateIssueOpen(false)}
-          onCreated={() => {
-            qc.invalidateQueries({ queryKey: ["board", id, "backlog"] });
-          }}
-        />
-      )}
     </div>
   );
 }

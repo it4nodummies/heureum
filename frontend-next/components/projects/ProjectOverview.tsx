@@ -1,41 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, boards as boardsApi, search as searchApi } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
-import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
+import { ProjectHeader } from "@/components/projects/ProjectHeader";
 
 interface Props {
   projectKey: string;
-}
-
-function TabLink({
-  href,
-  disabled,
-  title,
-  children,
-}: {
-  href?: string;
-  disabled?: boolean;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  const className =
-    "pb-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-[#1a1f36] hover:border-slate-300 transition-colors";
-  if (disabled || !href) {
-    return (
-      <span className={`${className} cursor-not-allowed text-slate-300 hover:text-slate-300 hover:border-transparent`} title={title}>
-        {children}
-      </span>
-    );
-  }
-  return (
-    <Link href={href} className={className}>
-      {children}
-    </Link>
-  );
 }
 
 export function ProjectOverview({ projectKey }: Props) {
@@ -63,8 +35,6 @@ export function ProjectOverview({ projectKey }: Props) {
     queryFn: () => searchApi.jql(`project = ${projectKey} ORDER BY updated DESC`, { maxResults: 15 }),
   });
 
-  const [createIssueOpen, setCreateIssueOpen] = useState(false);
-
   if (project.isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -85,70 +55,10 @@ export function ProjectOverview({ projectKey }: Props) {
   }
 
   const p = project.data;
-  const color = p.projectTypeKey === "software" ? "#0052cc" : "#f97316";
-  const letter = (p.key || p.name).charAt(0).toUpperCase();
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="px-8 pt-8 pb-0 flex items-center gap-4">
-        {p.avatarUrls?.["48x48"] ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.avatarUrls["48x48"]} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0" />
-        ) : (
-          <div
-            className="w-11 h-11 rounded-lg flex items-center justify-center text-white text-lg font-bold shrink-0"
-            style={{ background: color }}
-          >
-            {letter}
-          </div>
-        )}
-        <div>
-          <h1 className="text-2xl font-bold text-[#1a1f36] tracking-tight">{p.name}</h1>
-          <p className="text-sm text-slate-400 mt-0.5">
-            <span className="font-mono">{p.key}</span>
-            {" · "}
-            {p.projectTypeKey === "software" ? "Software" : "Business"}
-            {p.lead && (
-              <>
-                {" · Lead: "}
-                {p.lead.displayName || p.lead.emailAddress}
-              </>
-            )}
-          </p>
-        </div>
-        <button
-          onClick={() => setCreateIssueOpen(true)}
-          className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-semibold rounded-lg transition-colors"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-            <path
-              fillRule="evenodd"
-              d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Create issue
-        </button>
-      </div>
-
-      {/* Section tabs */}
-      <div className="px-8 mt-5">
-        <nav className="flex gap-6 border-b border-slate-200" data-testid="project-overview-tabs">
-          <TabLink href={board ? `/app/boards/${board.id}` : undefined} disabled={!board} title={!board ? "No board for this project yet" : undefined}>
-            Board
-          </TabLink>
-          <TabLink
-            href={board ? `/app/boards/${board.id}/backlog` : undefined}
-            disabled={!board}
-            title={!board ? "No board for this project yet" : undefined}
-          >
-            Backlog
-          </TabLink>
-          <TabLink href={`/app/projects/${projectKey}/reports`}>Reports</TabLink>
-          <TabLink href={`/app/projects/${projectKey}/settings`}>Settings</TabLink>
-        </nav>
-      </div>
+      <ProjectHeader projectKey={projectKey} active="overview" />
 
       {/* Body */}
       <div className="flex-1 overflow-auto px-8 py-6">
@@ -191,16 +101,6 @@ export function ProjectOverview({ projectKey }: Props) {
           )}
         </div>
       </div>
-
-      {createIssueOpen && (
-        <CreateIssueModal
-          projectKey={projectKey}
-          onClose={() => setCreateIssueOpen(false)}
-          onCreated={() => {
-            qc.invalidateQueries({ queryKey: ["project", projectKey, "recent-issues"] });
-          }}
-        />
-      )}
     </div>
   );
 }

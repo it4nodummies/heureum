@@ -62,7 +62,7 @@ test("clicca la riga del progetto DEMO nella lista e arriva alla sua overview (n
 
   // Barra dei link di sezione: Board/Backlog risolte dalla board del progetto
   // DEMO (board id 1, seedata — vedi board.spec.ts), Reports e Settings sempre presenti.
-  const tabs = page.locator('[data-testid="project-overview-tabs"]');
+  const tabs = page.locator('[data-testid="project-header-tabs"]');
   await expect(tabs).toBeVisible();
   await expect(tabs.getByRole("link", { name: "Board" })).toHaveAttribute("href", "/app/boards/1");
   await expect(tabs.getByRole("link", { name: "Backlog" })).toHaveAttribute("href", "/app/boards/1/backlog");

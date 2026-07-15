@@ -6,26 +6,9 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, Project } from "@/lib/api";
 import CreateProjectModal from "./CreateProjectModal";
+import { ProjectAvatar } from "./ProjectAvatar";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function getProjectIcon(p: Project) {
-  const src = p.avatarUrls?.["24x24"];
-  if (src) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className="w-7 h-7 rounded-md object-cover" />;
-  }
-  const color = p.projectTypeKey === "software" ? "#0052cc" : "#f97316";
-  const letter = (p.key || p.name).charAt(0).toUpperCase();
-  return (
-    <div
-      className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-bold shrink-0"
-      style={{ background: color }}
-    >
-      {letter}
-    </div>
-  );
-}
 
 function typeLabel(projectTypeKey: Project["projectTypeKey"]): string {
   return projectTypeKey === "software" ? "Software" : "Business";
@@ -232,7 +215,7 @@ export default function ProjectsPage() {
               >
                 {/* Name */}
                 <div className="flex items-center gap-3 min-w-0 pr-4">
-                  {getProjectIcon(project)}
+                  <ProjectAvatar nameOrKey={project.key || project.name} size={28} />
                   <Link
                     href={`/app/projects/${project.key}`}
                     className="text-sm font-semibold text-[#0052cc] hover:underline truncate"
