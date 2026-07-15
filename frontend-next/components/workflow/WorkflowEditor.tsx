@@ -102,6 +102,8 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
         set_resolution: setResolutionFlag,
       }),
     onSuccess: () => {
+      setFromStatusId("");
+      setToStatusId("");
       setTransitionName("");
       setRequireAssignee(false);
       setSetResolutionFlag(false);
