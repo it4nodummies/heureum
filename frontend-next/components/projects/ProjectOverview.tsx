@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, boards as boardsApi, search as searchApi } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
 
@@ -37,6 +38,8 @@ function TabLink({
 }
 
 export function ProjectOverview({ projectKey }: Props) {
+  const qc = useQueryClient();
+
   const project = useQuery({
     queryKey: ["project", projectKey],
     queryFn: () => projectsApi.get(projectKey),
@@ -47,6 +50,12 @@ export function ProjectOverview({ projectKey }: Props) {
     queryFn: () => boardsApi.list(),
   });
   const board = boardsList.data?.values.find((b) => b.location?.projectKey === projectKey);
+
+  const [boardName, setBoardName] = useState<string | null>(null);
+  const createBoard = useMutation({
+    mutationFn: () => boardsApi.create(boardName || `${project.data?.name ?? projectKey} board`, projectKey, "scrum"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["boards"] }),
+  });
 
   const recentIssues = useQuery({
     queryKey: ["project", projectKey, "recent-issues"],
@@ -128,8 +137,30 @@ export function ProjectOverview({ projectKey }: Props) {
       {/* Body */}
       <div className="flex-1 overflow-auto px-8 py-6">
         {!boardsList.isLoading && !board && (
-          <div className="mb-5 p-3 bg-slate-50 border border-slate-100 text-slate-500 text-sm rounded-xl">
-            This project doesn&apos;t have a board yet — Board and Backlog will unlock once one is created.
+          <div className="mb-5 p-4 bg-slate-50 border border-slate-100 rounded-xl">
+            <p className="text-sm text-slate-500 mb-3">
+              This project doesn&apos;t have a board yet — Board and Backlog will unlock once one is created.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                aria-label="Board name"
+                value={boardName ?? `${p.name} board`}
+                onChange={(e) => setBoardName(e.target.value)}
+                className="flex-1 max-w-xs rounded border border-slate-300 px-3 py-1.5 text-sm"
+              />
+              <button
+                onClick={() => createBoard.mutate()}
+                disabled={createBoard.isPending}
+                className="rounded bg-[#0052cc] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {createBoard.isPending ? "Creating…" : "Create board"}
+              </button>
+            </div>
+            {createBoard.isError && (
+              <p className="mt-2 text-xs text-red-600">
+                {createBoard.error instanceof Error ? createBoard.error.message : "Failed to create board."}
+              </p>
+            )}
           </div>
         )}
 

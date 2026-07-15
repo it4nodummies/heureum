@@ -28,3 +28,37 @@ test("backlog page lists sprints controls and creates a sprint", async ({ page }
   // lo sprint appena creato è "future" → mostra il bottone Start
   await expect(page.getByRole("button", { name: "Start sprint" }).first()).toBeVisible();
 });
+
+test("create board action on project overview unlocks board and backlog", async ({ page }) => {
+  await login(page);
+
+  // Il progetto DEMO seedato ha già una board: creiamo un progetto nuovo per
+  // esercitare il percorso "nessuna board ancora" → Create board.
+  await page.getByRole("button", { name: /create project/i }).click();
+  const modal = page.locator("div.fixed.inset-0.z-50");
+  await expect(modal.getByRole("heading", { name: /select project type/i })).toBeVisible();
+  await modal.getByRole("button", { name: "Next" }).click();
+  await expect(modal.getByRole("heading", { name: "Create project" })).toBeVisible();
+  await modal.locator('input[placeholder="My awesome project"]').fill("No Board Project");
+  await modal.locator('input[placeholder="MAP"]').fill("NOBRD");
+  await modal.getByRole("button", { name: "Create project" }).click();
+  await expect(page.getByText("No Board Project")).toBeVisible();
+
+  await page.locator('a[href="/app/projects/NOBRD"]').click();
+  await page.waitForURL(/\/app\/projects\/NOBRD$/);
+
+  const tabs = page.locator('[data-testid="project-overview-tabs"]');
+  // Niente board ancora: Board/Backlog non sono link (disabled), il prompt di
+  // creazione è visibile con il nome di default precompilato.
+  await expect(tabs.getByText("Board")).toBeVisible();
+  await expect(tabs.getByRole("link", { name: "Board" })).toHaveCount(0);
+  await expect(page.getByLabel("Board name")).toHaveValue("No Board Project board");
+
+  await page.getByRole("button", { name: "Create board" }).click();
+
+  // Dopo la creazione, Board/Backlog si sbloccano e puntano alla nuova board.
+  await expect(tabs.getByRole("link", { name: "Board" })).toBeVisible();
+  const boardHref = await tabs.getByRole("link", { name: "Board" }).getAttribute("href");
+  expect(boardHref).toMatch(/^\/app\/boards\/\d+$/);
+  await expect(tabs.getByRole("link", { name: "Backlog" })).toHaveAttribute("href", `${boardHref}/backlog`);
+});
