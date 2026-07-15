@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo } from "react";
+import { use, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { boards, issues as issuesApi, type SearchIssue } from "@/lib/api";
 import { BoardColumns } from "@/components/board/BoardColumns";
@@ -10,6 +10,7 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
   const { boardId } = use(params);
   const id = Number(boardId);
   const qc = useQueryClient();
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   const config = useQuery({ queryKey: ["board", id, "config"], queryFn: () => boards.configuration(id) });
@@ -39,13 +40,35 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
   const move = useMutation({
     mutationFn: ({ issueKey, toStatusId }: { issueKey: string; toStatusId: string }) =>
       issuesApi.transition(issueKey, toStatusId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["board", id, "issues"] }),
+    onSuccess: () => {
+      setMoveError(null);
+      qc.invalidateQueries({ queryKey: ["board", id, "issues"] });
+    },
+    onError: (err: unknown) => {
+      setMoveError(err instanceof Error ? err.message : "Move failed");
+    },
   });
 
   return (
     <div>
       {projectKey && <ProjectHeader projectKey={projectKey} active="board" />}
       <div className="p-4">
+        {moveError && (
+          <div
+            role="alert"
+            data-testid="move-error"
+            className="mb-2 flex items-center gap-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
+            <span>Move failed: {moveError}</span>
+            <button
+              onClick={() => setMoveError(null)}
+              aria-label="Dismiss error"
+              className="ml-auto text-red-700 hover:underline"
+            >
+              ×
+            </button>
+          </div>
+        )}
         {columns.length > 0 && (
           <BoardColumns
             columns={columns}
