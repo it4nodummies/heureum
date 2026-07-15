@@ -19,6 +19,15 @@ func newDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// sqlite ":memory:" gives each pooled connection its OWN empty database, so
+	// an async goroutine (the webhook delivery) that grabs a second connection
+	// sees "no such table". Pin the pool to a single connection so the whole test
+	// (migrate + async RecordDelivery + Count) shares one in-memory schema.
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db handle: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&webhook.Webhook{}, &webhook.Delivery{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
