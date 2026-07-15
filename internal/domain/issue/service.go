@@ -188,6 +188,45 @@ func (s *Service) RemoveLabel(issueID, labelID string) error {
 	return s.db.Where("issue_id = ? AND label_id = ?", issueID, labelID).Delete(&IssueLabel{}).Error
 }
 
+// SetLabels riconcilia le label di una issue con l'elenco di nomi desiderato:
+// aggiunge le nuove (riusando/creando la Label del progetto per nome) e
+// rimuove quelle non più presenti. Usata da PUT /rest/api/3/issue/{key}.
+func (s *Service) SetLabels(issueID, projectID string, names []string) error {
+	current, err := s.GetLabels(issueID)
+	if err != nil {
+		return err
+	}
+	want := map[string]bool{}
+	for _, n := range names {
+		if n != "" {
+			want[n] = true
+		}
+	}
+	have := map[string]bool{}
+	for _, n := range current {
+		have[n] = true
+	}
+	for _, n := range current {
+		if !want[n] {
+			var lbl Label
+			if err := s.db.Where("project_id = ? AND name = ?", projectID, n).First(&lbl).Error; err != nil {
+				continue
+			}
+			if err := s.RemoveLabel(issueID, lbl.ID); err != nil {
+				return err
+			}
+		}
+	}
+	for n := range want {
+		if !have[n] {
+			if _, err := s.AddLabel(issueID, projectID, n, ""); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Service) AddLink(sourceID, targetID string, linkType LinkType) (*IssueLink, error) {
 	link := &IssueLink{ID: uuid.New().String(), SourceID: sourceID, TargetID: targetID, LinkType: linkType}
 	if err := s.db.Create(link).Error; err != nil {

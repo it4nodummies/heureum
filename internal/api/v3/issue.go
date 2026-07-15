@@ -88,14 +88,19 @@ func descriptionADF(descJSON string) *adf.Node {
 	if err := json.Unmarshal([]byte(descJSON), &node); err == nil && node.Type == "doc" {
 		return &node
 	}
-	text := descJSON
 	var legacy struct {
 		Content string `json:"content"`
 	}
-	if err := json.Unmarshal([]byte(descJSON), &legacy); err == nil && legacy.Content != "" {
-		text = legacy.Content
+	if err := json.Unmarshal([]byte(descJSON), &legacy); err == nil {
+		// Il payload legacy {"content": "..."} è valido: una content vuota
+		// significa "nessuna descrizione", non testo letterale da mostrare.
+		if legacy.Content == "" {
+			return nil
+		}
+		doc := adf.FromText(legacy.Content)
+		return &doc
 	}
-	doc := adf.FromText(text)
+	doc := adf.FromText(descJSON)
 	return &doc
 }
 

@@ -297,8 +297,9 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Fields struct {
-			Summary     *string `json:"summary"`
-			Description any     `json:"description"`
+			Summary     *string  `json:"summary"`
+			Description any      `json:"description"`
+			Labels      []string `json:"labels"`
 			Assignee    *struct {
 				AccountID string `json:"accountId"`
 			} `json:"assignee"`
@@ -335,6 +336,12 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.svc.Update(iss.Key, title, descJSON, priority, assigneeID, nil, nil); err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update issue."}, nil)
 		return
+	}
+	if req.Fields.Labels != nil {
+		if err := h.svc.SetLabels(iss.ID, iss.ProjectID, req.Fields.Labels); err != nil {
+			v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update labels."}, nil)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

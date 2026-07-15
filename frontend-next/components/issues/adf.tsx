@@ -3,7 +3,9 @@
 import type { ADFNode } from "@/lib/api";
 
 export function AdfRenderer({ doc }: { doc: ADFNode | null }) {
-  if (!doc) return <p className="italic text-slate-400">No description</p>;
+  if (!doc || !doc.content || doc.content.length === 0) {
+    return <p className="italic text-slate-400">No description</p>;
+  }
   return (
     <div className="prose prose-sm max-w-none">
       {doc.content?.map((n, i) => (
@@ -66,6 +68,36 @@ function AdfBlock({ node }: { node: ADFNode }) {
       ))}
     </>
   );
+}
+
+// ── Plain-text <-> ADF round trip (minimal, paragraphs-only) ────────────────
+//
+// Used by the issue "Edit" mode: the description is edited as plain text in a
+// <textarea>, then converted back to a minimal ADF doc on save.
+
+export function adfToText(doc: ADFNode | null): string {
+  if (!doc || !doc.content) return "";
+  return doc.content
+    .filter((n) => n.type === "paragraph")
+    .map((n) =>
+      (n.content ?? [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text ?? "")
+        .join("")
+    )
+    .join("\n");
+}
+
+export function textToAdf(text: string): ADFNode {
+  const lines = text.split("\n").filter((l) => l.trim() !== "");
+  return {
+    type: "doc",
+    version: 1,
+    content: lines.map((line) => ({
+      type: "paragraph",
+      content: [{ type: "text", text: line }],
+    })),
+  };
 }
 
 function AdfInline({ node }: { node: ADFNode }) {
