@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import Link from "next/link";
 import { issues, meta, watchers, votes } from "@/lib/api";
 import { AdfRenderer, adfToText, textToAdf } from "./adf";
 import { Comments } from "./Comments";
@@ -27,6 +28,7 @@ export function IssueView({ issueKey }: Props) {
   const [draftDescription, setDraftDescription] = useState("");
   const [draftPriorityId, setDraftPriorityId] = useState("");
   const [draftLabels, setDraftLabels] = useState("");
+  const [draftStoryPoints, setDraftStoryPoints] = useState("");
 
   const { data: priorities } = useQuery({
     queryKey: ["priorities"],
@@ -44,6 +46,7 @@ export function IssueView({ issueKey }: Props) {
           .split(",")
           .map((l) => l.trim())
           .filter(Boolean),
+        customfield_10016: draftStoryPoints.trim() === "" ? 0 : Number(draftStoryPoints),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issue", issueKey] });
@@ -88,11 +91,27 @@ export function IssueView({ issueKey }: Props) {
     setDraftDescription(adfToText(f.description));
     setDraftPriorityId(f.priority?.id ?? "");
     setDraftLabels(f.labels.join(", "));
+    setDraftStoryPoints(f.customfield_10016 != null ? String(f.customfield_10016) : "");
     setEditMode(true);
   }
 
+  const projectKey = f.project?.key ?? issue.key.split("-")[0];
+  const projectName = f.project?.name ?? projectKey;
+
   return (
     <div className="max-w-5xl px-8 py-8">
+      <nav data-testid="issue-breadcrumb" className="mb-3 flex items-center gap-1.5 text-xs text-slate-400">
+        <Link href="/app/projects" className="text-[#0052cc] hover:underline">
+          Projects
+        </Link>
+        <span>›</span>
+        <Link href={`/app/projects/${projectKey}`} className="text-[#0052cc] hover:underline">
+          {projectName}
+        </Link>
+        <span>›</span>
+        <span className="text-slate-400">{issue.key}</span>
+      </nav>
+
       <div className="mb-2 flex items-center justify-between">
         <div className="text-xs font-mono text-slate-400">{issue.key}</div>
         {!editMode && (
@@ -184,6 +203,24 @@ export function IssueView({ issueKey }: Props) {
             </div>
           ) : (
             <Field label="Labels" value={f.labels.length ? f.labels.join(", ") : "None"} />
+          )}
+
+          {editMode ? (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Story points
+              </div>
+              <input
+                type="number"
+                min={0}
+                value={draftStoryPoints}
+                onChange={(e) => setDraftStoryPoints(e.target.value)}
+                placeholder="0"
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
+              />
+            </div>
+          ) : (
+            <Field label="Story points" value={f.customfield_10016 != null ? String(f.customfield_10016) : undefined} />
           )}
 
           {editMode && (

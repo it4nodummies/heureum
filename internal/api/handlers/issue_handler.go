@@ -306,6 +306,7 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 			Priority *struct {
 				ID string `json:"id"`
 			} `json:"priority"`
+			StoryPoints *int `json:"customfield_10016"`
 		} `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -333,7 +334,7 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Fields.Assignee != nil {
 		assigneeID = &req.Fields.Assignee.AccountID
 	}
-	if _, err := h.svc.Update(iss.Key, title, descJSON, priority, assigneeID, nil, nil); err != nil {
+	if _, err := h.svc.Update(iss.Key, title, descJSON, priority, assigneeID, nil, req.Fields.StoryPoints); err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update issue."}, nil)
 		return
 	}

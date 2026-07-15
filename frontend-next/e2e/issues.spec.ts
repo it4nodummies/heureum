@@ -71,3 +71,39 @@ test("Edit mode: aggiunge una descrizione e cambia la priority", async ({ page }
   await expect(page.getByText("Descrizione aggiunta via E2E test.")).toBeVisible();
   await expect(page.getByText("High", { exact: false })).toBeVisible();
 });
+
+test("breadcrumb sopra la issue linka a Projects e al progetto", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/browse/DEMO-1");
+
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  const breadcrumb = page.getByTestId("issue-breadcrumb");
+  const projectsLink = breadcrumb.getByRole("link", { name: "Projects" });
+  await expect(projectsLink).toHaveAttribute("href", "/app/projects");
+
+  const projectLink = breadcrumb.getByRole("link", { name: "Demo Project" });
+  await expect(projectLink).toHaveAttribute("href", "/app/projects/DEMO");
+
+  await expect(breadcrumb.getByText("DEMO-1")).toBeVisible();
+});
+
+test("Edit mode: imposta story points e li vede in read mode", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/browse/DEMO-1");
+
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Edit" }).click();
+
+  const storyPointsInput = page.locator('input[type="number"]');
+  await expect(storyPointsInput).toBeVisible();
+  await storyPointsInput.fill("5");
+
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
+  const label = page.getByText("Story points", { exact: true });
+  await expect(label).toBeVisible();
+  const value = label.locator("xpath=following-sibling::div[1]");
+  await expect(value).toHaveText("5");
+});

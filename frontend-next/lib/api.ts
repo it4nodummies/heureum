@@ -81,6 +81,7 @@ export interface IssueFields {
   duedate?: string;
   parent?: { id: string; key: string };
   project?: { id: string; key: string; name: string };
+  customfield_10016?: number | null;
 }
 
 export interface Issue {
