@@ -7,6 +7,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-14
+
+### Fixed
+
+- **Project navigation gaps.** Added the project overview page (`/app/projects/[key]`) with
+  a section bar (Board/Backlog/Reports/Settings) and a recent-issues list; opening a project
+  from the list previously 404'd. Made the project rows in the list clickable, added an
+  `/app` → `/app/projects` redirect (the "For you" home no longer 404s), and turned the
+  not-yet-implemented sidebar entries (Apps, Plans, Goals, Teams) into disabled "Coming soon"
+  items instead of dead links. Added an end-to-end test that clicks through from the project
+  list to the overview to guard against this regression.
+
 ## [1.0.0] - 2026-07-14
 
 Initial 1.0 release, accumulating the capabilities built across Rounds 0-11 of the Jira
@@ -64,5 +76,6 @@ parity effort.
 - **SMTP and OAuth are not wired up.** The corresponding environment variables are
   reserved but not yet read by the server.
 
-[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.1
 [1.0.0]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.0
