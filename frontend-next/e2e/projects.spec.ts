@@ -44,3 +44,31 @@ test("apre le impostazioni del progetto DEMO dal menu azioni e rinomina", async 
   await page.getByRole("button", { name: /save changes/i }).click();
   await expect(page.getByText(/saved/i)).toBeVisible();
 });
+
+test("clicca la riga del progetto DEMO nella lista e arriva alla sua overview (non 404)", async ({ page }) => {
+  await login(page);
+
+  // La riga del progetto ora è cliccabile: il nome è un link diretto
+  // verso /app/projects/{key} (vedi ProjectsPage.tsx). Selezioniamo per href
+  // esatto invece che per testo, perché il nome può essere stato rinominato
+  // da un altro test dello stesso file (DB e-2e condiviso per l'intera run).
+  await page.locator('a[href="/app/projects/DEMO"]').click();
+
+  await page.waitForURL(/\/app\/projects\/DEMO$/);
+
+  // Header del progetto: nome (eventualmente rinominato) + key.
+  await expect(page.getByRole("heading", { name: /Demo Project/ })).toBeVisible();
+  await expect(page.getByText("DEMO", { exact: true })).toBeVisible();
+
+  // Barra dei link di sezione: Board/Backlog risolte dalla board del progetto
+  // DEMO (board id 1, seedata — vedi board.spec.ts), Reports e Settings sempre presenti.
+  const tabs = page.locator('[data-testid="project-overview-tabs"]');
+  await expect(tabs).toBeVisible();
+  await expect(tabs.getByRole("link", { name: "Board" })).toHaveAttribute("href", "/app/boards/1");
+  await expect(tabs.getByRole("link", { name: "Backlog" })).toHaveAttribute("href", "/app/boards/1/backlog");
+  await expect(tabs.getByRole("link", { name: "Reports" })).toHaveAttribute("href", "/app/projects/DEMO/reports");
+  await expect(tabs.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app/projects/DEMO/settings");
+
+  // Sezione issue recenti presente (niente 404, niente crash).
+  await expect(page.getByRole("heading", { name: "Recent issues" })).toBeVisible();
+});

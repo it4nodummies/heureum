@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, Project } from "@/lib/api";
@@ -225,7 +226,6 @@ export default function ProjectsPage() {
             items.map((project, idx) => (
               <div
                 key={project.id}
-                // board del progetto in arrivo nel Round 5; la riga non naviga
                 className={`grid grid-cols-[1fr_140px_160px_1fr_48px] items-center px-4 py-3 group cursor-pointer hover:bg-[#f8faff] transition-colors ${
                   idx !== 0 ? "border-t border-slate-50" : ""
                 }`}
@@ -233,9 +233,12 @@ export default function ProjectsPage() {
                 {/* Name */}
                 <div className="flex items-center gap-3 min-w-0 pr-4">
                   {getProjectIcon(project)}
-                  <span className="text-sm font-semibold text-[#0052cc] hover:underline truncate">
+                  <Link
+                    href={`/app/projects/${project.key}`}
+                    className="text-sm font-semibold text-[#0052cc] hover:underline truncate"
+                  >
                     {project.name}
-                  </span>
+                  </Link>
                 </div>
 
                 {/* Key */}

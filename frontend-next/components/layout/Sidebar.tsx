@@ -10,6 +10,7 @@ interface NavItem {
   icon: React.ReactNode;
   badge?: string;
   external?: boolean;
+  comingSoon?: boolean;
   children?: { label: string; href: string; icon: React.ReactNode }[];
 }
 
@@ -65,7 +66,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Apps",
-    href: "/app/apps",
+    comingSoon: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
@@ -74,7 +75,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Plans",
-    href: "/app/plans",
+    comingSoon: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path
@@ -121,8 +122,7 @@ const NAV_ITEMS: NavItem[] = [
 const BOTTOM_ITEMS = [
   {
     label: "Goals",
-    href: "/app/goals",
-    external: true,
+    comingSoon: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path
@@ -135,8 +135,7 @@ const BOTTOM_ITEMS = [
   },
   {
     label: "Teams",
-    href: "/app/teams",
-    external: true,
+    comingSoon: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
@@ -212,6 +211,28 @@ export default function Sidebar() {
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
         {NAV_ITEMS.map((item) => {
+          if (item.comingSoon) {
+            return (
+              <span
+                key={item.label}
+                aria-disabled="true"
+                title={collapsed ? `${item.label} (Coming soon)` : "Coming soon"}
+                className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium text-[#42526e] opacity-40 cursor-not-allowed select-none ${
+                  collapsed ? "justify-center" : ""
+                }`}
+              >
+                <span className="shrink-0 text-slate-400">{item.icon}</span>
+                {!collapsed && (
+                  <span className="truncate flex items-center gap-1.5">
+                    {item.label}
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 text-slate-400">
+                      Soon
+                    </span>
+                  </span>
+                )}
+              </span>
+            );
+          }
           const isActive = item.href ? pathname === item.href || pathname.startsWith(item.href + "/") : false;
           const Wrapper = item.href ? Link : "button";
           return (
@@ -237,24 +258,24 @@ export default function Sidebar() {
       {/* Bottom items */}
       <div className="border-t border-slate-100 py-2 px-2 space-y-0.5">
         {BOTTOM_ITEMS.map((item) => (
-          <Link
+          <span
             key={item.label}
-            href={item.href}
-            className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium text-[#42526e] hover:bg-slate-100 hover:text-[#1a1f36] transition-colors ${
+            aria-disabled="true"
+            title={collapsed ? `${item.label} (Coming soon)` : "Coming soon"}
+            className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium text-[#42526e] opacity-40 cursor-not-allowed select-none ${
               collapsed ? "justify-center" : ""
             }`}
-            title={collapsed ? item.label : undefined}
           >
             <span className="shrink-0 text-slate-400">{item.icon}</span>
             {!collapsed && (
-              <span className="truncate flex items-center gap-1">
+              <span className="truncate flex items-center gap-1.5">
                 {item.label}
-                <svg viewBox="0 0 12 12" fill="currentColor" className="w-3 h-3 text-slate-300">
-                  <path d="M3.5 1.5A.5.5 0 014 1h6a.5.5 0 01.5.5v6a.5.5 0 01-1 0V2.707L3.354 8.854a.5.5 0 11-.708-.708L8.793 2H4a.5.5 0 01-.5-.5z" />
-                </svg>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 text-slate-400">
+                  Soon
+                </span>
               </span>
             )}
-          </Link>
+          </span>
         ))}
 
         {!collapsed && (
