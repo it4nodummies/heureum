@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o bin/server ./cmd/server/main.go
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM alpine:3.19
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/bin/server   ./server
