@@ -3,13 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
-import { issues, meta, watchers, votes } from "@/lib/api";
+import { issues, meta, watchers, votes, parseJiraDuration, formatSeconds } from "@/lib/api";
 import { AdfRenderer, adfToText, textToAdf } from "./adf";
 import { Attachments } from "./Attachments";
 import { Comments } from "./Comments";
 import { DevelopmentPanel } from "./DevelopmentPanel";
 import { LinkedWorkItems } from "./LinkedWorkItems";
 import { Subtasks } from "./Subtasks";
+import { TimeTracking } from "./TimeTracking";
 
 interface Props {
   issueKey: string;
@@ -32,6 +33,8 @@ export function IssueView({ issueKey }: Props) {
   const [draftPriorityId, setDraftPriorityId] = useState("");
   const [draftLabels, setDraftLabels] = useState("");
   const [draftStoryPoints, setDraftStoryPoints] = useState("");
+  const [draftOriginalEstimate, setDraftOriginalEstimate] = useState("");
+  const [draftRemainingEstimate, setDraftRemainingEstimate] = useState("");
 
   const { data: priorities } = useQuery({
     queryKey: ["priorities"],
@@ -50,6 +53,10 @@ export function IssueView({ issueKey }: Props) {
           .map((l) => l.trim())
           .filter(Boolean),
         customfield_10016: draftStoryPoints.trim() === "" ? 0 : Number(draftStoryPoints),
+        timetracking: {
+          originalEstimateSeconds: parseJiraDuration(draftOriginalEstimate),
+          remainingEstimateSeconds: parseJiraDuration(draftRemainingEstimate),
+        },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issue", issueKey] });
@@ -95,6 +102,12 @@ export function IssueView({ issueKey }: Props) {
     setDraftPriorityId(f.priority?.id ?? "");
     setDraftLabels(f.labels.join(", "));
     setDraftStoryPoints(f.customfield_10016 != null ? String(f.customfield_10016) : "");
+    setDraftOriginalEstimate(
+      f.timetracking?.originalEstimateSeconds ? formatSeconds(f.timetracking.originalEstimateSeconds) : ""
+    );
+    setDraftRemainingEstimate(
+      f.timetracking?.remainingEstimateSeconds ? formatSeconds(f.timetracking.remainingEstimateSeconds) : ""
+    );
     setEditMode(true);
   }
 
@@ -227,6 +240,34 @@ export function IssueView({ issueKey }: Props) {
           )}
 
           {editMode && (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Original estimate
+              </div>
+              <input
+                value={draftOriginalEstimate}
+                onChange={(e) => setDraftOriginalEstimate(e.target.value)}
+                placeholder="e.g. 1d 4h"
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
+              />
+            </div>
+          )}
+
+          {editMode && (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Remaining estimate
+              </div>
+              <input
+                value={draftRemainingEstimate}
+                onChange={(e) => setDraftRemainingEstimate(e.target.value)}
+                placeholder="e.g. 4h"
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
+              />
+            </div>
+          )}
+
+          {editMode && (
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => save.mutate()}
@@ -259,6 +300,8 @@ export function IssueView({ issueKey }: Props) {
       <LinkedWorkItems issueKey={issue.key} />
 
       <Attachments issueKey={issue.key} />
+
+      <TimeTracking issueKey={issue.key} />
 
       <Comments issueKey={issue.key} />
     </div>

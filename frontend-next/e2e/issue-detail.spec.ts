@@ -126,3 +126,38 @@ test("Attachments: fa l'upload di un file, lo vede in lista e poi lo elimina", a
   await expect(section.getByText(fileName)).not.toBeVisible();
   await expect(page.getByText("No attachments yet.")).toBeVisible();
 });
+
+test("Time tracking: registra tempo con 'Log work' e lo vede riflesso nel blocco e nella lista worklog", async ({
+  page,
+}) => {
+  await login(page);
+
+  await createIssue(page, `E2E Time Tracking ${Date.now()}`);
+
+  const section = page.getByTestId("time-tracking-section");
+  await expect(section).toBeVisible();
+  await expect(section.getByTestId("time-tracking-text")).toHaveText("No time logged");
+  await expect(section.getByText("No work logged yet.")).toBeVisible();
+
+  await section.getByRole("button", { name: "Log work", exact: true }).click();
+
+  const dialog = page.locator("div.fixed.inset-0.z-50");
+  await expect(dialog.getByRole("heading", { name: "Log work" })).toBeVisible();
+  await dialog.getByLabel("Time spent").fill("2h");
+  await dialog.getByRole("button", { name: "Log work", exact: true }).click();
+
+  await expect(dialog).not.toBeVisible();
+  await expect(section.getByTestId("time-tracking-text")).toHaveText("2h logged · no estimate set");
+
+  const row = section.locator('[data-testid^="worklog-row-"]');
+  await expect(row).toHaveCount(1);
+  await expect(row.getByText("2h", { exact: true })).toBeVisible();
+
+  // Deleting only removes the worklog entry from the list — the backend's
+  // WorklogService.Delete (internal/domain/issue/worklog_service.go) doesn't
+  // decrement Issue.TimeSpent, so the aggregate "logged" total deliberately
+  // isn't re-asserted here (that's a backend gap outside this task's scope).
+  await row.getByRole("button", { name: /^Delete worklog/ }).click();
+  await expect(row).toHaveCount(0);
+  await expect(section.getByText("No work logged yet.")).toBeVisible();
+});

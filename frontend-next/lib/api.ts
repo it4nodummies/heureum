@@ -82,6 +82,13 @@ export interface IssueFields {
   parent?: { id: string; key: string };
   project?: { id: string; key: string; name: string };
   customfield_10016?: number | null;
+  // Absent (not null) when neither estimate nor logged time has ever been
+  // set — mirrors the backend's omitempty on v3.TimeTracking (internal/api/v3/issue.go).
+  timetracking?: {
+    originalEstimateSeconds?: number;
+    timeSpentSeconds?: number;
+    remainingEstimateSeconds?: number;
+  };
 }
 
 export interface Issue {
@@ -330,6 +337,89 @@ export const comments = {
     apiFetch<Comment>(`/rest/api/3/issue/${issueKey}/comment`, { method: "POST", body: JSON.stringify({ body }) }),
   del: (issueKey: string, id: string) =>
     apiFetch<void>(`/rest/api/3/issue/${issueKey}/comment/${id}`, { method: "DELETE" }),
+};
+
+// ── Worklogs (time tracking) ────────────────────────────────────────────────
+
+// Mirrors parseJiraDuration in internal/api/handlers/worklog_handler.go exactly:
+// w(eek)=5*8h, d(ay)=8h, h(our)=3600s, m(inute)=60s, space-separated tokens,
+// a token with no recognized unit suffix is treated as minutes.
+export function parseJiraDuration(s: string): number {
+  let total = 0;
+  for (const tok of s.trim().split(/\s+/).filter(Boolean)) {
+    const lastChar = tok.slice(-1);
+    let unit = lastChar;
+    let numStr = tok;
+    if (unit === "w" || unit === "d" || unit === "h" || unit === "m") {
+      numStr = tok.slice(0, -1);
+    } else {
+      unit = "m";
+    }
+    const n = parseInt(numStr, 10);
+    if (Number.isNaN(n)) continue;
+    switch (unit) {
+      case "w":
+        total += n * 5 * 8 * 3600;
+        break;
+      case "d":
+        total += n * 8 * 3600;
+        break;
+      case "h":
+        total += n * 3600;
+        break;
+      case "m":
+        total += n * 60;
+        break;
+    }
+  }
+  return total;
+}
+
+// Mirrors formatSeconds in internal/api/v3/worklog.go exactly (e.g. "1h 30m",
+// "2h", "45m"; zero or negative → "0m").
+export function formatSeconds(sec: number): string {
+  if (sec <= 0) return "0m";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+// v3.Worklog (internal/api/v3/worklog.go).
+export interface Worklog {
+  self: string;
+  id: string;
+  issueId: string;
+  author: JiraUserRef | null;
+  updateAuthor?: JiraUserRef | null;
+  comment: ADFNode | null;
+  created: string;
+  updated: string;
+  started: string;
+  timeSpent: string;
+  timeSpentSeconds: number;
+}
+
+export interface PageOfWorklogs {
+  startAt: number;
+  maxResults: number;
+  total: number;
+  worklogs: Worklog[];
+}
+
+export const worklogs = {
+  list: (issueKey: string) => apiFetch<PageOfWorklogs>(`/rest/api/3/issue/${issueKey}/worklog`),
+  // Sends timeSpentSeconds (parsed client-side via parseJiraDuration) rather
+  // than the raw timeSpent string, to avoid depending on the server's own
+  // duration parsing for a value we already parsed to validate the form.
+  add: (issueKey: string, payload: { timeSpentSeconds: number; comment?: ADFNode }) =>
+    apiFetch<Worklog>(`/rest/api/3/issue/${issueKey}/worklog`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  delete: (issueKey: string, id: string) =>
+    apiFetch<void>(`/rest/api/3/issue/${issueKey}/worklog/${id}`, { method: "DELETE" }),
 };
 
 // ── Watchers & Votes ─────────────────────────────────────────────────────────
