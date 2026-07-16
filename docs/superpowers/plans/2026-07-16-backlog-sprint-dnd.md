@@ -4,7 +4,7 @@
 
 **Goal:** Let users drag issues between the Backlog and any Sprint (including directly between two sprints), multi-select issues to move as a group, and reorder issues within the same list — with a live visual preview while dragging, backed by already-existing/working backend endpoints.
 
-**Architecture:** `frontend-next/app/app/boards/[boardId]/backlog/page.tsx` currently renders static, non-interactive rows. This plan (1) extracts a sortable, checkbox-enabled `IssueCard` and a droppable `DroppableList` container component, (2) rewrites the backlog page to hold a single `items: Record<containerId, string[]>` piece of local state as the drag source-of-truth (synced from server data when not dragging), wired to a single `DndContext` implementing dnd-kit's standard "multiple containers" pattern (`onDragOver` moves a block of one-or-more dragged issue keys between container arrays live; `onDragEnd` reads the already-updated `items` state and commits via the existing `sprints.moveIssues`/`agileIssues.moveToBacklog`/`agileIssues.rank` API clients), and (3) adds e2e coverage for single-item cross-container drag, direct sprint-to-sprint drag, multi-select group drag, and same-list reorder with persistence. No backend changes.
+**Architecture:** `frontend-next/app/app/boards/[boardId]/backlog/page.tsx` currently renders static, non-interactive rows. This plan (1) extracts a sortable, checkbox-enabled `IssueCard` and a droppable `DroppableList` container component, (2) rewrites the backlog page to hold a single `items: Record<containerId, string[]>` piece of local state as the drag source-of-truth (synced from server data when not dragging and no commit is in flight), wired to a single `DndContext` implementing dnd-kit's standard "multiple containers" pattern (`onDragOver` moves a block of one-or-more dragged issue keys between container arrays live, but ONLY for cross-container hovers — same-container reordering is deliberately left to dnd-kit's own `SortableContext` animation and is committed once, in `onDragEnd`, from the real drop position; `onDragEnd` commits via the existing `sprints.moveIssues`/`agileIssues.moveToBacklog`/`agileIssues.rank` API clients, with a dismissible error banner on failure), and (3) adds e2e coverage for single-item cross-container drag, direct sprint-to-sprint drag, multi-select group drag, and same-list reorder with persistence. No backend changes.
 
 **Tech Stack:** Next.js + React + TanStack Query (`useQuery`, `useQueries`, `useMutation`) + `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities` + Tailwind. Playwright for e2e.
 
@@ -13,6 +13,7 @@ Reference spec: `docs/superpowers/specs/2026-07-16-backlog-sprint-dnd-design.md`
 **Known simplifications carried over from the spec (not defects, just called out so nobody "fixes" them by surprise):**
 - No `sortableKeyboardCoordinates`-style cross-container keyboard support (plain `KeyboardSensor` only) — full keyboard-driven cross-container reordering is a larger, separate effort.
 - Dropping onto an item always inserts the dragged block immediately *before* that item (no upper-half/lower-half cursor-position detection) — deterministic and simple, not a bug.
+- `onDragOver` never mutates `items` for a same-container hover (see Task 2, Step 1's comment above `handleDragOver`) — this is required for correctness, not just style: mutating on every same-container hover (including the trivial `over.id === active.id` case fired the instant a drag starts) caused a real, reproduced infinite-update-loop crash during code review of an earlier draft of this task. Same-container visual feedback during the drag comes from dnd-kit's own `SortableContext`/`useSortable` animation, not from app state.
 
 ---
 
@@ -109,7 +110,7 @@ export function DroppableList({
 }) {
   const { setNodeRef } = useDroppable({ id: containerId });
   return (
-    <div className="mb-3 rounded border border-slate-200 p-2">
+    <div className="mb-3 rounded border border-slate-200 p-2" data-testid={`container-${testId}`}>
       {header}
       <SortableContext items={items} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className="min-h-[2.5rem]" data-testid={testId}>
@@ -129,6 +130,8 @@ export function DroppableList({
 ```
 
 Note: `data-testid={testId}` is placed on the SAME element as `ref={setNodeRef}` (the actual registered droppable), not on the outer wrapper — this matters for e2e drag simulations that compute drop coordinates from this testid's bounding box; if the testid were on a taller outer wrapper (header + list), the computed center could land outside the real droppable area.
+
+The outer wrapper carries a SEPARATE `data-testid={`container-${testId}`}` for a different purpose: e2e tests that create a sprint via the UI don't know its numeric id upfront, so they need to find "the container whose visible text includes the sprint's name" — but that name lives in `header`, which is a DOM sibling of the inner droppable div, not an ancestor/descendant of it, so a `.filter({ hasText })` search scoped to the inner div alone can never see it. The outer wrapper is the only element that has both the header's text and the droppable div as descendants, so the two testids serve genuinely different consumers (drag coordinates vs. name-based lookup) — this isn't redundant.
 
 - [ ] **Step 3: Type-check**
 
@@ -190,6 +193,7 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<Record<string, string[]>>({});
+  const [dragError, setDragError] = useState<string | null>(null);
   const dragStartContainer = useRef<string | null>(null);
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
@@ -222,14 +226,6 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     for (const iss of list) issuesByKey[iss.key] = iss;
   });
 
-  useEffect(() => {
-    if (activeId) return;
-    setItems(serverItems);
-    // Depend on a stable serialized snapshot, not the object identity (which changes every
-    // render), so this only re-syncs when the actual server-derived content changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(serverItems), activeId]);
-
   const createSprint = useMutation({
     mutationFn: (name: string) => sprints.create(name, id),
     onSuccess: () => {
@@ -249,6 +245,7 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
       draggedKeys: string[];
       before?: string;
       after?: string;
+      wasGroupDrag: boolean;
     }) => {
       if (vars.sourceContainer !== vars.targetContainer) {
         if (vars.targetContainer === BACKLOG_ID) {
@@ -262,12 +259,32 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
         await agileIssues.rank(vars.draggedKeys, vars.before, vars.after);
       }
     },
-    onSuccess: () => {
-      setSelected(new Set());
+    onSuccess: (_data, vars) => {
+      // Only clear the selection if this drag actually moved it — dragging a lone,
+      // unselected issue must not wipe a selection the user is still building for a
+      // separate, later bulk action.
+      if (vars.wasGroupDrag) setSelected(new Set());
+      setDragError(null);
       invalidate();
     },
-    onError: invalidate,
+    onError: (err) => {
+      setDragError(err instanceof Error ? err.message : "Failed to move issue(s)");
+      invalidate();
+    },
   });
+
+  useEffect(() => {
+    // Skip while a move/rank commit is in flight, not just while a drag is active: onDragEnd
+    // clears activeId synchronously, but the mutation's network round-trip (and the
+    // invalidation it triggers) hasn't resolved yet, so serverItems here can still be the
+    // pre-drop snapshot — syncing now would flash the UI back to the old arrangement for a
+    // moment before the real refetch corrects it.
+    if (activeId || moveAndRank.isPending) return;
+    setItems(serverItems);
+    // Depend on a stable serialized snapshot, not the object identity (which changes every
+    // render), so this only re-syncs when the actual server-derived content changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(serverItems), activeId, moveAndRank.isPending]);
 
   const toggleSelect = (key: string) => {
     setSelected((prev) => {
@@ -284,30 +301,46 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     dragStartContainer.current = findContainer(items, key) ?? null;
   };
 
+  // Live cross-container preview ONLY. Same-container hovers are intentionally a no-op here:
+  // dnd-kit's own SortableContext/useSortable already animates sibling items shifting within a
+  // single list purely from layout, with no app-level state mutation needed — mirroring that is
+  // both redundant and actively dangerous: mutating `items` on every same-container onDragOver
+  // (including the very first event, where `over.id === active.id`) can flip the dragged item to
+  // the end of its own list, which shifts the DOM under the pointer, which fires another
+  // onDragOver, which mutates again — a real infinite-update loop ("Maximum update depth
+  // exceeded"), not a hypothetical one. The final same-container order is computed once, in
+  // `handleDragEnd`, from the actual `over` position at drop time.
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
     const activeKey = String(active.id);
     const overId = String(over.id);
+    if (activeKey === overId) return;
+
+    const activeContainer = findContainer(items, activeKey);
+    const overContainer = overId in items ? overId : findContainer(items, overId);
+    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
+
     const draggedKeys = selected.has(activeKey) && selected.size > 1 ? Array.from(selected) : [activeKey];
 
     setItems((prev) => {
-      const overContainer = overId in prev ? overId : findContainer(prev, overId);
-      if (!overContainer) return prev;
+      const pActiveContainer = findContainer(prev, activeKey);
+      const pOverContainer = overId in prev ? overId : findContainer(prev, overId);
+      if (!pActiveContainer || !pOverContainer || pActiveContainer === pOverContainer) return prev;
 
       const withoutDragged: Record<string, string[]> = {};
       for (const [cid, keys] of Object.entries(prev)) {
         withoutDragged[cid] = keys.filter((k) => !draggedKeys.includes(k));
       }
-      const overItemsAfterRemoval = withoutDragged[overContainer];
+      const overItemsAfterRemoval = withoutDragged[pOverContainer];
       const insertIndex =
-        overId === overContainer
+        overId === pOverContainer
           ? overItemsAfterRemoval.length
           : (() => {
               const idx = overItemsAfterRemoval.indexOf(overId);
               return idx >= 0 ? idx : overItemsAfterRemoval.length;
             })();
-      withoutDragged[overContainer] = [
+      withoutDragged[pOverContainer] = [
         ...overItemsAfterRemoval.slice(0, insertIndex),
         ...draggedKeys,
         ...overItemsAfterRemoval.slice(insertIndex),
@@ -317,32 +350,56 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const activeKey = String(event.active.id);
-    const draggedKeys = selected.has(activeKey) && selected.size > 1 ? Array.from(selected) : [activeKey];
+    const { active, over } = event;
+    const activeKey = String(active.id);
+    const wasGroupDrag = selected.has(activeKey) && selected.size > 1;
+    const draggedKeys = wasGroupDrag ? Array.from(selected) : [activeKey];
     const sourceContainer = dragStartContainer.current;
     setActiveId(null);
     dragStartContainer.current = null;
-    if (!sourceContainer) return;
+    if (!sourceContainer || !over) return;
 
-    const targetContainer = findContainer(items, activeKey);
-    if (!targetContainer) return;
-
-    const targetList = items[targetContainer];
+    const overId = String(over.id);
     const draggedSet = new Set(draggedKeys);
-    const firstIndex = targetList.findIndex((k) => draggedSet.has(k));
-    const after = firstIndex > 0 ? targetList[firstIndex - 1] : undefined;
+    // If onDragOver already moved the block to a different container, `items` reflects that
+    // final placement. Otherwise (a same-container drag, which onDragOver deliberately ignores —
+    // see the comment above `handleDragOver`) `items[sourceContainer]` is still the pre-drag
+    // order, so the reordered block position is computed here, from the actual drop target.
+    const liveTargetContainer = findContainer(items, activeKey);
+    let targetContainer: string;
+    let finalTargetList: string[];
+    if (liveTargetContainer && liveTargetContainer !== sourceContainer) {
+      targetContainer = liveTargetContainer;
+      finalTargetList = items[targetContainer];
+    } else {
+      targetContainer = sourceContainer;
+      const withoutDragged = items[sourceContainer].filter((k) => !draggedSet.has(k));
+      const insertIndex =
+        overId === sourceContainer
+          ? withoutDragged.length
+          : (() => {
+              const idx = withoutDragged.indexOf(overId);
+              return idx >= 0 ? idx : withoutDragged.length;
+            })();
+      finalTargetList = [...withoutDragged.slice(0, insertIndex), ...draggedKeys, ...withoutDragged.slice(insertIndex)];
+      setItems((prev) => ({ ...prev, [sourceContainer]: finalTargetList }));
+    }
+
+    const firstIndex = finalTargetList.findIndex((k) => draggedSet.has(k));
+    const after = firstIndex > 0 ? finalTargetList[firstIndex - 1] : undefined;
     let lastDraggedIndex = -1;
-    for (let i = targetList.length - 1; i >= 0; i--) {
-      if (draggedSet.has(targetList[i])) {
+    for (let i = finalTargetList.length - 1; i >= 0; i--) {
+      if (draggedSet.has(finalTargetList[i])) {
         lastDraggedIndex = i;
         break;
       }
     }
-    const before = lastDraggedIndex >= 0 && lastDraggedIndex + 1 < targetList.length ? targetList[lastDraggedIndex + 1] : undefined;
+    const before =
+      lastDraggedIndex >= 0 && lastDraggedIndex + 1 < finalTargetList.length ? finalTargetList[lastDraggedIndex + 1] : undefined;
 
     if (sourceContainer === targetContainer && !before && !after) return;
 
-    moveAndRank.mutate({ sourceContainer, targetContainer, draggedKeys, before, after });
+    moveAndRank.mutate({ sourceContainer, targetContainer, draggedKeys, before, after, wasGroupDrag });
   };
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
@@ -354,6 +411,22 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     <div>
       {projectKey && <ProjectHeader projectKey={projectKey} active="backlog" />}
       <div className="mx-auto max-w-3xl p-4">
+        {dragError && (
+          <div
+            role="alert"
+            data-testid="backlog-drag-error"
+            className="mb-2 flex items-center gap-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
+            <span>Move failed: {dragError}</span>
+            <button
+              onClick={() => setDragError(null)}
+              aria-label="Dismiss error"
+              className="ml-auto text-red-700 hover:underline"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -453,8 +526,11 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
 
 Notes for the implementer:
 - `serverItems`/`issuesByKey` are recomputed as plain values every render (no `useMemo`) — deliberate: memoizing them with `useQueries`' variable-length result array in the dependency list would produce a dependency array whose *length* changes whenever a sprint is added, which violates React's rules of hooks (dependency array size must be constant across renders) and triggers a real runtime warning/bug. Recomputing every render is correct and cheap here (a handful of issues/sprints).
-- The `useEffect`'s dependency `JSON.stringify(serverItems)` is a plain string, so its array is always length-2 (`[string, activeId]`) — safe.
+- The `useEffect`'s dependency array (`[JSON.stringify(serverItems), activeId, moveAndRank.isPending]`) is always exactly length-3 — `JSON.stringify(...)` is a plain string, `activeId`/`moveAndRank.isPending` are primitives — so it's safe regardless of how many sprints exist.
 - `items` (local state) is the single source of truth passed to every `DroppableList`'s `items` prop and to `DragOverlay`'s count — never read `serverItems` directly for rendering.
+- The `moveAndRank` mutation's `useEffect` sync-guard MUST be declared textually AFTER `moveAndRank` itself (not before) — the effect's dependency array references `moveAndRank.isPending`, and since `moveAndRank` is a `const`, referencing it before its own declaration in the same function body is a temporal-dead-zone error, not just a style nit.
+- `dragError` surfaces `moveAndRank`'s failures in a dismissible banner (same pattern as the board page's `moveError`, `app/app/boards/[boardId]/page.tsx`) — don't skip it as "just a UI nicety"; a prior review found the earlier draft failed silently on a partial move+rank failure.
+- `wasGroupDrag` is threaded through `moveAndRank`'s variables specifically so `onSuccess` only clears the multi-select when the just-completed drag actually moved the selection — dragging one unselected issue while an unrelated selection is still pending must not wipe it.
 
 - [ ] **Step 2: Type-check and build**
 
@@ -504,9 +580,15 @@ test("backlog: drag a single issue into a sprint", async ({ page }) => {
   await page.getByRole("button", { name: "Create sprint" }).click();
   await expect(page.getByText(sprintName)).toBeVisible();
 
-  const sprintContainer = page.locator('[data-testid^="sprint-"]').filter({ hasText: sprintName });
-  const sprintTestId = await sprintContainer.getAttribute("data-testid");
-  if (!sprintTestId) throw new Error("sprint container testid not found");
+  // The sprint's name lives in DroppableList's `header`, a DOM sibling of the inner droppable
+  // div — not a descendant of it — so the lookup goes through the outer wrapper's
+  // `container-{testId}` testid (see Task 1's note) to find the sprint by name, then strips the
+  // prefix to get the real drop-target/containment testid.
+  const sprintOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintName });
+  const outerTestId = await sprintOuter.getAttribute("data-testid");
+  if (!outerTestId) throw new Error("sprint container testid not found");
+  const sprintTestId = outerTestId.replace("container-", "");
+  const sprintContainer = page.getByTestId(sprintTestId);
 
   await expect(page.getByTestId("row-DEMO-1")).toBeVisible();
   await dragBetween(page, "drag-handle-DEMO-1", sprintTestId);
@@ -568,11 +650,17 @@ test("backlog: drag between two sprints directly, without going through the back
   await page.getByRole("button", { name: "Create sprint" }).click();
   await expect(page.getByText(sprintBName)).toBeVisible();
 
-  const sprintA = page.locator('[data-testid^="sprint-"]').filter({ hasText: sprintAName });
-  const sprintB = page.locator('[data-testid^="sprint-"]').filter({ hasText: sprintBName });
-  const sprintATestId = await sprintA.getAttribute("data-testid");
-  const sprintBTestId = await sprintB.getAttribute("data-testid");
-  if (!sprintATestId || !sprintBTestId) throw new Error("sprint container testid not found");
+  // See Task 3's comment: lookup by name goes through the outer `container-{testId}` wrapper,
+  // then strips the prefix to get the real drop-target/containment testid.
+  const sprintAOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintAName });
+  const sprintBOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintBName });
+  const sprintAOuterTestId = await sprintAOuter.getAttribute("data-testid");
+  const sprintBOuterTestId = await sprintBOuter.getAttribute("data-testid");
+  if (!sprintAOuterTestId || !sprintBOuterTestId) throw new Error("sprint container testid not found");
+  const sprintATestId = sprintAOuterTestId.replace("container-", "");
+  const sprintBTestId = sprintBOuterTestId.replace("container-", "");
+  const sprintA = page.getByTestId(sprintATestId);
+  const sprintB = page.getByTestId(sprintBTestId);
 
   await dragBetween(page, "drag-handle-DEMO-2", sprintATestId);
   await expect(sprintA.getByTestId("row-DEMO-2")).toBeVisible();
@@ -618,9 +706,12 @@ test("backlog: multi-select drag moves all selected issues together", async ({ p
   await page.getByLabel("New sprint name").fill(sprintName);
   await page.getByRole("button", { name: "Create sprint" }).click();
   await expect(page.getByText(sprintName)).toBeVisible();
-  const sprintContainer = page.locator('[data-testid^="sprint-"]').filter({ hasText: sprintName });
-  const sprintTestId = await sprintContainer.getAttribute("data-testid");
-  if (!sprintTestId) throw new Error("sprint container testid not found");
+  // See Task 3's comment: lookup by name goes through the outer `container-{testId}` wrapper.
+  const sprintOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintName });
+  const outerTestId = await sprintOuter.getAttribute("data-testid");
+  if (!outerTestId) throw new Error("sprint container testid not found");
+  const sprintTestId = outerTestId.replace("container-", "");
+  const sprintContainer = page.getByTestId(sprintTestId);
 
   await page.getByLabel("Select DEMO-4").check();
   await page.getByLabel("Select DEMO-5").check();
