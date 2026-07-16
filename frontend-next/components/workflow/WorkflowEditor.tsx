@@ -69,11 +69,15 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
     onSuccess: () => {
       setNewStatus("");
       invalidate();
+      delStatus.reset();
     },
   });
   const delStatus = useMutation({
     mutationFn: (id: string) => workflow.deleteStatus(projectKey, id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      addStatus.reset();
+    },
   });
   const reorderStatuses = useMutation({
     mutationFn: (orderedIds: string[]) => workflow.reorderStatuses(projectKey, orderedIds),
@@ -108,11 +112,15 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
       setRequireAssignee(false);
       setSetResolutionFlag(false);
       invalidate();
+      delTransition.reset();
     },
   });
   const delTransition = useMutation({
     mutationFn: (id: string) => workflow.deleteTransition(projectKey, id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      addTransition.reset();
+    },
   });
 
   const sensors = useSensors(
