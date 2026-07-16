@@ -14,8 +14,10 @@ test("JQL search on filters page returns seeded issues", async ({ page }) => {
   await page.getByLabel("JQL").fill("project = DEMO");
   await page.getByRole("button", { name: "Search" }).click();
 
-  // la list view mostra almeno una issue del progetto DEMO
-  await expect(page.getByRole("cell", { name: /DEMO-1/ })).toBeVisible();
+  // la list view mostra almeno una issue del progetto DEMO; regex ancorata
+  // per non matchare anche DEMO-10/DEMO-11/... una volta che il seed aggiunge
+  // più issue (subtask/link demo del Round 13).
+  await expect(page.getByRole("cell", { name: /^DEMO-1$/ })).toBeVisible();
 });
 
 test("column toggle hides a column", async ({ page }) => {
@@ -41,5 +43,5 @@ test("save filter then run it from the sidebar", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: "E2E filter" })).toBeVisible();
   await page.getByRole("button", { name: "E2E filter" }).click();
-  await expect(page.getByRole("cell", { name: /DEMO-1/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /^DEMO-1$/ })).toBeVisible();
 });

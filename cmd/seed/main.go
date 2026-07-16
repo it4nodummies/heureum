@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -224,6 +225,93 @@ func main() {
 				}
 			}
 			fmt.Printf("created %d comments on DEMO-1\n", len(comments))
+		}
+
+		// Subtask demo (idempotente): un figlio sotto DEMO-1, per popolare la
+		// sezione Subtasks introdotta nel Round 13.
+		var childCount int64
+		if err := s.DB.Model(&issue.Issue{}).Where("parent_id = ?", demo1.ID).Count(&childCount).Error; err != nil {
+			log.Fatalf("count DEMO-1 subtasks: %v", err)
+		}
+		if childCount == 0 {
+			if _, err := issueSvc.Create(demo.Key, demo.ID, "Investigate flaky assertion", "Sottotask demo per DEMO-1.", issue.PriorityLow, &demo1.ID, nil); err != nil {
+				log.Fatalf("create DEMO-1 subtask: %v", err)
+			}
+			fmt.Println("created demo subtask on DEMO-1")
+		}
+
+		// Issue link demo (idempotente): DEMO-1 "blocks" un'altra issue DEMO
+		// top-level (non un sottotask), per popolare Linked work items.
+		var demoOther issue.Issue
+		linkTargetErr := s.DB.Where("project_id = ? AND id <> ? AND (parent_id IS NULL OR parent_id = '')", demo.ID, demo1.ID).
+			Order("created_at ASC").First(&demoOther).Error
+		switch {
+		case linkTargetErr == nil:
+			var linkCount int64
+			if err := s.DB.Model(&issue.IssueLink{}).
+				Where("source_id = ? AND target_id = ? AND link_type = ?", demo1.ID, demoOther.ID, issue.LinkBlocks).
+				Count(&linkCount).Error; err != nil {
+				log.Fatalf("count DEMO-1 links: %v", err)
+			}
+			if linkCount == 0 {
+				if _, err := issueSvc.AddLink(demo1.ID, demoOther.ID, issue.LinkBlocks); err != nil {
+					log.Fatalf("create DEMO-1 issue link: %v", err)
+				}
+				fmt.Printf("created demo issue link DEMO-1 blocks %s\n", demoOther.Key)
+			}
+		case errors.Is(linkTargetErr, gorm.ErrRecordNotFound):
+			// nessun'altra issue DEMO disponibile: skip senza errori.
+		default:
+			log.Fatalf("find link target for DEMO-1: %v", linkTargetErr)
+		}
+
+		// Worklog demo (idempotente) su DEMO-1, per popolare Time tracking.
+		worklogSvc := issue.NewWorklogService(s.DB)
+		existingWorklogs, err := worklogSvc.ListByIssue(demo1.ID)
+		if err != nil {
+			log.Fatalf("list DEMO-1 worklogs: %v", err)
+		}
+		if len(existingWorklogs) == 0 {
+			worklogComment := `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Lavoro demo registrato sul task."}]}]}`
+			if _, err := worklogSvc.Add(demo1.ID, admin.ID, worklogComment, 3600); err != nil {
+				log.Fatalf("create DEMO-1 worklog: %v", err)
+			}
+			fmt.Println("created demo worklog on DEMO-1")
+		}
+
+		// Allegato demo (idempotente) su DEMO-1, per popolare Attachments.
+		attachmentSvc := issue.NewAttachmentService(s.DB, cfg.UploadsDir)
+		existingAttachments, err := attachmentSvc.GetAttachments(demo1.ID)
+		if err != nil {
+			log.Fatalf("list DEMO-1 attachments: %v", err)
+		}
+		if len(existingAttachments) == 0 {
+			tmpFile, err := os.CreateTemp("", "heureum-seed-attachment-*.txt")
+			if err != nil {
+				log.Fatalf("create temp attachment file: %v", err)
+			}
+			tmpPath := tmpFile.Name()
+			if _, err := tmpFile.WriteString("Demo attachment seeded for DEMO-1.\n"); err != nil {
+				tmpFile.Close()
+				os.Remove(tmpPath)
+				log.Fatalf("write temp attachment file: %v", err)
+			}
+			if err := tmpFile.Close(); err != nil {
+				os.Remove(tmpPath)
+				log.Fatalf("close temp attachment file: %v", err)
+			}
+			f, err := os.Open(tmpPath)
+			if err != nil {
+				os.Remove(tmpPath)
+				log.Fatalf("reopen temp attachment file: %v", err)
+			}
+			_, uploadErr := attachmentSvc.UploadAttachment(demo1.ID, admin.ID, "demo-notes.txt", f)
+			f.Close()
+			os.Remove(tmpPath)
+			if uploadErr != nil {
+				log.Fatalf("upload DEMO-1 attachment: %v", uploadErr)
+			}
+			fmt.Println("created demo attachment on DEMO-1")
 		}
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		// DEMO-1 non esiste: skip senza errori.

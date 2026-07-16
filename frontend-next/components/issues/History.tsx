@@ -65,14 +65,28 @@ export function History({ issueKey }: { issueKey: string }) {
 
   return (
     <ul data-testid="history-list" className="space-y-2">
-      {rows.map((row) => (
-        <li key={row.key} data-testid="history-row" className="text-sm text-[#1a1f36]">
-          <span className="font-semibold">{row.authorName}</span> changed{" "}
-          <span className="font-medium">{row.item.field}</span> from «
-          {row.item.fromString || "—"}» to «{row.item.toString || "—"}»{" "}
-          <span className="text-xs text-slate-400">· {relativeTime(row.created)}</span>
-        </li>
-      ))}
+      {rows.map((row) => {
+        // `toString` (and, defensively, `fromString`) collides with the name
+        // of a property every JS object inherits from Object.prototype. When
+        // the backend's JSON omits the field entirely, plain property access
+        // (`row.item.toString`) falls through the prototype chain to
+        // Function.prototype.toString instead of yielding undefined — always
+        // truthy, so a naive `|| "—"` fallback never triggers and React is
+        // asked to render a function as a child (crash/warning). Guard with
+        // an explicit typeof check so only an actual string value from the
+        // payload is ever rendered.
+        const fromStr = typeof row.item.fromString === "string" ? row.item.fromString : undefined;
+        const toStr = typeof row.item.toString === "string" ? row.item.toString : undefined;
+        return (
+          <li key={row.key} data-testid="history-row" className="text-sm text-[#1a1f36]">
+            <span className="font-semibold">{row.authorName}</span> changed{" "}
+            <span className="font-medium">{row.item.field}</span> from «
+            {fromStr && fromStr.length ? fromStr : "—"}» to «
+            {toStr && toStr.length ? toStr : "—"}»{" "}
+            <span className="text-xs text-slate-400">· {relativeTime(row.created)}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }

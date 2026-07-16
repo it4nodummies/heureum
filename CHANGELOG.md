@@ -7,6 +7,54 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Subtasks** on the issue detail: list of child issues with a completion counter, inline
+  "Add subtask" create, and status/assignee shown per row (`GET /issue/{key}/subtasks`).
+- **Linked work items**: add/list/remove issue links (Blocks / Relates / Duplicate) directly from
+  the issue view, grouped by relation with the correct inward/outward phrasing
+  (`GET /issue/{key}/issuelinks`).
+- **Attachments**: drag-and-drop/file-picker upload, thumbnail grid, download and delete, backed by
+  a proper v3 attachment shape (`id`, `filename`, `size`, `mimeType`, `created`, `content`) instead
+  of the raw domain struct.
+- **Time tracking / worklog**: a Time tracking block (time spent vs. original/remaining estimate),
+  editable estimates, a "Log work" dialog, and a worklog list with delete.
+- **Activity History tab**: a Comments/History switch in the issue Activity area backed by the
+  per-issue changelog (`GET /issue/{key}/changelog`); author attribution currently falls back to
+  "System" (see Known gaps).
+- **Editable assignee** via a new reusable `UserPicker` (debounced search over
+  `GET /user/assignable/search`, with pinned "Unassigned" and "Assign to me" shortcuts) — the
+  assignee field was previously read-only.
+- **Richer create-issue modal**: description, priority, assignee, and an optional parent (for
+  Subtasks), plus a "Create another" option that keeps the modal open and resets the form.
+
+### Fixed
+
+- `POST /rest/api/3/issue` now resolves `fields.issuetype.name` (not just `.id`) to a type, and now
+  parses `fields.assignee` (previously only `PUT` did).
+- Logging work (`POST /issue/{key}/worklog`) now increments `Issue.TimeSpent`; `PUT /issue/{key}`
+  can write `fields.timetracking.originalEstimateSeconds`/`remainingEstimateSeconds`.
+- `apiFetch` no longer throws on body-less 2xx responses (e.g. `POST /issueLink` returns 201 with
+  no body) — it now guards against `res.json()` failing on an empty string instead of assuming
+  every non-204 response has a JSON body.
+- History rows no longer risk rendering a function as a React child: `ChangeItem.fromString`/
+  `toString` collide with the property every JS object inherits from `Object.prototype`, so a
+  changelog entry that omits one of those fields made a naive `|| "—"` fallback resolve to
+  `Object.prototype.toString` instead of the placeholder. `History.tsx` now uses an explicit
+  `typeof === "string"` guard.
+- `e2e/search.spec.ts` used an unanchored `/DEMO-1/` regex that also matched `DEMO-10`, `DEMO-11`,
+  etc. once the seed grew past nine issues; tightened to `/^DEMO-1$/`.
+
+### Known gaps (tracked for a follow-up round)
+
+- Deleting a worklog doesn't decrement `Issue.TimeSpent`.
+- `IssueHandler.Update` logs a history entry for every field on every save, even fields that didn't
+  change.
+- Changelog entries always have `ActorID = ""` (history shows "System" as the author) — attributing
+  the acting user requires threading the uid through `issue.Service.Create`/`Update`.
+- The full Playwright suite has SQLite write-contention flakiness when run with more than one
+  worker; `--workers=1` is required for a fully green run.
+
 ## [1.0.2] - 2026-07-14
 
 ### Added
