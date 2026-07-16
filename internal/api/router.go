@@ -95,7 +95,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	commentSvc.SetNotifier(notifSvc)
 	sprintSvc.SetNotifier(notifSvc)
 
-	cfH := handlers.NewCustomFieldHandler(cfSvc, chk)
+	cfH := handlers.NewCustomFieldHandler(cfSvc, chk, projectSvc, issueSvc)
 	autoH := handlers.NewAutomationHandler(autoSvc, projectSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
@@ -376,8 +376,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	mux.Handle("GET /rest/api/3/project/{key}/issues/export", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(issueH.ExportCSV))))
 
-	mux.Handle("GET /rest/api/3/project/{projectID}/custom-fields", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(cfH.ListFields))))
-	mux.Handle("POST /rest/api/3/project/{projectID}/custom-fields", authMw(chk.Enforce(permission.AdministerProjects, chk.ByProjectID, http.HandlerFunc(cfH.CreateField))))
+	mux.Handle("GET /rest/api/3/project/{key}/custom-fields", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(cfH.ListFields))))
+	mux.Handle("POST /rest/api/3/project/{key}/custom-fields", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(cfH.CreateField))))
 	mux.Handle("DELETE /rest/api/3/custom-fields/{fieldID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.DeleteField))))
 	mux.Handle("GET /rest/api/3/custom-fields/{fieldID}/options", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.ListOptions))))
 	mux.Handle("POST /rest/api/3/custom-fields/{fieldID}/options", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.AddOption))))
@@ -385,8 +385,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	// enforced in-handler (CustomFieldHandler.RemoveOption) per the Round 11 plan
 	// (customfield.Service.GetOption added for the option->field lookup).
 	mux.Handle("DELETE /rest/api/3/custom-fields/options/{optionID}", authMw(http.HandlerFunc(cfH.RemoveOption)))
-	mux.Handle("GET /rest/api/3/issue/{issueID}/custom-values", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueUUID, http.HandlerFunc(cfH.GetValues))))
-	mux.Handle("PUT /rest/api/3/issue/{issueID}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueUUID, http.HandlerFunc(cfH.SetValue))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/custom-values", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.GetValues))))
+	mux.Handle("PUT /rest/api/3/issue/{issueIdOrKey}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.SetValue))))
 
 	mux.Handle("GET /rest/api/3/project/{key}/automation", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(autoH.ListRules))))
 	mux.Handle("POST /rest/api/3/project/{key}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(autoH.CreateRule))))

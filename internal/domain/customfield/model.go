@@ -18,6 +18,7 @@ type CustomField struct {
 	ProjectID string    `gorm:"type:text;not null;index" json:"project_id"`
 	Name      string    `gorm:"type:text;not null" json:"name"`
 	FieldType FieldType `gorm:"type:text;not null" json:"field_type"`
+	Required  bool      `gorm:"not null;default:false" json:"required"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 

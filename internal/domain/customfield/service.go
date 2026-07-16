@@ -2,6 +2,8 @@ package customfield
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -13,7 +15,14 @@ type Service struct {
 
 func NewService(db *gorm.DB) *Service { return &Service{db: db} }
 
-func (s *Service) CreateField(projectID, name string, fieldType FieldType) (*CustomField, error) {
+// Sentinel errors so HTTP handlers can map SetValue failures to the right
+// status code (client/input errors vs. server errors).
+var (
+	ErrFieldNotFound = errors.New("custom field not found")
+	ErrInvalidValue  = errors.New("invalid value for custom field")
+)
+
+func (s *Service) CreateField(projectID, name string, fieldType FieldType, required bool) (*CustomField, error) {
 	if name == "" {
 		return nil, errors.New("field name is required")
 	}
@@ -25,6 +34,7 @@ func (s *Service) CreateField(projectID, name string, fieldType FieldType) (*Cus
 		ProjectID: projectID,
 		Name:      name,
 		FieldType: fieldType,
+		Required:  required,
 	}
 	if err := s.db.Create(f).Error; err != nil {
 		return nil, err
@@ -90,6 +100,16 @@ func (s *Service) ListOptions(fieldID string) ([]CustomFieldOption, error) {
 }
 
 func (s *Service) SetValue(issueID, fieldID string, value interface{}) error {
+	// Look up the field's type so date/user values get routed to the right
+	// column (date -> ValueDate, user -> ValueText/accountId). Reject unknown
+	// fields BEFORE touching the value table so we never write an orphaned value
+	// row (sqlite doesn't enforce the FK).
+	f, err := s.GetField(fieldID)
+	if err != nil {
+		return ErrFieldNotFound
+	}
+	fieldType := f.FieldType
+
 	cv := &IssueCustomValue{
 		IssueID: issueID,
 		FieldID: fieldID,
@@ -98,11 +118,21 @@ func (s *Service) SetValue(issueID, fieldID string, value interface{}) error {
 
 	switch v := value.(type) {
 	case string:
-		cv.ValueText = v
+		switch fieldType {
+		case FieldTypeDate:
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return fmt.Errorf("%w: invalid date value", ErrInvalidValue)
+			}
+			cv.ValueDate = &t
+		default:
+			// text and user (accountId string) both store into ValueText.
+			cv.ValueText = v
+		}
 	case float64:
 		cv.ValueNumber = &v
 	default:
-		return errors.New("unsupported value type for custom field")
+		return fmt.Errorf("%w: unsupported value type", ErrInvalidValue)
 	}
 
 	return s.db.Save(cv).Error
