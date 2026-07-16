@@ -54,7 +54,7 @@ func (h *FilterHandler) ownerRef(ownerID string) *v3.User {
 func (h *FilterHandler) toFilter(f *search.SavedFilter) v3.Filter {
 	return v3.JiraFilter(v3.FilterInput{
 		ID: f.ID, Name: f.Name, Description: f.Description, JQL: f.JQL,
-		Favourite: f.IsFavourite, Owner: h.ownerRef(f.OwnerID), BaseURL: h.baseURL,
+		Favourite: f.IsFavourite, IsShared: f.IsShared, Owner: h.ownerRef(f.OwnerID), BaseURL: h.baseURL,
 	})
 }
 
@@ -62,6 +62,7 @@ type filterBody struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	JQL         string `json:"jql"`
+	IsShared    *bool  `json:"is_shared"`
 }
 
 func (h *FilterHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +76,7 @@ func (h *FilterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := middleware.UserIDFromContext(r.Context())
-	f, err := h.svc.Create(uid, nil, b.Name, b.Description, b.JQL, false)
+	f, err := h.svc.Create(uid, nil, b.Name, b.Description, b.JQL, b.IsShared != nil && *b.IsShared)
 	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to create filter"}, nil)
 		return
@@ -110,7 +111,7 @@ func (h *FilterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireOwner(w, r, id); !ok {
 		return
 	}
-	f, err := h.svc.Update(id, b.Name, b.Description, b.JQL, nil)
+	f, err := h.svc.Update(id, b.Name, b.Description, b.JQL, b.IsShared)
 	if err != nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"filter not found"}, nil)
 		return

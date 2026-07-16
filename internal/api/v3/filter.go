@@ -38,12 +38,22 @@ type FilterInput struct {
 	Description string
 	JQL         string
 	Favourite   bool
+	IsShared    bool
 	Owner       *User
 	BaseURL     string
 }
 
 // JiraFilter costruisce il Filter di risposta conforme.
+//
+// La condivisione è esposta tramite sharePermissions, come nel contratto Jira:
+// lo schema Filter è chiuso (additionalProperties:false) e non ammette un campo
+// booleano custom. Un filtro condiviso restituisce una SharePermission globale
+// ({"type":"global"}); un filtro privato ha l'array vuoto.
 func JiraFilter(in FilterInput) Filter {
+	share := []any{}
+	if in.IsShared {
+		share = append(share, map[string]any{"type": "global"})
+	}
 	return Filter{
 		Self:             fmt.Sprintf("%s/rest/api/3/filter/%s", in.BaseURL, in.ID),
 		ID:               in.ID,
@@ -54,7 +64,7 @@ func JiraFilter(in FilterInput) Filter {
 		ViewURL:          fmt.Sprintf("%s/issues/?filter=%s", in.BaseURL, in.ID),
 		SearchURL:        fmt.Sprintf("%s/rest/api/3/search?jql=%s", in.BaseURL, url.QueryEscape(in.JQL)),
 		Favourite:        in.Favourite,
-		SharePermissions: []any{},
+		SharePermissions: share,
 		EditPermissions:  []any{},
 	}
 }
