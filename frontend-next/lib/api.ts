@@ -38,6 +38,20 @@ export interface Project {
   projectCategory?: ProjectCategoryRef;
 }
 
+export type ProjectRole = "admin" | "member" | "viewer";
+
+// Hydrated project member: the user's public JiraUser fields plus their
+// per-project role. Returned by GET /rest/api/3/project/{key}/members.
+// emailAddress is present only when the caller may see it (self or global
+// admin), mirroring v3.JiraUser's omitempty gating.
+export interface ProjectMember {
+  accountId: string;
+  displayName: string;
+  emailAddress?: string;
+  avatarUrls?: Record<string, string>;
+  role: ProjectRole;
+}
+
 export interface ADFNode {
   type: string;
   version?: number;
@@ -105,6 +119,10 @@ export interface PagedResponse<T> {
   isLast: boolean;
   values: T[];
 }
+
+// Alias for the same startAt/maxResults/total/isLast/values page shape, named
+// to match Jira's "PageBean" (used e.g. by GET /group/member → PageBeanUser).
+export type PageBean<T> = PagedResponse<T>;
 
 export interface User {
   id: string;
@@ -256,6 +274,29 @@ export const projects = {
   types: () => apiFetch<{ key: string; formattedKey: string }[]>("/rest/api/3/project/type"),
 
   categories: () => apiFetch<ProjectCategoryRef[]>("/rest/api/3/projectCategory"),
+
+  // Project members/roles. GET/POST /project/{key}/members returns the hydrated
+  // shape (JiraUser fields + role); DELETE removes by accountId; POST /invites
+  // creates an invite token for an email not yet a user.
+  members: {
+    list: (key: string) => apiFetch<ProjectMember[]>(`/rest/api/3/project/${key}/members`),
+    // add is also "change role" (upsert): POSTing an existing member's id with a
+    // new role updates it.
+    add: (key: string, body: { user_id: string; role: ProjectRole }) =>
+      apiFetch<ProjectMember>(`/rest/api/3/project/${key}/members`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    remove: (key: string, userId: string) =>
+      apiFetch<void>(`/rest/api/3/project/${key}/members/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+      }),
+    invite: (key: string, body: { email: string; role: ProjectRole }) =>
+      apiFetch<{ token: string }>(`/rest/api/3/project/${key}/invites`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  },
 };
 
 // ── Issues ───────────────────────────────────────────────────────────────────
@@ -520,6 +561,17 @@ export interface Filter {
   jql: string;
   favourite: boolean;
   owner?: { displayName: string };
+  // The wire has NO isShared boolean: sharing is expressed via sharePermissions
+  // ([{type:"global"}] = shared, [] / absent = private). Requests still send
+  // is_shared (snake) on create/update — the backend parses it — but to READ
+  // whether a filter is shared, derive it from this array (see filterIsShared).
+  sharePermissions?: { type: string }[];
+}
+
+// Derives whether a filter is shared from its sharePermissions array. There is
+// no isShared boolean on the wire.
+export function filterIsShared(f: Filter): boolean {
+  return (f.sharePermissions?.length ?? 0) > 0;
 }
 
 export const search = {
@@ -539,10 +591,15 @@ export const filters = {
   list: () => apiFetch<Filter[]>("/rest/api/3/filter/my"),
   favourites: () => apiFetch<Filter[]>("/rest/api/3/filter/favourite"),
   get: (id: string) => apiFetch<Filter>(`/rest/api/3/filter/${id}`),
-  create: (name: string, jql: string, description?: string) =>
+  create: (name: string, jql: string, opts?: { description?: string; is_shared?: boolean }) =>
     apiFetch<Filter>("/rest/api/3/filter", {
       method: "POST",
-      body: JSON.stringify({ name, jql, description }),
+      body: JSON.stringify({ name, jql, description: opts?.description, is_shared: opts?.is_shared }),
+    }),
+  update: (id: string, patch: { name?: string; jql?: string; description?: string; is_shared?: boolean }) =>
+    apiFetch<Filter>(`/rest/api/3/filter/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
     }),
   del: (id: string) => apiFetch<void>(`/rest/api/3/filter/${id}`, { method: "DELETE" }),
   setFavourite: (id: string, fav: boolean) =>
@@ -853,6 +910,13 @@ export const dashboards = {
   get: (id: string) => apiFetch<Dashboard & { widgets: DashboardWidget[] }>(`/rest/api/3/dashboards/${id}`),
   create: (name: string) =>
     apiFetch<Dashboard>("/rest/api/3/dashboards", { method: "POST", body: JSON.stringify({ name }) }),
+  addWidget: (id: string, body: { widget_type: string; config_json: string }) =>
+    apiFetch<DashboardWidget>(`/rest/api/3/dashboards/${id}/widgets`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  removeWidget: (id: string, widgetId: string) =>
+    apiFetch<void>(`/rest/api/3/dashboards/${id}/widgets/${widgetId}`, { method: "DELETE" }),
 };
 
 // ── Notifications ────────────────────────────────────────────────────────────
@@ -957,6 +1021,22 @@ export const groups = {
     ),
   create: (name: string) =>
     apiFetch<GroupRef>("/rest/api/3/group", { method: "POST", body: JSON.stringify({ name }) }),
+  get: (groupname: string) =>
+    apiFetch<GroupRef>(`/rest/api/3/group?groupname=${encodeURIComponent(groupname)}`),
+  del: (groupname: string) =>
+    apiFetch<void>(`/rest/api/3/group?groupname=${encodeURIComponent(groupname)}`, { method: "DELETE" }),
+  members: (groupname: string) =>
+    apiFetch<PageBean<JiraUser>>(`/rest/api/3/group/member?groupname=${encodeURIComponent(groupname)}`),
+  addUser: (groupname: string, accountId: string) =>
+    apiFetch<void>(`/rest/api/3/group/user?groupname=${encodeURIComponent(groupname)}`, {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    }),
+  removeUser: (groupname: string, accountId: string) =>
+    apiFetch<void>(
+      `/rest/api/3/group/user?groupname=${encodeURIComponent(groupname)}&accountId=${encodeURIComponent(accountId)}`,
+      { method: "DELETE" }
+    ),
 };
 
 // ── Integrations ─────────────────────────────────────────────────────────────
