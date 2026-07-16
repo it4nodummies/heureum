@@ -7,6 +7,7 @@ import (
 
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/permission"
 )
@@ -46,7 +47,7 @@ func (h *AttachmentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(att)
+	json.NewEncoder(w).Encode(v3.AttachmentFrom(att.ID, att.Filename, att.FileSize, att.CreatedAt))
 }
 
 func (h *AttachmentHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +57,31 @@ func (h *AttachmentHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(att)
+	json.NewEncoder(w).Encode(v3.AttachmentFrom(att.ID, att.Filename, att.FileSize, att.CreatedAt))
+}
+
+// ListForIssue restituisce gli allegati di una issue in shape v3
+// (GET /rest/api/3/issue/{issueIdOrKey}/attachments). Non è una rotta del
+// contratto ufficiale Jira (che espone gli allegati solo dentro
+// fields.attachment dell'issue), ma è comoda per il frontend: vedi Round 13
+// Task 5.
+func (h *AttachmentHandler) ListForIssue(w http.ResponseWriter, r *http.Request) {
+	iss, err := h.issueSvc.GetByKey(r.PathValue("issueIdOrKey"))
+	if err != nil {
+		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+		return
+	}
+	atts, err := h.svc.GetAttachments(iss.ID)
+	if err != nil {
+		http.Error(w, `{"error":"failed to list attachments"}`, http.StatusInternalServerError)
+		return
+	}
+	out := make([]v3.Attachment, 0, len(atts))
+	for _, att := range atts {
+		out = append(out, v3.AttachmentFrom(att.ID, att.Filename, att.FileSize, att.CreatedAt))
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 // Delete: two-hop authorization (attachment -> issue -> project), enforced

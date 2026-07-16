@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **114**
 - Nel contratto ma mancanti: **607**
-- Implementati ma fuori contratto (estensioni): **86**
+- Implementati ma fuori contratto (estensioni): **87**
 
 ## Mancanti (dal contratto)
 
@@ -637,6 +637,7 @@
 - `GET /rest/api/3/custom-fields/{}/options`
 - `GET /rest/api/3/dashboards`
 - `GET /rest/api/3/dashboards/{}`
+- `GET /rest/api/3/issue/{}/attachments`
 - `GET /rest/api/3/issue/{}/custom-values`
 - `GET /rest/api/3/issue/{}/git`
 - `GET /rest/api/3/issue/{}/issuelinks`

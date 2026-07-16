@@ -226,6 +226,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink/{id}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(remoteLinkH.Delete))))
 
 	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(attachmentH.Upload))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(attachmentH.ListForIssue))))
 	mux.Handle("GET /rest/api/3/attachment/{id}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByAttachment("id"), http.HandlerFunc(attachmentH.Get))))
 	// DELETE /attachment/{id}: two-hop resolver (attachment -> issue -> project);
 	// enforced in-handler (AttachmentHandler.Delete) per the Round 11 plan.
