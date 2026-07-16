@@ -1,6 +1,6 @@
 # Stato del progetto — punto di ripresa
 
-> Aggiornato: 2026-07-17 (dopo Round 14). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
+> Aggiornato: 2026-07-17 (dopo Round 15). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
 >
 > **Il progetto è stato rinominato in `Heureum`** (owner GitHub `it4nodummies`, module path `github.com/it4nodummies/heureum`). UI servita sotto `/app`. Le superfici API `/rest/api/3` + `/rest/agile/1.0` + JQL restano compat Jira Cloud v3 (intoccabili).
 
@@ -48,9 +48,13 @@ Clone open source di Jira con **API drop-in compatibile con Jira Cloud REST API 
 
 Gap report attuale: **114 endpoint path-match conformi** + **87 estensioni** su ~700 del contratto (la conformità reale è garantita dai contract test in `internal/contract/`; timeline/calendar/reports/export sono rotte custom per-progetto, estensioni non nel contratto v3).
 
-## Prossimo: Round 15 e successivi
+- **Round 15 — Configurabilità (Automation UI, Custom fields UI, Workflow rules)** ✅ (piano: `docs/superpowers/plans/2026-07-17-round-15-configurabilita.md`; requirements v2 §A.4/A.5/B.7). Cablaggio UI su domain service pronti + fix di sicurezza. **Automation (A.4)**: tab in Project Settings (lista regole con toggle attiva + delete, form create con builder trigger/condizioni/azioni limitato alle chiavi supportate dall'engine — condizioni `priority`/`title_contains`, azioni `set_assignee`/`add_label`/`transition_issue`/`add_comment` — serializzate in `conditions_json` oggetto / `actions_json` array; log esecuzioni per regola); client automation completato. **Custom fields (A.5)**: tab Fields (CRUD field sui 6 tipi + gestione opzioni per select/multiselect), rendering dinamico dei custom field nel CreateIssueModal (con validazione required) e nell'IssueView (view+edit); story points nativi (`customfield_10016`) tenuti separati dal sistema custom-field. Backend: migrazione 000017 `required`; `SetValue` esteso a date (RFC3339→ValueDate) e user (accountId→ValueText). **Workflow rules (B.7)**: edit in-place di name/require_assignee/set_resolution sulle transizioni esistenti (prima solo add/delete; i due flag erano già nel form di add). **FIX DI SICUREZZA (bypass authz)**: le route automation e custom-field usavano `{projectID}`/`{issueID}`=UUID interni mai esposti dall'API → con un seq_id il resolver `ByProjectID`/`ByIssueUUID` falliva (ok=false) e `chk.Enforce` faceva **passthrough all'handler senza controllo permessi** (un POST creava righe orfane bypassando `AdministerProjects`). Ri-chiavate a `{key}`+`ByKey` / `{issueIdOrKey}`+`ByIssueParam` con risoluzione UUID in-handler → gate ripristinato. Fix collaterali (da review): `customfield.SetValue` rifiutava field id inesistenti (prima scriveva riga orfana perché il FK non è applicato su sqlite) + handler 400/404 invece di 500 blanket; CreateIssueModal/IssueView non fanno più apparire fallita l'intera create/update se un singolo custom value non si salva (rischio issue duplicata) — warning ambra dedicato; required custom field enforced anche in edit; re-seed dei draft custom se le query risolvono dopo l'apertura dell'edit. Gate finale verde: backend tutti test, gap **114+87 no-drift**, build frontend + **52/52 E2E `--workers=1`**.
 
-Riferimento: `docs/superpowers/specs/2026-07-16-jira-cloud-parity-requirements-v2.md`. Le fasi A (cablaggio) rimanenti e B (estendi) forniscono la coda di round; ogni sezione ha acceptance criteria numerati e riferimenti `file:line`, quindi i piani nascono direttamente da lì.
+## Prossimo: Round 16 e successivi
+
+**Round 16 — Amministrazione & condivisione** (requirements v2 §A.8/A.9/A.10): gestione membri/ruoli progetto (UI) + pagina gruppi (admin), filtri condivisi (togliere l'hardcode `is_shared` in create/update + toggle UI), gadget dashboard (add/remove dal catalogo + rendering tipizzato). Poi R17+ (fasi A rimanenti / B estendi). Riferimento: `docs/superpowers/specs/2026-07-16-jira-cloud-parity-requirements-v2.md`; ogni sezione ha acceptance criteria numerati e `file:line`.
+
+**NB pattern ricorrente scoperto (R14+R15):** molte route "custom" per-progetto/-issue erano chiavate su UUID interni mai esposti dall'API (che dà solo seq_id/key) → non chiamabili dal frontend E, con l'enforcement path-scoped, un seq_id fa fallire il resolver e **salta il controllo permessi**. Prima di cablare una UI su una route esistente, verificare SEMPRE che sia `{key}`/`{issueIdOrKey}` e non `{projectID}`/`{issueID}`-UUID.
 
 Tag 1.0 già pubblicato (v1.0.2 rilasciata, `docs/RELEASE.md`); i round successivi sono minor/patch verso la prossima release.
 

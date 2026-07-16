@@ -35,6 +35,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   project's own board and defaults to the active sprint (previously the page was hardcoded to
   board `1` and its first sprint).
 - **Export CSV** button on the project overview (bearer-auth blob download).
+- **Automation rules UI**: an Automation tab in Project Settings — list rules with an active toggle
+  and delete, a create form (trigger + condition/action builder limited to the engine's supported
+  keys), and a per-rule run log (`/project/{key}/automation`, `/automation/{ruleID}/runs`).
+- **Custom fields UI**: a Fields tab in Project Settings (create/list/delete fields across the six
+  types, with option management for select/multiselect) plus dynamic rendering of a project's custom
+  fields in the create-issue modal (with required-field validation) and the issue detail panel
+  (view + edit). Native story points (`customfield_10016`) remain separate from this system.
+- **Workflow transition rules**: existing transitions can now be edited in place (name +
+  require-assignee / set-resolution) in the workflow editor, not just added and deleted.
 
 ### Fixed
 
@@ -62,6 +71,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Cumulative Flow (CFD) report derived its date axis from SQL `DATE(...)` (UTC) while bucketing
   events with Go's local-time formatting, so across local midnight the two diverged by a day and the
   bands were miscounted; both now derive from the same Go-formatted source.
+- **Authorization bypass on automation & custom-field routes:** these were keyed on the internal
+  project/issue UUID (never exposed by the API), so a request carrying the public seq_id made the
+  authorization resolver miss and the permission check was skipped entirely (a `POST` could create
+  orphaned rows without `AdministerProjects`). The routes now key on the project/issue **key** and
+  resolve to the UUID server-side, restoring the permission gate.
+- Custom-field `SetValue` now rejects an unknown field id (previously it silently wrote an orphaned
+  value row) and returns `400`/`404` for invalid-value / unknown-field instead of a blanket `500`;
+  it also gained `date` (RFC3339) and `user` write paths and a `required` flag on fields.
 
 ### Known gaps (tracked for a follow-up round)
 
@@ -76,6 +93,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or name); acceptable for an authenticated per-project export, but worth defense-in-depth later.
 - The Timeline renders epics with no start/due date as a full-width bar spanning the whole window
   (the backend doesn't filter date-less epics).
+- Automation: the condition/action builder is limited to the engine's hardcoded keys (`priority`,
+  `title_contains`; `set_assignee`/`add_label`/`transition_issue`/`add_comment`); existing rules'
+  conditions/actions aren't shown/editable in the list (create + toggle + delete only). The HTTP
+  `execute` endpoint runs the rule in test mode.
+- Custom fields: the value model stores a single option per field, so a `multiselect` field's UI
+  persists only the first selected option; `required` is enforced in the UI (create + edit) but not
+  server-side.
 
 ## [1.0.2] - 2026-07-14
 
