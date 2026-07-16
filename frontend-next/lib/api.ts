@@ -168,7 +168,12 @@ async function apiFetch<T>(
   }
 
   if (res.status === 204) return undefined as unknown as T;
-  return res.json() as Promise<T>;
+  // Some 201 responses (e.g. POST /rest/api/3/issueLink) are body-less —
+  // guard against `res.json()` throwing "Unexpected end of JSON input" on an
+  // empty string rather than assuming every non-204 response has a body.
+  const text = await res.text();
+  if (!text) return undefined as unknown as T;
+  return JSON.parse(text) as T;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -847,4 +852,62 @@ export const integrations = {
 
 export const issueGit = {
   info: (issueKey: string) => apiFetch<IssueGitInfo>(`/rest/api/3/issue/${issueKey}/git`),
+};
+
+// ── Issue links ──────────────────────────────────────────────────────────────
+
+// v3.LinkTypeRef (internal/api/v3/collab.go). "inward"/"outward" are the two
+// human-readable phrasings of the same relation depending on which side you
+// stand on, e.g. Blocks: outward="blocks", inward="is blocked by".
+export interface LinkTypeRef {
+  id: string;
+  name: string;
+  inward: string;
+  outward: string;
+  self?: string;
+}
+
+// v3.LinkedIssueForIssue: the minimal shape (key + summary/status) of "the
+// other end" of a link, as returned by GET /issue/{key}/issuelinks.
+export interface LinkedIssueForIssue {
+  key: string;
+  fields: {
+    summary: string;
+    status?: StatusRef;
+  };
+}
+
+// v3.IssueLinkForIssue: only the side opposite the requested issue is
+// populated — see the handler comment in internal/api/handlers/issuelink_handler.go.
+// If `inwardIssue` is populated, the requested issue is the outward/source
+// side of the link; if `outwardIssue` is populated, the requested issue is
+// the inward/target side.
+export interface IssueLinkForIssue {
+  id: string;
+  type: LinkTypeRef;
+  inwardIssue?: LinkedIssueForIssue;
+  outwardIssue?: LinkedIssueForIssue;
+}
+
+export interface IssueLinksResponse {
+  issuelinks: IssueLinkForIssue[];
+}
+
+export type IssueLinkTypeName = "Blocks" | "Duplicate" | "Relates";
+
+export const issueLinks = {
+  list: (issueKey: string) => apiFetch<IssueLinksResponse>(`/rest/api/3/issue/${issueKey}/issuelinks`),
+  // Convention (matches internal/api/handlers/issuelink_handler.go Create):
+  // outwardKey is always the link's source, inwardKey its target. Callers
+  // decide which one is "this issue" based on the chosen relation.
+  create: (payload: { typeName: IssueLinkTypeName; outwardKey: string; inwardKey: string }) =>
+    apiFetch<void>("/rest/api/3/issueLink", {
+      method: "POST",
+      body: JSON.stringify({
+        type: { name: payload.typeName },
+        outwardIssue: { key: payload.outwardKey },
+        inwardIssue: { key: payload.inwardKey },
+      }),
+    }),
+  delete: (id: string) => apiFetch<void>(`/rest/api/3/issueLink/${id}`, { method: "DELETE" }),
 };

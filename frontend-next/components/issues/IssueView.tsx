@@ -7,6 +7,7 @@ import { issues, meta, watchers, votes } from "@/lib/api";
 import { AdfRenderer, adfToText, textToAdf } from "./adf";
 import { Comments } from "./Comments";
 import { DevelopmentPanel } from "./DevelopmentPanel";
+import { LinkedWorkItems } from "./LinkedWorkItems";
 import { Subtasks } from "./Subtasks";
 
 interface Props {
@@ -253,6 +254,8 @@ export function IssueView({ issueKey }: Props) {
       <DevelopmentPanel issueKey={issue.key} />
 
       <Subtasks issueKey={issue.key} projectKey={projectKey} />
+
+      <LinkedWorkItems issueKey={issue.key} />
 
       <Comments issueKey={issue.key} />
     </div>

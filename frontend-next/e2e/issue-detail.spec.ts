@@ -44,3 +44,58 @@ test("Subtasks: crea un'issue, aggiunge un sottotask inline e vede il contatore 
   await expect(row).toHaveCount(1);
   await expect(row.getByTitle("Subtask")).toBeVisible();
 });
+
+// Crea un'issue da zero via il Create della topbar (stesso flusso del test
+// Subtasks sopra) e ritorna la sua key (DEMO-NNNN) letta dall'URL dopo la
+// navigazione a /app/browse/{key}.
+async function createIssue(page: Page, summary: string): Promise<string> {
+  await page.goto("/app/projects");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.getByRole("button", { name: "Issue", exact: true }).click();
+  const createModal = page.locator("div.fixed.inset-0.z-50");
+  await expect(createModal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+  await createModal.getByLabel("Project").selectOption({ label: "Demo Project (DEMO)" });
+  await createModal.locator("#issue-summary").fill(summary);
+  await createModal.getByRole("button", { name: "Create", exact: true }).click();
+  await page.waitForURL(/\/app\/browse\/DEMO-\d+/);
+  const match = page.url().match(/DEMO-\d+/);
+  if (!match) throw new Error(`could not read issue key from URL ${page.url()}`);
+  return match[0];
+}
+
+test("Linked work items: aggiunge un link 'Blocks' verso un'altra issue e poi lo rimuove", async ({ page }) => {
+  await login(page);
+
+  const unique = Date.now();
+  const sourceSummary = `E2E Link Source ${unique}`;
+  const targetSummary = `E2E Link Target ${unique}`;
+
+  // La issue target va creata per prima così esiste già quando la cerchiamo
+  // dall'autocomplete sulla issue source.
+  const targetKey = await createIssue(page, targetSummary);
+  const sourceKey = await createIssue(page, sourceSummary);
+  expect(sourceKey).not.toBe(targetKey);
+
+  const section = page.getByTestId("linked-work-items-section");
+  await expect(section).toBeVisible();
+  await expect(page.getByText("No linked work items yet.")).toBeVisible();
+
+  await page.getByLabel("Relation type").selectOption("Blocks");
+  const targetInput = page.getByLabel("Search for an issue to link");
+  await targetInput.fill(targetSummary);
+
+  const suggestion = section.getByText(targetKey, { exact: true });
+  await expect(suggestion).toBeVisible();
+  await suggestion.click();
+
+  await section.getByRole("button", { name: "Add", exact: true }).click();
+
+  const linkRow = section.getByTestId(`issue-link-row-${targetKey}`);
+  await expect(linkRow).toBeVisible();
+  await expect(section.getByText("blocks", { exact: true })).toBeVisible();
+  await expect(linkRow.getByText(targetSummary)).toBeVisible();
+
+  await linkRow.getByRole("button", { name: `Remove link to ${targetKey}` }).click();
+  await expect(linkRow).not.toBeVisible();
+  await expect(page.getByText("No linked work items yet.")).toBeVisible();
+});
