@@ -27,6 +27,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   assignee field was previously read-only.
 - **Richer create-issue modal**: description, priority, assignee, and an optional parent (for
   Subtasks), plus a "Create another" option that keeps the modal open and resets the form.
+- **Project Timeline (Gantt)**: a horizontal-bar timeline of epics and sprints per project, with
+  weeks/months/quarters zoom (`GET /project/{key}/timeline`). Sprint bars show completion %.
+- **Project Calendar**: a month grid placing issues on their due date (or start date when there's
+  no due date), with month navigation (`GET /project/{key}/calendar`).
+- **Burnup report** on the project Reports page, alongside a **sprint selector** that resolves the
+  project's own board and defaults to the active sprint (previously the page was hardcoded to
+  board `1` and its first sprint).
+- **Export CSV** button on the project overview (bearer-auth blob download).
 
 ### Fixed
 
@@ -44,6 +52,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `typeof === "string"` guard.
 - `e2e/search.spec.ts` used an unanchored `/DEMO-1/` regex that also matched `DEMO-10`, `DEMO-11`,
   etc. once the seed grew past nine issues; tightened to `/^DEMO-1$/`.
+- CSV export (`GET /project/{key}/issues/export`) now writes resolved **Status/Type/Assignee names**
+  instead of raw UUIDs.
+- Timeline and Calendar routes now key on the project **key** (resolved to the internal UUID
+  server-side); previously they required the internal UUID the frontend never receives, making both
+  views uncallable.
+- The Calendar service dropped issues that had a start_date in the month but no due_date; they're
+  now bucketed onto their start day.
+- The Cumulative Flow (CFD) report derived its date axis from SQL `DATE(...)` (UTC) while bucketing
+  events with Go's local-time formatting, so across local midnight the two diverged by a day and the
+  bands were miscounted; both now derive from the same Go-formatted source.
 
 ### Known gaps (tracked for a follow-up round)
 
@@ -54,6 +72,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the acting user requires threading the uid through `issue.Service.Create`/`Update`.
 - The full Playwright suite has SQLite write-contention flakiness when run with more than one
   worker; `--workers=1` is required for a fully green run.
+- CSV export does not neutralize spreadsheet formula-injection (leading `=`/`+`/`-`/`@` in a title
+  or name); acceptable for an authenticated per-project export, but worth defense-in-depth later.
+- The Timeline renders epics with no start/due date as a full-width bar spanning the whole window
+  (the backend doesn't filter date-less epics).
 
 ## [1.0.2] - 2026-07-14
 
