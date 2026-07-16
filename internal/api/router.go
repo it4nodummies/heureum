@@ -201,6 +201,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/issue/{issueKey}/labels", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueKey"), http.HandlerFunc(issueH.AddLabel))))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/changelog", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueKey"), http.HandlerFunc(historyH.GetHistory))))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/git", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueKey"), http.HandlerFunc(gitH.GetIssueGitInfo))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/subtasks", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.Subtasks))))
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.GetWatchers))))
 	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.AddWatcher))))
 	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.RemoveWatcher))))

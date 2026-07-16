@@ -362,6 +362,27 @@ func (h *IssueHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Subtasks implementa GET /rest/api/3/issue/{issueIdOrKey}/subtasks: elenca i
+// figli (issue.parent_id == issue.ID) come v3 issue completi, riusando la
+// stessa costruzione (buildIssueInput + v3.JiraIssue) di Get.
+func (h *IssueHandler) Subtasks(w http.ResponseWriter, r *http.Request) {
+	iss, err := h.resolveIssue(r.PathValue("issueIdOrKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
+		return
+	}
+	children, err := h.svc.GetChildren(iss.ID)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list subtasks"}, nil)
+		return
+	}
+	out := make([]v3.IssueBean, 0, len(children))
+	for i := range children {
+		out = append(out, v3.JiraIssue(h.buildIssueInput(&children[i])))
+	}
+	v3.WriteJSON(w, http.StatusOK, map[string]any{"values": out, "total": len(out)})
+}
+
 func (h *IssueHandler) List(w http.ResponseWriter, r *http.Request) {
 	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
 	if err != nil {
