@@ -102,9 +102,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc, &http.Client{Timeout: 10 * time.Second})
 	issueSvc.SetEventSink(dispatcher)
 	timelineSvc := timeline.NewService(db)
-	timelineH := handlers.NewTimelineHandler(timelineSvc)
+	timelineH := handlers.NewTimelineHandler(timelineSvc, projectSvc)
 	calendarSvc := calendar.NewService(db)
-	calendarH := handlers.NewCalendarHandler(calendarSvc)
+	calendarH := handlers.NewCalendarHandler(calendarSvc, projectSvc)
 	refH := handlers.NewReferenceHandler(db, cfg.BaseURL, chk, projectSvc)
 
 	groupSvc := group.NewService(db)
@@ -396,8 +396,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/automation/{ruleID}/execute", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.ExecuteRule))))
 	mux.Handle("GET /rest/api/3/automation/{ruleID}/runs", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.ListRuns))))
 
-	mux.Handle("GET /rest/api/3/project/{projectID}/timeline", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(timelineH.GetTimeline))))
-	mux.Handle("GET /rest/api/3/project/{projectID}/calendar", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(calendarH.GetCalendar))))
+	mux.Handle("GET /rest/api/3/project/{key}/timeline", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(timelineH.GetTimeline))))
+	mux.Handle("GET /rest/api/3/project/{key}/calendar", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(calendarH.GetCalendar))))
 
 	// --- Gruppi (Round 8) ---
 	mux.Handle("GET /rest/api/3/group", authMw(http.HandlerFunc(groupH.Get)))
