@@ -104,3 +104,20 @@ test("workflow editor creates and removes a transition between two statuses", as
   await page.getByLabel("Delete transition Test Transition").click();
   await expect(page.getByTestId("transition-Test Transition")).not.toBeVisible();
 });
+
+test("workflow editor shows an error when a non-admin tries to add a transition", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("dev@example.com");
+  await page.getByLabel(/password/i).fill("dev-demo-123");
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL(/\/app/);
+
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  await page.getByLabel("From status").selectOption({ label: "TO DO" });
+  await page.getByLabel("To status").selectOption({ label: "DONE" });
+  await page.getByRole("button", { name: "Add transition" }).click();
+
+  await expect(page.getByText("you do not have permission to perform this action")).toBeVisible();
+});

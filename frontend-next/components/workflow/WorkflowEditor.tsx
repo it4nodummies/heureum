@@ -146,6 +146,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
             </ul>
           </SortableContext>
         </DndContext>
+        {delStatus.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {delStatus.error instanceof Error ? delStatus.error.message : "Failed to delete status"}
+          </p>
+        )}
         <div className="mt-2 flex gap-2">
           <input
             aria-label="New status name"
@@ -172,6 +177,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
             Add status
           </button>
         </div>
+        {addStatus.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {addStatus.error instanceof Error ? addStatus.error.message : "Failed to add status"}
+          </p>
+        )}
         <p className="mt-1 text-xs text-slate-400">
           Category is used for reports and to auto-set the resolution — it does not control column order.
           Drag statuses in the list above to reorder board columns.
@@ -202,6 +212,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
             );
           })}
         </ul>
+        {delTransition.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {delTransition.error instanceof Error ? delTransition.error.message : "Failed to delete transition"}
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <select
             aria-label="From status"
@@ -258,6 +273,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
             Add transition
           </button>
         </div>
+        {addTransition.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {addTransition.error instanceof Error ? addTransition.error.message : "Failed to add transition"}
+          </p>
+        )}
       </section>
     </div>
   );
