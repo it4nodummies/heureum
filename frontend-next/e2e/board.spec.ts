@@ -286,3 +286,72 @@ test("backlog: multi-select drag moves all selected issues together", async ({ p
   await expect(sprintContainer.getByTestId("row-DEMO-4")).toBeVisible();
   await expect(sprintContainer.getByTestId("row-DEMO-5")).toBeVisible();
 });
+
+test("backlog: reorders issues within the same list and persists after reload", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/boards/1/backlog");
+
+  // The plan's original version of this test hardcoded DEMO-6/DEMO-7, assuming the seeded DEMO
+  // project already has 7 issues by the time this test runs. In reality the seed
+  // (cmd/seed/main.go) only creates 5 (DEMO-1..DEMO-5), and within this file only one earlier
+  // test ("create issue from backlog appears in the backlog list") creates a 6th — no test
+  // creates a 7th, so `row-DEMO-7` never exists and the hardcoded-key version fails outright.
+  // Relying on exact global seq_id numbers is also inherently fragile under a full-suite run,
+  // where other spec files race to create DEMO issues concurrently (see Task 7's note on shared
+  // backend/DB across parallel test files). Instead, create two fresh issues here via the same
+  // UI flow as that earlier test and resolve their *actual* assigned keys dynamically — this
+  // keeps the test self-contained and order-independent regardless of how many issues already
+  // exist.
+  async function createBacklogIssue(summary: string) {
+    await page.getByRole("button", { name: "Create issue" }).click();
+    const modal = page.locator("div.fixed.inset-0.z-50");
+    await expect(modal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+    await modal.locator("#issue-summary").fill(summary);
+    await modal.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+  }
+
+  const summaryFirst = `DnD Reorder First ${Date.now()}`;
+  const summarySecond = `DnD Reorder Second ${Date.now()}`;
+  await createBacklogIssue(summaryFirst);
+  await createBacklogIssue(summarySecond);
+
+  const backlogList = page.getByTestId("backlog-list");
+  const rowFirst = backlogList.locator('[data-testid^="row-"]').filter({ hasText: summaryFirst });
+  const rowSecond = backlogList.locator('[data-testid^="row-"]').filter({ hasText: summarySecond });
+  await expect(rowFirst).toBeVisible();
+  await expect(rowSecond).toBeVisible();
+
+  const testIdFirst = await rowFirst.getAttribute("data-testid");
+  const testIdSecond = await rowSecond.getAttribute("data-testid");
+  if (!testIdFirst || !testIdSecond) throw new Error("created issue rows not found");
+  const keyFirst = testIdFirst.replace("row-", "");
+  const keySecond = testIdSecond.replace("row-", "");
+
+  // Issues are created in ascending seq_id order and the backlog lists them in that order, so
+  // `keyFirst` (created first) must sort before `keySecond` (created second) — mirroring the
+  // plan's original DEMO-6/DEMO-7 ordering assumption, just with dynamically-resolved keys.
+  const rowsBefore = await backlogList.locator('[data-testid^="row-"]').allTextContents();
+  expect(rowsBefore.findIndex((r) => r.includes(keyFirst))).toBeLessThan(
+    rowsBefore.findIndex((r) => r.includes(keySecond))
+  );
+
+  // Dropping the second issue's handle onto the first inserts it immediately before the first.
+  await dragBetween(page, `drag-handle-${keySecond}`, `drag-handle-${keyFirst}`);
+
+  await expect(async () => {
+    const rows = await backlogList.locator('[data-testid^="row-"]').allTextContents();
+    expect(rows.findIndex((r) => r.includes(keySecond))).toBeLessThan(rows.findIndex((r) => r.includes(keyFirst)));
+  }).toPass();
+
+  await page.reload();
+  // The reload re-fetches the backlog from the server; reading row text immediately can race the
+  // in-flight query and see an empty/partial list (findIndex returns -1 for both keys). Waiting
+  // for the (now-reordered) second issue's row to actually appear ensures the refetch has landed
+  // before asserting on order.
+  await expect(page.getByTestId("backlog-list").locator(`[data-testid="row-${keySecond}"]`)).toBeVisible();
+  const rowsAfter = await page.getByTestId("backlog-list").locator('[data-testid^="row-"]').allTextContents();
+  expect(rowsAfter.findIndex((r) => r.includes(keySecond))).toBeLessThan(
+    rowsAfter.findIndex((r) => r.includes(keyFirst))
+  );
+});
