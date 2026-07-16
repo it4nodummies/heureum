@@ -34,6 +34,7 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<Record<string, string[]>>({});
+  const [dragError, setDragError] = useState<string | null>(null);
   const dragStartContainer = useRef<string | null>(null);
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
@@ -66,14 +67,6 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     for (const iss of list) issuesByKey[iss.key] = iss;
   });
 
-  useEffect(() => {
-    if (activeId) return;
-    setItems(serverItems);
-    // Depend on a stable serialized snapshot, not the object identity (which changes every
-    // render), so this only re-syncs when the actual server-derived content changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(serverItems), activeId]);
-
   const createSprint = useMutation({
     mutationFn: (name: string) => sprints.create(name, id),
     onSuccess: () => {
@@ -93,6 +86,7 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
       draggedKeys: string[];
       before?: string;
       after?: string;
+      wasGroupDrag: boolean;
     }) => {
       if (vars.sourceContainer !== vars.targetContainer) {
         if (vars.targetContainer === BACKLOG_ID) {
@@ -106,12 +100,32 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
         await agileIssues.rank(vars.draggedKeys, vars.before, vars.after);
       }
     },
-    onSuccess: () => {
-      setSelected(new Set());
+    onSuccess: (_data, vars) => {
+      // Only clear the selection if this drag actually moved it — dragging a lone,
+      // unselected issue must not wipe a selection the user is still building for a
+      // separate, later bulk action.
+      if (vars.wasGroupDrag) setSelected(new Set());
+      setDragError(null);
       invalidate();
     },
-    onError: invalidate,
+    onError: (err) => {
+      setDragError(err instanceof Error ? err.message : "Failed to move issue(s)");
+      invalidate();
+    },
   });
+
+  useEffect(() => {
+    // Skip while a move/rank commit is in flight, not just while a drag is active: onDragEnd
+    // clears activeId synchronously, but the mutation's network round-trip (and the
+    // invalidation it triggers) hasn't resolved yet, so serverItems here can still be the
+    // pre-drop snapshot — syncing now would flash the UI back to the old arrangement for a
+    // moment before the real refetch corrects it.
+    if (activeId || moveAndRank.isPending) return;
+    setItems(serverItems);
+    // Depend on a stable serialized snapshot, not the object identity (which changes every
+    // render), so this only re-syncs when the actual server-derived content changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(serverItems), activeId, moveAndRank.isPending]);
 
   const toggleSelect = (key: string) => {
     setSelected((prev) => {
@@ -128,30 +142,46 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     dragStartContainer.current = findContainer(items, key) ?? null;
   };
 
+  // Live cross-container preview ONLY. Same-container hovers are intentionally a no-op here:
+  // dnd-kit's own SortableContext/useSortable already animates sibling items shifting within a
+  // single list purely from layout, with no app-level state mutation needed — mirroring that is
+  // both redundant and actively dangerous: mutating `items` on every same-container onDragOver
+  // (including the very first event, where `over.id === active.id`) can flip the dragged item to
+  // the end of its own list, which shifts the DOM under the pointer, which fires another
+  // onDragOver, which mutates again — a real infinite-update loop ("Maximum update depth
+  // exceeded"), not a hypothetical one. The final same-container order is computed once, in
+  // `handleDragEnd`, from the actual `over` position at drop time.
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
     const activeKey = String(active.id);
     const overId = String(over.id);
+    if (activeKey === overId) return;
+
+    const activeContainer = findContainer(items, activeKey);
+    const overContainer = overId in items ? overId : findContainer(items, overId);
+    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
+
     const draggedKeys = selected.has(activeKey) && selected.size > 1 ? Array.from(selected) : [activeKey];
 
     setItems((prev) => {
-      const overContainer = overId in prev ? overId : findContainer(prev, overId);
-      if (!overContainer) return prev;
+      const pActiveContainer = findContainer(prev, activeKey);
+      const pOverContainer = overId in prev ? overId : findContainer(prev, overId);
+      if (!pActiveContainer || !pOverContainer || pActiveContainer === pOverContainer) return prev;
 
       const withoutDragged: Record<string, string[]> = {};
       for (const [cid, keys] of Object.entries(prev)) {
         withoutDragged[cid] = keys.filter((k) => !draggedKeys.includes(k));
       }
-      const overItemsAfterRemoval = withoutDragged[overContainer];
+      const overItemsAfterRemoval = withoutDragged[pOverContainer];
       const insertIndex =
-        overId === overContainer
+        overId === pOverContainer
           ? overItemsAfterRemoval.length
           : (() => {
               const idx = overItemsAfterRemoval.indexOf(overId);
               return idx >= 0 ? idx : overItemsAfterRemoval.length;
             })();
-      withoutDragged[overContainer] = [
+      withoutDragged[pOverContainer] = [
         ...overItemsAfterRemoval.slice(0, insertIndex),
         ...draggedKeys,
         ...overItemsAfterRemoval.slice(insertIndex),
@@ -161,32 +191,56 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const activeKey = String(event.active.id);
-    const draggedKeys = selected.has(activeKey) && selected.size > 1 ? Array.from(selected) : [activeKey];
+    const { active, over } = event;
+    const activeKey = String(active.id);
+    const wasGroupDrag = selected.has(activeKey) && selected.size > 1;
+    const draggedKeys = wasGroupDrag ? Array.from(selected) : [activeKey];
     const sourceContainer = dragStartContainer.current;
     setActiveId(null);
     dragStartContainer.current = null;
-    if (!sourceContainer) return;
+    if (!sourceContainer || !over) return;
 
-    const targetContainer = findContainer(items, activeKey);
-    if (!targetContainer) return;
-
-    const targetList = items[targetContainer];
+    const overId = String(over.id);
     const draggedSet = new Set(draggedKeys);
-    const firstIndex = targetList.findIndex((k) => draggedSet.has(k));
-    const after = firstIndex > 0 ? targetList[firstIndex - 1] : undefined;
+    // If onDragOver already moved the block to a different container, `items` reflects that
+    // final placement. Otherwise (a same-container drag, which onDragOver deliberately ignores —
+    // see the comment above `handleDragOver`) `items[sourceContainer]` is still the pre-drag
+    // order, so the reordered block position is computed here, from the actual drop target.
+    const liveTargetContainer = findContainer(items, activeKey);
+    let targetContainer: string;
+    let finalTargetList: string[];
+    if (liveTargetContainer && liveTargetContainer !== sourceContainer) {
+      targetContainer = liveTargetContainer;
+      finalTargetList = items[targetContainer];
+    } else {
+      targetContainer = sourceContainer;
+      const withoutDragged = items[sourceContainer].filter((k) => !draggedSet.has(k));
+      const insertIndex =
+        overId === sourceContainer
+          ? withoutDragged.length
+          : (() => {
+              const idx = withoutDragged.indexOf(overId);
+              return idx >= 0 ? idx : withoutDragged.length;
+            })();
+      finalTargetList = [...withoutDragged.slice(0, insertIndex), ...draggedKeys, ...withoutDragged.slice(insertIndex)];
+      setItems((prev) => ({ ...prev, [sourceContainer]: finalTargetList }));
+    }
+
+    const firstIndex = finalTargetList.findIndex((k) => draggedSet.has(k));
+    const after = firstIndex > 0 ? finalTargetList[firstIndex - 1] : undefined;
     let lastDraggedIndex = -1;
-    for (let i = targetList.length - 1; i >= 0; i--) {
-      if (draggedSet.has(targetList[i])) {
+    for (let i = finalTargetList.length - 1; i >= 0; i--) {
+      if (draggedSet.has(finalTargetList[i])) {
         lastDraggedIndex = i;
         break;
       }
     }
-    const before = lastDraggedIndex >= 0 && lastDraggedIndex + 1 < targetList.length ? targetList[lastDraggedIndex + 1] : undefined;
+    const before =
+      lastDraggedIndex >= 0 && lastDraggedIndex + 1 < finalTargetList.length ? finalTargetList[lastDraggedIndex + 1] : undefined;
 
     if (sourceContainer === targetContainer && !before && !after) return;
 
-    moveAndRank.mutate({ sourceContainer, targetContainer, draggedKeys, before, after });
+    moveAndRank.mutate({ sourceContainer, targetContainer, draggedKeys, before, after, wasGroupDrag });
   };
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
@@ -198,6 +252,22 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     <div>
       {projectKey && <ProjectHeader projectKey={projectKey} active="backlog" />}
       <div className="mx-auto max-w-3xl p-4">
+        {dragError && (
+          <div
+            role="alert"
+            data-testid="backlog-drag-error"
+            className="mb-2 flex items-center gap-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
+            <span>Move failed: {dragError}</span>
+            <button
+              onClick={() => setDragError(null)}
+              aria-label="Dismiss error"
+              className="ml-auto text-red-700 hover:underline"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
