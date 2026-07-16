@@ -135,25 +135,25 @@ test("shared project header shows on board, backlog, reports and settings with t
   await expect(tabs.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
 });
 
-async function dragElement(page: Page, fromTestId: string, toTestId: string) {
+async function dragBetween(page: Page, fromTestId: string, toTestId: string) {
   const source = page.getByTestId(fromTestId);
   const target = page.getByTestId(toTestId);
-  // Source and target both live in the same horizontally-scrollable column
-  // row (BoardColumns.tsx's `overflow-x-auto` flex container). Measuring both
-  // boxes up front and only then moving the mouse is unsafe: scrolling the
-  // target into view shifts that same container and invalidates the
-  // already-captured source box, so the mouse never actually lands on the
-  // draggable card. Instead, grab the source first (while its box is still
-  // valid) and only scroll+remeasure the target right before moving to it —
-  // the virtual mouse position isn't affected by the container's scroll.
+  // Source and target can both live in the same scrollable container (e.g.
+  // BoardColumns.tsx's `overflow-x-auto` column row). Measuring both boxes up
+  // front and only then moving the mouse is unsafe: scrolling the target into
+  // view shifts that same container and invalidates the already-captured
+  // source box, so the mouse never actually lands on the draggable element.
+  // Instead, grab the source first (while its box is still valid) and only
+  // scroll+remeasure the target right before moving to it — the virtual
+  // mouse position isn't affected by the container's scroll.
   await source.scrollIntoViewIfNeeded();
   const sourceBox = await source.boundingBox();
-  if (!sourceBox) throw new Error("drag source bounding box not found");
+  if (!sourceBox) throw new Error(`source ${fromTestId} not found`);
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
   await page.mouse.down();
   await target.scrollIntoViewIfNeeded();
   const targetBox = await target.boundingBox();
-  if (!targetBox) throw new Error("drag target bounding box not found");
+  if (!targetBox) throw new Error(`target ${toTestId} not found`);
   await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 10 });
   await page.mouse.up();
 }
@@ -183,7 +183,7 @@ test("dragging a card into a column with no valid transition shows an error", as
   const cardTestId = await card.getAttribute("data-testid");
   if (!cardTestId) throw new Error("no seeded card found on board 1");
 
-  await dragElement(page, cardTestId, columnTestId);
+  await dragBetween(page, cardTestId, columnTestId);
 
   await expect(page.getByTestId("move-error")).toBeVisible();
   await expect(page.getByTestId("move-error")).toContainText("invalid transition");
@@ -192,21 +192,6 @@ test("dragging a card into a column with no valid transition shows an error", as
   await page.getByRole("button", { name: "Dismiss error" }).click();
   await expect(page.getByTestId("move-error")).not.toBeVisible();
 });
-
-async function dragBetween(page: Page, fromTestId: string, toTestId: string) {
-  const source = page.getByTestId(fromTestId);
-  const target = page.getByTestId(toTestId);
-  await source.scrollIntoViewIfNeeded();
-  const sourceBox = await source.boundingBox();
-  if (!sourceBox) throw new Error(`source ${fromTestId} not found`);
-  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
-  await page.mouse.down();
-  await target.scrollIntoViewIfNeeded();
-  const targetBox = await target.boundingBox();
-  if (!targetBox) throw new Error(`target ${toTestId} not found`);
-  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 10 });
-  await page.mouse.up();
-}
 
 test("backlog: drag a single issue into a sprint", async ({ page }) => {
   await login(page);
