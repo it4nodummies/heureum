@@ -263,6 +263,26 @@ export const projects = {
 export const issues = {
   get: (idOrKey: string) => apiFetch<Issue>(`/rest/api/3/issue/${idOrKey}`),
 
+  // CSV export must go through fetch + bearer header (auth is header-based, so a
+  // plain <a href> would 401). Mirrors attachments.contentBlobUrl: fetch bytes,
+  // wrap in an object URL, click a synthetic anchor, then revoke.
+  exportCsv: async (key: string): Promise<void> => {
+    const res = await fetch(`${BASE_URL}/rest/api/3/project/${key}/issues/export`, {
+      headers: authHeaders(),
+    });
+    handleUnauthorized(res);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${key}-issues.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
   create: (payload: {
     projectKey: string;
     summary: string;
