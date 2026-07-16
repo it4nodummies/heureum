@@ -27,7 +27,7 @@ export function DroppableList({
 }) {
   const { setNodeRef } = useDroppable({ id: containerId });
   return (
-    <div className="mb-3 rounded border border-slate-200 p-2">
+    <div className="mb-3 rounded border border-slate-200 p-2" data-testid={`container-${testId}`}>
       {header}
       <SortableContext items={items} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className="min-h-[2.5rem]" data-testid={testId}>
