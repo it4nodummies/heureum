@@ -96,7 +96,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	sprintSvc.SetNotifier(notifSvc)
 
 	cfH := handlers.NewCustomFieldHandler(cfSvc, chk)
-	autoH := handlers.NewAutomationHandler(autoSvc)
+	autoH := handlers.NewAutomationHandler(autoSvc, projectSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
 	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc, &http.Client{Timeout: 10 * time.Second})
@@ -388,8 +388,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/issue/{issueID}/custom-values", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueUUID, http.HandlerFunc(cfH.GetValues))))
 	mux.Handle("PUT /rest/api/3/issue/{issueID}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueUUID, http.HandlerFunc(cfH.SetValue))))
 
-	mux.Handle("GET /rest/api/3/project/{projectID}/automation", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(autoH.ListRules))))
-	mux.Handle("POST /rest/api/3/project/{projectID}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByProjectID, http.HandlerFunc(autoH.CreateRule))))
+	mux.Handle("GET /rest/api/3/project/{key}/automation", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(autoH.ListRules))))
+	mux.Handle("POST /rest/api/3/project/{key}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(autoH.CreateRule))))
 	mux.Handle("GET /rest/api/3/automation/{ruleID}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.GetRule))))
 	mux.Handle("PATCH /rest/api/3/automation/{ruleID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.UpdateRule))))
 	mux.Handle("DELETE /rest/api/3/automation/{ruleID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.DeleteRule))))
