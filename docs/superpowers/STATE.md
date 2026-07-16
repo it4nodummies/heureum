@@ -71,7 +71,16 @@ Tutti i round sono completi: parità (0-9), release engineering (10), enforcemen
 - **(R5)** Epic in sola lettura: aggiungere `POST /epic/{id}` (update name/summary/done) e `PUT /epic/{id}/rank`; `epic.done` ora sempre false (calcolare da statusCategory).
 - **(R5)** Board legata a un progetto: supportare board basate su filtro JQL puro; `POST /board/{id}/issue` (rank su board).
 - **(R5)** Consolidare/retirare le vecchie rotte custom `/rest/api/3/project/{key}/board|sprints` + `BoardHandler` custom (ora parallele all'API agile).
-- **(R5)** Drag&drop backlog↔sprint nella UI (ora solo bottoni); `project.Service.Create` non crea workflow di default (compensato nel seed) — spostare nel dominio.
+- **(R5, CHIUSO 2026-07-16)** ~~Drag&drop backlog↔sprint nella UI (ora solo bottoni)~~ → fatto:
+  piano `docs/superpowers/plans/2026-07-16-backlog-sprint-dnd.md` (spec:
+  `docs/superpowers/specs/2026-07-16-backlog-sprint-dnd-design.md`) — drag&drop multi-container con
+  anteprima live (`@dnd-kit`), selezione multipla, drag diretto tra sprint, riordino interno
+  persistito (`sprints.moveIssues`/`agileIssues.moveToBacklog`/`agileIssues.rank`, già pronti lato
+  backend/client, mai collegati alla UI). Due bug dnd-kit "multiple containers" reali scoperti e
+  fixati durante l'implementazione (crash "Maximum update depth exceeded" su riordino nella stessa
+  lista; thrash di `closestCenter` su drag cross-container con 3+ container impilati) — vedi il
+  piano per i dettagli se si tocca ancora questo file. `project.Service.Create` non crea workflow di
+  default (compensato nel seed) — spostare nel dominio, ancora aperto.
 - **(R6)** Workflow CRUD bulk v3 (`/workflows/create`, `/workflows`, shape `statusReference` + arrays conditions/validators/actions); `/workflowscheme` (mappa workflow→tipi issue).
 - **(R6)** **Condizioni** di transizione che filtrano `isAvailable` in GET (ora sempre true); rule-engine generico oltre ai due flag base (`require_assignee`/`set_resolution`); transizioni `isGlobal`/`isInitial`; screen sulle transizioni (`hasScreen`/fields).
 - **(R6)** `WorkflowHandler.ListTransitions` può emettere `null` invece di `[]` a zero transizioni (l'editor usa `GetWorkflow`, non impattato); normalizzare a slice vuoto.
