@@ -258,6 +258,7 @@ export const issues = {
     priorityId?: string;
     description?: ADFNode;
     labels?: string[];
+    parentKey?: string;
   }) =>
     apiFetch<{ id: string; key: string; self: string }>("/rest/api/3/issue", {
       method: "POST",
@@ -269,6 +270,7 @@ export const issues = {
           ...(payload.priorityId ? { priority: { id: payload.priorityId } } : {}),
           ...(payload.description ? { description: payload.description } : {}),
           ...(payload.labels ? { labels: payload.labels } : {}),
+          ...(payload.parentKey ? { parent: { key: payload.parentKey } } : {}),
         },
       }),
     }),
@@ -292,6 +294,9 @@ export const issues = {
 
   availableTransitions: (idOrKey: string) =>
     apiFetch<{ transitions: AvailableTransition[] }>(`/rest/api/3/issue/${idOrKey}/transitions`),
+
+  subtasks: (idOrKey: string) =>
+    apiFetch<{ values: Issue[]; total: number }>(`/rest/api/3/issue/${idOrKey}/subtasks`),
 };
 
 // ── Metadata (priorities, issue types, statuses) ────────────────────────────

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -354,6 +355,40 @@ func (s *Service) SetResolution(key string, resolutionID *string) error {
 	}
 	// Update esplicito su colonna: nil → NULL, valore → id.
 	return s.db.Model(&Issue{}).Where("id = ?", iss.ID).Update("resolution_id", resolutionID).Error
+}
+
+// TypeIDByName restituisce l'id del tipo issue con quel nome nel progetto
+// (case-insensitive), creando la riga al volo se non esiste ancora: le
+// issue_types non vengono seedate di default per un progetto nuovo (solo
+// cmd/seed inserisce una riga "Task" per il progetto demo), quindi senza
+// questo fallback ogni issue creata passando issuetype.name invece di
+// issuetype.id (il caso comune: la UI manda sempre il nome) risolverebbe a
+// nessun tipo. Mirror del pattern di auto-vivificazione già usato da AddLabel.
+func (s *Service) TypeIDByName(projectID, name string) (string, error) {
+	var it IssueType
+	err := s.db.Where("project_id = ? AND LOWER(name) = LOWER(?)", projectID, name).First(&it).Error
+	if err == nil {
+		return it.ID, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", err
+	}
+	icon, isSubtask := "task", false
+	switch strings.ToLower(name) {
+	case "subtask", "sub-task":
+		icon, isSubtask = "subtask", true
+	case "bug":
+		icon = "bug"
+	case "story":
+		icon = "story"
+	case "epic":
+		icon = "epic"
+	}
+	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: icon, IsSubtask: isSubtask}
+	if err := s.db.Create(&it).Error; err != nil {
+		return "", err
+	}
+	return it.ID, nil
 }
 
 // ResolutionIDByName restituisce l'id della resolution con quel nome (case-insensitive).

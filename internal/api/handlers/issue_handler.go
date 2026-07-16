@@ -243,6 +243,15 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var typeID *string
 	if req.Fields.IssueType.ID != "" {
 		typeID = &req.Fields.IssueType.ID
+	} else if req.Fields.IssueType.Name != "" {
+		// La UI (e Jira reale) manda tipicamente issuetype.name, non .id: senza
+		// questa risoluzione l'issue veniva creata con TypeID nil e la v3
+		// mapping layer applicava un fallback "Task" fisso (v3/issue.go),
+		// mascherando silenziosamente qualunque altro tipo richiesto — incluso
+		// "Subtask" per le sottotask create dalla sezione Subtasks.
+		if id, terr := h.svc.TypeIDByName(proj.ID, req.Fields.IssueType.Name); terr == nil {
+			typeID = &id
+		}
 	}
 
 	iss, err := h.svc.Create(proj.Key, proj.ID, req.Fields.Summary, descJSON, priority, parentID, typeID)
