@@ -1,9 +1,19 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { issues, meta, watchers, votes, parseJiraDuration, formatSeconds } from "@/lib/api";
+import {
+  issues,
+  meta,
+  watchers,
+  votes,
+  parseJiraDuration,
+  formatSeconds,
+  customFields,
+  type CustomField,
+  type IssueCustomValue,
+} from "@/lib/api";
 import { AdfRenderer, adfToText, textToAdf } from "./adf";
 import { Activity } from "./Activity";
 import { Attachments } from "./Attachments";
@@ -38,6 +48,66 @@ export function IssueView({ issueKey }: Props) {
   const [draftOriginalEstimate, setDraftOriginalEstimate] = useState("");
   const [draftRemainingEstimate, setDraftRemainingEstimate] = useState("");
 
+  // Dynamic custom fields. projectKey is derived from the issue key prefix so
+  // the query can run before the issue payload loads (hooks must be
+  // unconditional). Story points (customfield_10016) are NATIVE and handled
+  // separately below — they are NOT part of this system.
+  const cfProjectKey = issueKey.split("-")[0];
+  const { data: customFieldDefs } = useQuery({
+    queryKey: ["customFields", cfProjectKey],
+    queryFn: () => customFields.list(cfProjectKey),
+  });
+  const { data: customFieldValues } = useQuery({
+    queryKey: ["customValues", issueKey],
+    queryFn: () => customFields.values(issueKey),
+  });
+  // Drafts for edit mode: scalar values (text/number/date/user-accountId/
+  // select-option-id) plus multiselect option-id arrays.
+  const [draftCustom, setDraftCustom] = useState<Record<string, string>>({});
+  const [draftCustomMulti, setDraftCustomMulti] = useState<Record<string, string[]>>({});
+  const [draftCustomUserLabels, setDraftCustomUserLabels] = useState<Record<string, string | null>>({});
+  // Names of custom fields whose value failed to persist after the issue itself
+  // was already updated (non-blocking).
+  const [cfCustomWarnings, setCfCustomWarnings] = useState<string[]>([]);
+
+  // Re-seed custom-field drafts whenever we enter edit mode OR the definitions/
+  // values finish loading. Only seeds fields the user hasn't already typed into
+  // (non-empty draft), so late-arriving query data fills blank inputs without
+  // clobbering in-progress edits. startEdit resets the drafts to {} first, so a
+  // fresh edit always reflects current server values.
+  useEffect(() => {
+    if (!editMode || !customFieldDefs) return;
+    setDraftCustom((prev) => {
+      const next = { ...prev };
+      for (const def of customFieldDefs) {
+        if (def.field_type === "multiselect") continue;
+        if ((next[def.id] ?? "") !== "") continue;
+        const val = (customFieldValues ?? []).find((cv) => cv.field_id === def.id);
+        if (def.field_type === "select") next[def.id] = val?.option_id ?? "";
+        else if (def.field_type === "number") next[def.id] = val?.value_number != null ? String(val.value_number) : "";
+        else if (def.field_type === "date") next[def.id] = val?.value_date ? val.value_date.slice(0, 10) : "";
+        else next[def.id] = val?.value_text ?? "";
+      }
+      return next;
+    });
+    setDraftCustomMulti((prev) => {
+      const next = { ...prev };
+      for (const def of customFieldDefs) {
+        if (def.field_type !== "multiselect") continue;
+        if ((next[def.id] ?? []).length > 0) continue;
+        const val = (customFieldValues ?? []).find((cv) => cv.field_id === def.id);
+        next[def.id] = val?.option_id ? [val.option_id] : [];
+      }
+      return next;
+    });
+  }, [editMode, customFieldDefs, customFieldValues]);
+
+  function cfIsEmpty(cf: CustomField) {
+    if (cf.field_type === "multiselect") return (draftCustomMulti[cf.id] ?? []).length === 0;
+    return !(draftCustom[cf.id] ?? "").trim();
+  }
+  const requiredCustomMissing = (customFieldDefs ?? []).some((cf) => cf.required && cfIsEmpty(cf));
+
   const { data: priorities } = useQuery({
     queryKey: ["priorities"],
     queryFn: () => meta.priorities(),
@@ -45,8 +115,8 @@ export function IssueView({ issueKey }: Props) {
   });
 
   const save = useMutation({
-    mutationFn: () =>
-      issues.update(issueKey, {
+    mutationFn: async () => {
+      await issues.update(issueKey, {
         summary: draftSummary,
         description: textToAdf(draftDescription),
         ...(draftPriorityId ? { priority: { id: draftPriorityId } } : {}),
@@ -63,12 +133,48 @@ export function IssueView({ issueKey }: Props) {
           originalEstimateSeconds: parseJiraDuration(draftOriginalEstimate),
           remainingEstimateSeconds: parseJiraDuration(draftRemainingEstimate),
         },
-      }),
-    onSuccess: () => {
+      });
+      // Custom-value failures do NOT reject the save — the issue update already
+      // succeeded; they surface as a non-blocking warning instead.
+      return persistCustomValues();
+    },
+    onSuccess: (failed) => {
       qc.invalidateQueries({ queryKey: ["issue", issueKey] });
+      qc.invalidateQueries({ queryKey: ["customValues", issueKey] });
+      setCfCustomWarnings(failed);
       setEditMode(false);
     },
   });
+
+  // Persists each filled custom field, isolating each setValue in try/catch so
+  // one failure never rejects the save (which would leave the issue updated but
+  // strand the user in edit mode). Returns the names of fields that failed.
+  async function persistCustomValues(): Promise<string[]> {
+    const failed: string[] = [];
+    for (const cf of customFieldDefs ?? []) {
+      try {
+        if (cf.field_type === "multiselect") {
+          const ids = draftCustomMulti[cf.id] ?? [];
+          if (ids.length) await customFields.setValue(issueKey, cf.id, { option_id: ids[0] });
+          continue;
+        }
+        const raw = (draftCustom[cf.id] ?? "").trim();
+        if (!raw) continue;
+        if (cf.field_type === "select") {
+          await customFields.setValue(issueKey, cf.id, { option_id: raw });
+        } else if (cf.field_type === "number") {
+          await customFields.setValue(issueKey, cf.id, { value: Number(raw) });
+        } else if (cf.field_type === "date") {
+          await customFields.setValue(issueKey, cf.id, { value: `${raw}T00:00:00Z` });
+        } else {
+          await customFields.setValue(issueKey, cf.id, { value: raw });
+        }
+      } catch {
+        failed.push(cf.name);
+      }
+    }
+    return failed;
+  }
 
   const { data: w } = useQuery({ queryKey: ["watchers", issueKey], queryFn: () => watchers.get(issueKey) });
   const { data: v } = useQuery({ queryKey: ["votes", issueKey], queryFn: () => votes.get(issueKey) });
@@ -116,6 +222,13 @@ export function IssueView({ issueKey }: Props) {
     setDraftRemainingEstimate(
       f.timetracking?.remainingEstimateSeconds ? formatSeconds(f.timetracking.remainingEstimateSeconds) : ""
     );
+    // Reset custom-field drafts; the [editMode, customFieldDefs,
+    // customFieldValues] effect seeds them from current values (and re-seeds if
+    // those queries are still loading when Edit is clicked).
+    setDraftCustom({});
+    setDraftCustomMulti({});
+    setDraftCustomUserLabels({});
+    setCfCustomWarnings([]);
     setEditMode(true);
   }
 
@@ -262,6 +375,25 @@ export function IssueView({ issueKey }: Props) {
             <Field label="Story points" value={f.customfield_10016 != null ? String(f.customfield_10016) : undefined} />
           )}
 
+          {(customFieldDefs ?? []).map((cf) => (
+            <CustomFieldRow
+              key={cf.id}
+              field={cf}
+              value={(customFieldValues ?? []).find((v) => v.field_id === cf.id)}
+              editMode={editMode}
+              projectKey={projectKey}
+              scalar={draftCustom[cf.id] ?? ""}
+              multi={draftCustomMulti[cf.id] ?? []}
+              userLabel={draftCustomUserLabels[cf.id] ?? null}
+              onScalar={(val) => setDraftCustom((p) => ({ ...p, [cf.id]: val }))}
+              onMulti={(vals) => setDraftCustomMulti((p) => ({ ...p, [cf.id]: vals }))}
+              onUser={(accountId, label) => {
+                setDraftCustom((p) => ({ ...p, [cf.id]: accountId ?? "" }));
+                setDraftCustomUserLabels((p) => ({ ...p, [cf.id]: label }));
+              }}
+            />
+          ))}
+
           {editMode && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -294,7 +426,7 @@ export function IssueView({ issueKey }: Props) {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => save.mutate()}
-                disabled={save.isPending}
+                disabled={save.isPending || requiredCustomMissing}
                 className="flex-1 rounded bg-[#0052cc] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0065ff] disabled:opacity-60"
               >
                 {save.isPending ? "Saving…" : "Save"}
@@ -308,9 +440,19 @@ export function IssueView({ issueKey }: Props) {
             </div>
           )}
 
+          {editMode && requiredCustomMissing && (
+            <p className="text-xs text-amber-700">Fill all required (*) custom fields to save.</p>
+          )}
+
           {save.isError && (
             <p className="text-xs text-red-600">
               {save.error instanceof Error ? save.error.message : "Failed to save changes."}
+            </p>
+          )}
+
+          {cfCustomWarnings.length > 0 && (
+            <p className="text-xs text-amber-700">
+              Saved, but these custom fields could not be updated: {cfCustomWarnings.join(", ")}.
             </p>
           )}
         </aside>
@@ -338,6 +480,105 @@ function Field({ label, value }: { label: string; value?: string }) {
       <div data-testid={`field-${label.toLowerCase()}`} className="text-sm text-[#1a1f36] mt-0.5">
         {value ?? "—"}
       </div>
+    </div>
+  );
+}
+
+const cfEditClass =
+  "mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]";
+
+function CustomFieldRow({
+  field,
+  value,
+  editMode,
+  projectKey,
+  scalar,
+  multi,
+  userLabel,
+  onScalar,
+  onMulti,
+  onUser,
+}: {
+  field: CustomField;
+  value?: IssueCustomValue;
+  editMode: boolean;
+  projectKey: string;
+  scalar: string;
+  multi: string[];
+  userLabel: string | null;
+  onScalar: (val: string) => void;
+  onMulti: (vals: string[]) => void;
+  onUser: (accountId: string | null, label: string | null) => void;
+}) {
+  const isOption = field.field_type === "select" || field.field_type === "multiselect";
+  const { data: options } = useQuery({
+    queryKey: ["customFieldOptions", field.id],
+    queryFn: () => customFields.options(field.id),
+    enabled: isOption,
+  });
+
+  function displayValue(): string {
+    if (!value) return "—";
+    switch (field.field_type) {
+      case "number":
+        return value.value_number != null ? String(value.value_number) : "—";
+      case "date":
+        return value.value_date ? value.value_date.slice(0, 10) : "—";
+      case "select":
+      case "multiselect": {
+        const opt = (options ?? []).find((o) => o.id === value.option_id);
+        return opt?.value ?? (value.option_id ? "…" : "—");
+      }
+      default:
+        return value.value_text || "—";
+    }
+  }
+
+  return (
+    <div data-testid={`custom-field-${field.name}`}>
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {field.name}
+        {field.required && <span className="text-red-500"> *</span>}
+      </div>
+      {!editMode ? (
+        <div className="text-sm text-[#1a1f36] mt-0.5">{displayValue()}</div>
+      ) : field.field_type === "number" ? (
+        <input type="number" value={scalar} onChange={(e) => onScalar(e.target.value)} className={cfEditClass} />
+      ) : field.field_type === "date" ? (
+        <input type="date" value={scalar} onChange={(e) => onScalar(e.target.value)} className={cfEditClass} />
+      ) : field.field_type === "select" ? (
+        <select value={scalar} onChange={(e) => onScalar(e.target.value)} className={cfEditClass}>
+          <option value="">Select…</option>
+          {(options ?? []).map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.value}
+            </option>
+          ))}
+        </select>
+      ) : field.field_type === "multiselect" ? (
+        <select
+          multiple
+          value={multi}
+          onChange={(e) => onMulti(Array.from(e.target.selectedOptions, (o) => o.value))}
+          className={cfEditClass}
+        >
+          {(options ?? []).map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.value}
+            </option>
+          ))}
+        </select>
+      ) : field.field_type === "user" ? (
+        <UserPicker
+          projectKey={projectKey}
+          value={scalar || null}
+          valueLabel={userLabel ?? (value?.value_text ? "Assigned" : null)}
+          label={field.name}
+          onChange={(accountId, user) => onUser(accountId, user?.displayName ?? null)}
+        />
+      ) : (
+        <input type="text" value={scalar} onChange={(e) => onScalar(e.target.value)} className={cfEditClass} />
+      )}
     </div>
   );
 }
