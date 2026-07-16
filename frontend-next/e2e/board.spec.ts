@@ -218,3 +218,47 @@ test("backlog: drag a single issue into a sprint", async ({ page }) => {
   await expect(sprintContainer.getByTestId("row-DEMO-1")).toBeVisible();
   await expect(page.getByTestId("backlog-list").getByTestId("row-DEMO-1")).not.toBeVisible();
 });
+
+test("backlog: drag between two sprints directly, without going through the backlog", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/boards/1/backlog");
+
+  const sprintAName = `Sprint A ${Date.now()}`;
+  await page.getByLabel("New sprint name").fill(sprintAName);
+  await page.getByRole("button", { name: "Create sprint" }).click();
+  await expect(page.getByText(sprintAName)).toBeVisible();
+
+  const sprintBName = `Sprint B ${Date.now()}`;
+  await page.getByLabel("New sprint name").fill(sprintBName);
+  await page.getByRole("button", { name: "Create sprint" }).click();
+  await expect(page.getByText(sprintBName)).toBeVisible();
+
+  // See Task 3's comment: lookup by name goes through the outer `container-{testId}` wrapper,
+  // then strips the prefix to get the real drop-target/containment testid.
+  const sprintAOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintAName });
+  const sprintBOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintBName });
+  const sprintAOuterTestId = await sprintAOuter.getAttribute("data-testid");
+  const sprintBOuterTestId = await sprintBOuter.getAttribute("data-testid");
+  if (!sprintAOuterTestId || !sprintBOuterTestId) throw new Error("sprint container testid not found");
+  const sprintATestId = sprintAOuterTestId.replace("container-", "");
+  const sprintBTestId = sprintBOuterTestId.replace("container-", "");
+  const sprintA = page.getByTestId(sprintATestId);
+  const sprintB = page.getByTestId(sprintBTestId);
+
+  await dragBetween(page, "drag-handle-DEMO-2", sprintATestId);
+  await expect(sprintA.getByTestId("row-DEMO-2")).toBeVisible();
+  // The optimistic local state that lands the row in Sprint A right after drop is briefly
+  // superseded by a stale re-sync from the in-flight invalidate/refetch (see moveAndRank's
+  // onSuccess in page.tsx) before settling back to the correct post-move data — i.e. the row can
+  // flash out of Sprint A and back again a moment after this assertion first passes. Starting the
+  // next drag on `drag-handle-DEMO-2` while that flash is mid-flight grabs a DOM node that gets
+  // unmounted underneath the action (Playwright: "Element is not attached to the DOM"), since
+  // moving an item across containers unmounts/remounts it rather than just repositioning it in
+  // place. Waiting for the network to go idle here ensures the invalidated queries' refetch has
+  // actually landed before the next drag starts.
+  await page.waitForLoadState("networkidle");
+
+  await dragBetween(page, "drag-handle-DEMO-2", sprintBTestId);
+  await expect(sprintB.getByTestId("row-DEMO-2")).toBeVisible();
+  await expect(sprintA.getByTestId("row-DEMO-2")).not.toBeVisible();
+});
