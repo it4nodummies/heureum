@@ -1238,3 +1238,38 @@ export const attachments = {
     return URL.createObjectURL(typed);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Custom fields
+// ---------------------------------------------------------------------------
+
+export interface CustomField {
+  id: string;
+  project_id: string;
+  name: string;
+  field_type: "text" | "number" | "date" | "select" | "multiselect" | "user";
+  required: boolean;
+}
+export interface CustomFieldOption { id: string; field_id: string; value: string; position: number; }
+export interface IssueCustomValue {
+  issue_id: string;
+  field_id: string;
+  value_text: string;
+  value_number?: number;
+  value_date?: string;
+  option_id?: string;
+}
+export const customFields = {
+  list: (key: string) => apiFetch<CustomField[]>(`/rest/api/3/project/${key}/custom-fields`),
+  create: (key: string, body: { name: string; field_type: CustomField["field_type"]; required: boolean }) =>
+    apiFetch<CustomField>(`/rest/api/3/project/${key}/custom-fields`, { method: "POST", body: JSON.stringify(body) }),
+  remove: (fieldId: string) => apiFetch<void>(`/rest/api/3/custom-fields/${fieldId}`, { method: "DELETE" }),
+  options: (fieldId: string) => apiFetch<CustomFieldOption[]>(`/rest/api/3/custom-fields/${fieldId}/options`),
+  addOption: (fieldId: string, value: string) =>
+    apiFetch<CustomFieldOption>(`/rest/api/3/custom-fields/${fieldId}/options`, { method: "POST", body: JSON.stringify({ value }) }),
+  removeOption: (optionId: string) =>
+    apiFetch<void>(`/rest/api/3/custom-fields/options/${optionId}`, { method: "DELETE" }),
+  values: (issueKey: string) => apiFetch<IssueCustomValue[]>(`/rest/api/3/issue/${issueKey}/custom-values`),
+  setValue: (issueKey: string, fieldId: string, body: { value?: unknown; option_id?: string }) =>
+    apiFetch<void>(`/rest/api/3/issue/${issueKey}/custom-values/${fieldId}`, { method: "PUT", body: JSON.stringify(body) }),
+};
