@@ -55,12 +55,12 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     })),
   });
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["board", id, "backlog"] });
-    qc.invalidateQueries({ queryKey: ["board", id, "sprints"] });
-    for (const sp of sprintValues) {
-      qc.invalidateQueries({ queryKey: ["sprint", sp.id, "issues"] });
-    }
+  const invalidate = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["board", id, "backlog"] }),
+      qc.invalidateQueries({ queryKey: ["board", id, "sprints"] }),
+      ...sprintValues.map((sp) => qc.invalidateQueries({ queryKey: ["sprint", sp.id, "issues"] })),
+    ]);
   };
 
   const serverItems: Record<string, string[]> = { [BACKLOG_ID]: (backlog.data?.issues ?? []).map((i) => i.key) };
@@ -105,17 +105,23 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
         await agileIssues.rank(vars.draggedKeys, vars.before, vars.after);
       }
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: async (_data, vars) => {
       // Only clear the selection if this drag actually moved it — dragging a lone,
       // unselected issue must not wipe a selection the user is still building for a
       // separate, later bulk action.
       if (vars.wasGroupDrag) setSelected(new Set());
       setDragError(null);
-      invalidate();
+      // Awaited (TanStack Query v5 awaits onSuccess/onError before flipping `isPending` to
+      // false) so the sync effect's `moveAndRank.isPending` guard stays true until the
+      // refetch actually lands — otherwise isPending flips false as soon as the mutation's
+      // own network call resolves, before the invalidated queries' background refetch
+      // completes, and the sync effect fires once with stale serverItems: the same class of
+      // revert flicker as the activeId-clears-too-early bug, just at a later boundary.
+      await invalidate();
     },
-    onError: (err) => {
+    onError: async (err) => {
       setDragError(err instanceof Error ? err.message : "Failed to move issue(s)");
-      invalidate();
+      await invalidate();
     },
   });
 
