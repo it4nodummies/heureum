@@ -236,6 +236,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/attachment/meta", authMw(http.HandlerFunc(attachmentH.Meta)))
 
 	mux.Handle("GET /rest/api/3/issueLink/{linkId}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueLink("linkId"), http.HandlerFunc(issueLinkH.Get))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/issuelinks", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueLinkH.ListForIssue))))
 	// POST /issueLink: project resolved from body (source/outward issue) ->
 	// enforced in-handler (IssueLinkHandler.Create) per the Round 11 plan.
 	mux.Handle("POST /rest/api/3/issueLink", authMw(http.HandlerFunc(issueLinkH.Create)))

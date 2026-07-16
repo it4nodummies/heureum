@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/permission"
+	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
 
 type IssueLinkHandler struct {
@@ -57,6 +59,82 @@ func (h *IssueLinkHandler) toIssueLinkV3(link *issue.IssueLink, outward, inward 
 		InwardIssue:  &in,
 		OutwardIssue: &out,
 	}
+}
+
+// resolveIssueIdOrKey risolve un path param issueIdOrKey per key o per seq id
+// (Jira accetta entrambi), rispecchiando IssueHandler.resolveIssue.
+func (h *IssueLinkHandler) resolveIssueIdOrKey(idOrKey string) (*issue.Issue, error) {
+	if n, err := strconv.ParseInt(idOrKey, 10, 64); err == nil {
+		return h.issueSvc.GetBySeqID(n)
+	}
+	return h.issueSvc.GetByKey(idOrKey)
+}
+
+// statusRefFor risolve lo StatusRef v3 di una issue a partire dal suo
+// StatusID, o nil se non impostato/non trovato.
+func (h *IssueLinkHandler) statusRefFor(iss *issue.Issue) *v3.StatusRef {
+	if iss.StatusID == nil {
+		return nil
+	}
+	var st workflow.WorkflowStatus
+	if h.issueSvc.DB().First(&st, "id = ?", *iss.StatusID).Error != nil {
+		return nil
+	}
+	ref := v3.JiraStatus(st.ID, st.Name, string(st.Category), h.baseURL)
+	return &ref
+}
+
+// ListForIssue implementa GET /rest/api/3/issue/{issueIdOrKey}/issuelinks:
+// per ogni IssueLink che coinvolge la issue richiesta (come source/outward o
+// come target/inward), risolve l'ALTRO capo e lo espone sul lato opposto a
+// quello occupato dalla issue richiesta (coerente con Create, dove
+// outwardIssue == source e inwardIssue == target).
+func (h *IssueLinkHandler) ListForIssue(w http.ResponseWriter, r *http.Request) {
+	iss, err := h.resolveIssueIdOrKey(r.PathValue("issueIdOrKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
+		return
+	}
+
+	links, err := h.issueSvc.ListLinks(iss.ID)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list issue links"}, nil)
+		return
+	}
+
+	out := make([]v3.IssueLinkForIssue, 0, len(links))
+	for _, link := range links {
+		otherID := link.TargetID
+		issueIsSource := link.SourceID == iss.ID
+		if !issueIsSource {
+			otherID = link.SourceID
+		}
+		other, oerr := h.issueByID(otherID)
+		if oerr != nil {
+			continue
+		}
+		linked := v3.LinkedIssueForIssue{
+			Key: other.Key,
+			Fields: v3.LinkedIssueFields{
+				Summary: other.Title,
+				Status:  h.statusRefFor(other),
+			},
+		}
+		item := v3.IssueLinkForIssue{
+			ID:   link.ID,
+			Type: v3.JiraLinkType(string(link.LinkType), h.baseURL),
+		}
+		if issueIsSource {
+			// La issue richiesta è l'outward/source: l'altro capo (target) va su inward.
+			item.InwardIssue = &linked
+		} else {
+			// La issue richiesta è l'inward/target: l'altro capo (source) va su outward.
+			item.OutwardIssue = &linked
+		}
+		out = append(out, item)
+	}
+
+	v3.WriteJSON(w, http.StatusOK, map[string]any{"issuelinks": out})
 }
 
 func (h *IssueLinkHandler) Get(w http.ResponseWriter, r *http.Request) {
