@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { issues, meta, watchers, votes } from "@/lib/api";
 import { AdfRenderer, adfToText, textToAdf } from "./adf";
+import { Attachments } from "./Attachments";
 import { Comments } from "./Comments";
 import { DevelopmentPanel } from "./DevelopmentPanel";
 import { LinkedWorkItems } from "./LinkedWorkItems";
@@ -256,6 +257,8 @@ export function IssueView({ issueKey }: Props) {
       <Subtasks issueKey={issue.key} projectKey={projectKey} />
 
       <LinkedWorkItems issueKey={issue.key} />
+
+      <Attachments issueKey={issue.key} />
 
       <Comments issueKey={issue.key} />
     </div>

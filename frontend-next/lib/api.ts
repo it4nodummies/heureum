@@ -911,3 +911,86 @@ export const issueLinks = {
     }),
   delete: (id: string) => apiFetch<void>(`/rest/api/3/issueLink/${id}`, { method: "DELETE" }),
 };
+
+// ── Attachments ──────────────────────────────────────────────────────────────
+
+// v3.Attachment (internal/api/v3/attachment.go). `content` is the path to
+// GET /rest/api/3/attachment/content/{id} — bearer-protected like every other
+// route (see internal/api/router.go, internal/api/middleware/auth.go: no
+// cookie/query-token fallback), so it can NEVER be used as a naked <a href>/
+// <img src>: fetch it with the token via contentBlobUrl() and use the
+// resulting object URL instead.
+export interface Attachment {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  created: string;
+  content: string;
+}
+
+// Shared by upload/contentBlobUrl below: apiFetch forces
+// Content-Type: application/json, which breaks multipart (the browser needs
+// to set its own boundary) and isn't meaningful for a binary GET either — so
+// both bypass apiFetch and rebuild just the auth + 401-redirect handling.
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function handleUnauthorized(res: Response): void {
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+    throw new Error("Unauthorized");
+  }
+}
+
+export const attachments = {
+  list: (issueKey: string) => apiFetch<Attachment[]>(`/rest/api/3/issue/${issueKey}/attachments`),
+
+  // Multipart upload — deliberately does NOT go through apiFetch. Field name
+  // must be "file" (see AttachmentHandler.Upload's r.FormFile("file")).
+  upload: async (issueKey: string, file: File): Promise<Attachment> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE_URL}/rest/api/3/issue/${issueKey}/attachments`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+    });
+    handleUnauthorized(res);
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = `HTTP ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json.error) msg = json.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return res.json() as Promise<Attachment>;
+  },
+
+  delete: (id: string) => apiFetch<void>(`/rest/api/3/attachment/${id}`, { method: "DELETE" }),
+
+  // Fetches the attachment's bytes with the bearer token and returns an
+  // object URL suitable for <img src>/download links. AttachmentHandler.
+  // ServeFile always answers with Content-Type: application/octet-stream
+  // regardless of the real file type, so the blob is re-tagged with the
+  // mimeType already known from the list/upload response — otherwise image
+  // previews would never render. Callers must URL.revokeObjectURL() the
+  // result once done with it.
+  contentBlobUrl: async (att: Attachment): Promise<string> => {
+    const res = await fetch(`${BASE_URL}${att.content}`, { headers: authHeaders() });
+    handleUnauthorized(res);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.blob();
+    const typed = att.mimeType ? new Blob([raw], { type: att.mimeType }) : raw;
+    return URL.createObjectURL(typed);
+  },
+};

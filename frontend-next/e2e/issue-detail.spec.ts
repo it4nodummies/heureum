@@ -99,3 +99,30 @@ test("Linked work items: aggiunge un link 'Blocks' verso un'altra issue e poi lo
   await expect(linkRow).not.toBeVisible();
   await expect(page.getByText("No linked work items yet.")).toBeVisible();
 });
+
+test("Attachments: fa l'upload di un file, lo vede in lista e poi lo elimina", async ({ page }) => {
+  await login(page);
+
+  await createIssue(page, `E2E Attachments ${Date.now()}`);
+
+  const section = page.getByTestId("attachments-section");
+  await expect(section).toBeVisible();
+  await expect(page.getByText("No attachments yet.")).toBeVisible();
+
+  const fileName = `e2e-note-${Date.now()}.txt`;
+  await page.getByLabel("Upload attachment").setInputFiles({
+    name: fileName,
+    mimeType: "text/plain",
+    buffer: Buffer.from("hello from the attachments e2e test"),
+  });
+
+  await expect(page.getByText("No attachments yet.")).not.toBeVisible();
+  await expect(section.getByText(fileName)).toBeVisible();
+
+  const card = section.locator('[data-testid^="attachment-card-"]').filter({ hasText: fileName });
+  await expect(card).toHaveCount(1);
+
+  await card.getByRole("button", { name: `Delete ${fileName}` }).click();
+  await expect(section.getByText(fileName)).not.toBeVisible();
+  await expect(page.getByText("No attachments yet.")).toBeVisible();
+});
