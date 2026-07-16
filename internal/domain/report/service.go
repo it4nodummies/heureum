@@ -317,42 +317,7 @@ func (s *Service) GetBurnupData(sprintID string) (*BurndownData, error) {
 }
 
 func (s *Service) GetCFD(projectID string) (*CFDData, error) {
-	type DayCount struct {
-		Date     string
-		Category string
-		Count    int
-	}
-	var dayCounts []DayCount
-	s.db.Raw(`
-		SELECT
-			DATE(ih.created_at) as date,
-			CASE WHEN ih.field_name = 'created' THEN 'todo'
-			     ELSE COALESCE(ws.category, 'inprogress') END as category,
-			COUNT(DISTINCT ih.issue_id) as count
-		FROM issue_history ih
-		JOIN issues i ON ih.issue_id = i.id
-		LEFT JOIN workflow_statuses ws ON ws.id = ih.new_value
-		WHERE i.project_id = ? AND i.is_archived = FALSE AND ih.field_name IN ('status', 'created')
-		GROUP BY DATE(ih.created_at), CASE WHEN ih.field_name = 'created' THEN 'todo'
-		     ELSE COALESCE(ws.category, 'inprogress') END
-		ORDER BY date ASC
-	`, projectID).Scan(&dayCounts)
-
 	empty := &CFDData{Categories: []string{"todo", "inprogress", "done"}, Dates: []string{}, Data: map[string][]int{}}
-	if len(dayCounts) == 0 {
-		return empty, nil
-	}
-
-	// Asse X: i giorni distinti in cui è avvenuto un evento, ordinati.
-	dateSet := make(map[string]bool)
-	for _, dc := range dayCounts {
-		dateSet[dc.Date] = true
-	}
-	dates := make([]string, 0, len(dateSet))
-	for d := range dateSet {
-		dates = append(dates, d)
-	}
-	sort.Strings(dates)
 
 	// Timeline per issue: eventi (giorno, categoria) ordinati per data.
 	// 'created' → todo; 'status' → categoria dello stato di destinazione (new_value).
@@ -378,6 +343,17 @@ func (s *Service) GetCFD(projectID string) (*CFDData, error) {
 		FROM issue_history ih JOIN issues i ON i.id = ih.issue_id
 		WHERE i.project_id = ? AND i.is_archived = FALSE AND ih.field_name IN ('status', 'created')
 		ORDER BY ih.created_at ASC`, projectID).Scan(&hRows)
+	if len(hRows) == 0 {
+		return empty, nil
+	}
+
+	// Asse X: i giorni distinti in cui è avvenuto un evento, ordinati. Le date
+	// dell'asse e i giorni degli eventi devono derivare dalla STESSA sorgente
+	// (Go `CreatedAt.Format`), altrimenti — se l'asse usasse SQL `DATE(...)`
+	// (che sqlite interpreta in UTC) e gli eventi il formato Go (locale) — a
+	// cavallo della mezzanotte locale i due sfaserebbero di un giorno e il
+	// confronto `e.day <= d` sotto conteggerebbe le issue nei giorni sbagliati.
+	dateSet := make(map[string]bool)
 	for _, h := range hRows {
 		cat := "todo"
 		if h.FieldName == "status" {
@@ -387,8 +363,15 @@ func (s *Service) GetCFD(projectID string) (*CFDData, error) {
 				cat = "inprogress"
 			}
 		}
-		evByIssue[h.IssueID] = append(evByIssue[h.IssueID], ev{day: h.CreatedAt.Format("2006-01-02"), cat: cat})
+		day := h.CreatedAt.Format("2006-01-02")
+		evByIssue[h.IssueID] = append(evByIssue[h.IssueID], ev{day: day, cat: cat})
+		dateSet[day] = true
 	}
+	dates := make([]string, 0, len(dateSet))
+	for d := range dateSet {
+		dates = append(dates, d)
+	}
+	sort.Strings(dates)
 
 	cfd := &CFDData{
 		Categories: []string{"todo", "inprogress", "done"},
