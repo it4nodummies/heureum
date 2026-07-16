@@ -132,34 +132,26 @@ func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
 		return
 	}
-	issues, _ := h.svc.ListByProject(p.ID)
+	rows, err := h.svc.ExportRows(p.ID)
+	if err != nil {
+		http.Error(w, `{"error":"export failed"}`, http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-issues.csv", p.Key))
 	wr := csv.NewWriter(w)
 	wr.Write([]string{"Key", "Title", "Priority", "Status", "Type", "Assignee", "Story Points", "Created", "Updated"})
-	for _, iss := range issues {
-		status := ""
-		if iss.StatusID != nil {
-			status = *iss.StatusID
-		}
-		typeName := ""
-		if iss.TypeID != nil {
-			typeName = *iss.TypeID
-		}
-		assignee := ""
-		if iss.AssigneeID != nil {
-			assignee = *iss.AssigneeID
-		}
+	for _, row := range rows {
 		wr.Write([]string{
-			iss.Key,
-			iss.Title,
-			string(iss.Priority),
-			status,
-			typeName,
-			assignee,
-			fmt.Sprintf("%d", iss.StoryPoints),
-			iss.CreatedAt.Format("2006-01-02"),
-			iss.UpdatedAt.Format("2006-01-02"),
+			row.Key,
+			row.Title,
+			row.Priority,
+			row.Status,
+			row.Type,
+			row.Assignee,
+			fmt.Sprintf("%d", row.StoryPoints),
+			row.Created.Format("2006-01-02"),
+			row.Updated.Format("2006-01-02"),
 		})
 	}
 	wr.Flush()

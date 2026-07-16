@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -455,4 +456,41 @@ func WithSprint(sprintID string) ListOption {
 
 func WithNotArchived() ListOption {
 	return func(db *gorm.DB) *gorm.DB { return db.Where("is_archived = ?", false) }
+}
+
+// ExportRow is a flattened, human-readable issue row for CSV export: the
+// status/type/assignee foreign keys are resolved to their display names here
+// (via LEFT JOINs) so the handler never leaks raw UUIDs. Unassigned or
+// unresolved FKs come back as empty strings.
+type ExportRow struct {
+	Key         string
+	Title       string
+	Priority    string
+	Status      string
+	Type        string
+	Assignee    string
+	StoryPoints int
+	Created     time.Time
+	Updated     time.Time
+}
+
+// ExportRows returns every issue in the project (ordered by seq_id) with FK
+// names resolved. Assignee falls back to email when display_name is blank.
+func (s *Service) ExportRows(projectID string) ([]ExportRow, error) {
+	var rows []ExportRow
+	err := s.db.Raw(`
+		SELECT i.key AS "key", i.title AS title, i.priority AS priority,
+			COALESCE(ws.name, '') AS status,
+			COALESCE(it.name, '') AS type,
+			COALESCE(NULLIF(u.display_name, ''), u.email, '') AS assignee,
+			i.story_points AS story_points,
+			i.created_at AS created, i.updated_at AS updated
+		FROM issues i
+		LEFT JOIN workflow_statuses ws ON i.status_id = ws.id
+		LEFT JOIN issue_types it ON i.type_id = it.id
+		LEFT JOIN users u ON i.assignee_id = u.id
+		WHERE i.project_id = ?
+		ORDER BY i.seq_id ASC
+	`, projectID).Scan(&rows).Error
+	return rows, err
 }
