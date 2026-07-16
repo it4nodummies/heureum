@@ -23,6 +23,13 @@ test("project reports page renders charts", async ({ page }) => {
   await expect(page.getByTestId("pie-chart")).toBeVisible();
 });
 
+test("shows a Burnup card and a sprint selector", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/projects/DEMO/reports");
+  await expect(page.getByRole("heading", { name: "Burnup" })).toBeVisible();
+  await expect(page.getByTestId("reports-sprint-select")).toBeVisible();
+});
+
 test("dashboards page lists and creates a dashboard", async ({ page }) => {
   await login(page);
   await page.goto("/app/dashboards");

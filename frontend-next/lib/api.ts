@@ -734,6 +734,8 @@ export interface ProjectSummary {
 export const reports = {
   burndown: (key: string, sprintId: string) =>
     apiFetch<BurndownData>(`/rest/api/3/project/${key}/reports/burndown?sprintId=${sprintId}`),
+  burnup: (key: string, sprintId: string) =>
+    apiFetch<BurndownData>(`/rest/api/3/project/${key}/reports/burnup?sprintId=${sprintId}`),
   velocity: (key: string) => apiFetch<VelocityData>(`/rest/api/3/project/${key}/reports/velocity`),
   cfd: (key: string) => apiFetch<CFDData>(`/rest/api/3/project/${key}/reports/cfd`),
   pie: (key: string, field: string) => apiFetch<PieSlice[]>(`/rest/api/3/project/${key}/reports/pie?field=${field}`),
