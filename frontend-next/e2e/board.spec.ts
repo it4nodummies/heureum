@@ -262,3 +262,27 @@ test("backlog: drag between two sprints directly, without going through the back
   await expect(sprintB.getByTestId("row-DEMO-2")).toBeVisible();
   await expect(sprintA.getByTestId("row-DEMO-2")).not.toBeVisible();
 });
+
+test("backlog: multi-select drag moves all selected issues together", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/boards/1/backlog");
+
+  const sprintName = `Sprint Group ${Date.now()}`;
+  await page.getByLabel("New sprint name").fill(sprintName);
+  await page.getByRole("button", { name: "Create sprint" }).click();
+  await expect(page.getByText(sprintName)).toBeVisible();
+  // See Task 3's comment: lookup by name goes through the outer `container-{testId}` wrapper.
+  const sprintOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintName });
+  const outerTestId = await sprintOuter.getAttribute("data-testid");
+  if (!outerTestId) throw new Error("sprint container testid not found");
+  const sprintTestId = outerTestId.replace("container-", "");
+  const sprintContainer = page.getByTestId(sprintTestId);
+
+  await page.getByLabel("Select DEMO-4").check();
+  await page.getByLabel("Select DEMO-5").check();
+
+  await dragBetween(page, "drag-handle-DEMO-4", sprintTestId);
+
+  await expect(sprintContainer.getByTestId("row-DEMO-4")).toBeVisible();
+  await expect(sprintContainer.getByTestId("row-DEMO-5")).toBeVisible();
+});
