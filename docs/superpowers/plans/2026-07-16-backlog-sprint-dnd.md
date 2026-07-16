@@ -24,7 +24,7 @@ Reference spec: `docs/superpowers/specs/2026-07-16-backlog-sprint-dnd-design.md`
 - Create: `frontend-next/components/backlog/IssueCard.tsx`
 - Create: `frontend-next/components/backlog/DroppableList.tsx`
 
-- [ ] **Step 1: Create `IssueCard`**
+- [x] **Step 1: Create `IssueCard`**
 
 ```tsx
 "use client";
@@ -79,7 +79,7 @@ export function IssueCard({
 }
 ```
 
-- [ ] **Step 2: Create `DroppableList`**
+- [x] **Step 2: Create `DroppableList`**
 
 ```tsx
 "use client";
@@ -134,12 +134,12 @@ Note: `data-testid={testId}` is placed on the SAME element as `ref={setNodeRef}`
 
 The outer wrapper carries a SEPARATE `data-testid={`container-${testId}`}` for a different purpose: e2e tests that create a sprint via the UI don't know its numeric id upfront, so they need to find "the container whose visible text includes the sprint's name" — but that name lives in `header`, which is a DOM sibling of the inner droppable div, not an ancestor/descendant of it, so a `.filter({ hasText })` search scoped to the inner div alone can never see it. The outer wrapper is the only element that has both the header's text and the droppable div as descendants, so the two testids serve genuinely different consumers (drag coordinates vs. name-based lookup) — this isn't redundant.
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run: `cd frontend-next && npm run build`
 Expected: exits 0. (These two components aren't wired into any page yet, so this only validates they compile standalone — no runtime behavior to test yet.)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend-next/components/backlog/IssueCard.tsx frontend-next/components/backlog/DroppableList.tsx
@@ -153,7 +153,7 @@ git commit -m "feat(backlog): add sortable IssueCard and droppable DroppableList
 **Files:**
 - Modify: `frontend-next/app/app/boards/[boardId]/backlog/page.tsx` (full rewrite)
 
-- [ ] **Step 1: Replace the page**
+- [x] **Step 1: Replace the page**
 
 Replace the entire content of `frontend-next/app/app/boards/[boardId]/backlog/page.tsx` with:
 
@@ -533,12 +533,12 @@ Notes for the implementer:
 - `dragError` surfaces `moveAndRank`'s failures in a dismissible banner (same pattern as the board page's `moveError`, `app/app/boards/[boardId]/page.tsx`) — don't skip it as "just a UI nicety"; a prior review found the earlier draft failed silently on a partial move+rank failure.
 - `wasGroupDrag` is threaded through `moveAndRank`'s variables specifically so `onSuccess` only clears the multi-select when the just-completed drag actually moved the selection — dragging one unselected issue while an unrelated selection is still pending must not wipe it.
 
-- [ ] **Step 2: Type-check and build**
+- [x] **Step 2: Type-check and build**
 
 Run: `cd frontend-next && npm run build`
 Expected: exits 0, no TypeScript errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/app/app/boards/\[boardId\]/backlog/page.tsx
@@ -552,7 +552,7 @@ git commit -m "feat(backlog): multi-container drag-and-drop between backlog and 
 **Files:**
 - Modify: `frontend-next/e2e/board.spec.ts`
 
-- [ ] **Step 1: Add a scroll-safe drag helper and the test**
+- [x] **Step 1: Add a scroll-safe drag helper and the test**
 
 Append to `frontend-next/e2e/board.spec.ts`:
 
@@ -604,7 +604,7 @@ lookup to descendants of that container, which is how "is this row inside sprint
 backlog" is verified — a plain `page.getByTestId("row-DEMO-1")` would still find it wherever it
 moved to, so the scoped variant is required, not stylistic.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `cd frontend-next && npx playwright test e2e/board.spec.ts`
 Expected: PASS (all tests in the file, including this new one). If ports 8080/3000 are occupied by
@@ -618,7 +618,7 @@ measuring, mirroring the fix from a prior round's board-drag test), or `over` re
 because the `DndContext`'s sensors didn't activate (check the built `WorkflowEditor.tsx` sensors
 setup for the working reference pattern).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/e2e/board.spec.ts
@@ -632,7 +632,7 @@ git commit -m "test(e2e): cover dragging a single backlog issue into a sprint"
 **Files:**
 - Modify: `frontend-next/e2e/board.spec.ts`
 
-- [ ] **Step 1: Add the test**
+- [x] **Step 1: Add the test**
 
 Append to `frontend-next/e2e/board.spec.ts`:
 
@@ -675,12 +675,12 @@ test("backlog: drag between two sprints directly, without going through the back
 This uses `DEMO-2` (not `DEMO-1`, already used by Task 3's test) so the two tests don't interfere
 with each other regardless of execution order within this file or across a full-suite run.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `cd frontend-next && npx playwright test e2e/board.spec.ts`
 Expected: PASS (all tests, including this one).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/e2e/board.spec.ts
@@ -694,7 +694,7 @@ git commit -m "test(e2e): cover dragging an issue directly between two sprints"
 **Files:**
 - Modify: `frontend-next/e2e/board.spec.ts`
 
-- [ ] **Step 1: Add the test**
+- [x] **Step 1: Add the test**
 
 Append to `frontend-next/e2e/board.spec.ts`:
 
@@ -726,12 +726,12 @@ test("backlog: multi-select drag moves all selected issues together", async ({ p
 
 Uses `DEMO-4`/`DEMO-5`, disjoint from `DEMO-1`/`DEMO-2` used by the previous two tasks' tests.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `cd frontend-next && npx playwright test e2e/board.spec.ts`
 Expected: PASS (all tests, including this one).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/e2e/board.spec.ts
@@ -745,48 +745,84 @@ git commit -m "test(e2e): cover multi-select group drag in the backlog"
 **Files:**
 - Modify: `frontend-next/e2e/board.spec.ts`
 
-- [ ] **Step 1: Add the test**
+- [x] **Step 1: Add the test**
 
 Append to `frontend-next/e2e/board.spec.ts`:
+
+**Correction — this test does NOT use hardcoded `DEMO-6`/`DEMO-7` keys.** The original draft of
+this task assumed those keys already exist in the backlog, mirroring how Tasks 3-5 hardcode
+`DEMO-1`/`DEMO-2`/`DEMO-4`/`DEMO-5`. That assumption is wrong for `DEMO-6`/`DEMO-7` specifically:
+`cmd/seed/main.go` only creates 5 DEMO issues (`DEMO-1`..`DEMO-5`, confirmed at lines 132-149);
+within `board.spec.ts` only one earlier test creates a 6th, and nothing creates a 7th — so
+`row-DEMO-7` never exists and the hardcoded version fails outright (`DEMO-1/2/4/5` remain safe,
+they're within the confirmed static-seed range). The actual implementation instead creates two
+fresh issues via the UI's existing "Create issue" flow and resolves their real, dynamically-assigned
+keys — this is the authoritative version:
 
 ```ts
 test("backlog: reorders issues within the same list and persists after reload", async ({ page }) => {
   await login(page);
   await page.goto("/app/boards/1/backlog");
 
-  await expect(page.getByTestId("row-DEMO-6")).toBeVisible();
-  await expect(page.getByTestId("row-DEMO-7")).toBeVisible();
+  async function createBacklogIssue(summary: string) {
+    await page.getByRole("button", { name: "Create issue" }).click();
+    const modal = page.locator("div.fixed.inset-0.z-50");
+    await expect(modal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+    await modal.locator("#issue-summary").fill(summary);
+    await modal.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+  }
 
-  const rowsBefore = await page.getByTestId("backlog-list").locator('[data-testid^="row-"]').allTextContents();
-  expect(rowsBefore.findIndex((r) => r.includes("DEMO-6"))).toBeLessThan(
-    rowsBefore.findIndex((r) => r.includes("DEMO-7"))
+  const summaryFirst = `DnD Reorder First ${Date.now()}`;
+  const summarySecond = `DnD Reorder Second ${Date.now()}`;
+  await createBacklogIssue(summaryFirst);
+  await createBacklogIssue(summarySecond);
+
+  const backlogList = page.getByTestId("backlog-list");
+  const rowFirst = backlogList.locator('[data-testid^="row-"]').filter({ hasText: summaryFirst });
+  const rowSecond = backlogList.locator('[data-testid^="row-"]').filter({ hasText: summarySecond });
+  await expect(rowFirst).toBeVisible();
+  await expect(rowSecond).toBeVisible();
+
+  const testIdFirst = await rowFirst.getAttribute("data-testid");
+  const testIdSecond = await rowSecond.getAttribute("data-testid");
+  if (!testIdFirst || !testIdSecond) throw new Error("created issue rows not found");
+  const keyFirst = testIdFirst.replace("row-", "");
+  const keySecond = testIdSecond.replace("row-", "");
+
+  const rowsBefore = await backlogList.locator('[data-testid^="row-"]').allTextContents();
+  expect(rowsBefore.findIndex((r) => r.includes(keyFirst))).toBeLessThan(
+    rowsBefore.findIndex((r) => r.includes(keySecond))
   );
 
-  // Dropping DEMO-7's handle onto DEMO-6 inserts DEMO-7 immediately before DEMO-6.
-  await dragBetween(page, "drag-handle-DEMO-7", "drag-handle-DEMO-6");
+  // Dropping the second issue's handle onto the first inserts it immediately before the first.
+  await dragBetween(page, `drag-handle-${keySecond}`, `drag-handle-${keyFirst}`);
 
   await expect(async () => {
-    const rows = await page.getByTestId("backlog-list").locator('[data-testid^="row-"]').allTextContents();
-    expect(rows.findIndex((r) => r.includes("DEMO-7"))).toBeLessThan(rows.findIndex((r) => r.includes("DEMO-6")));
+    const rows = await backlogList.locator('[data-testid^="row-"]').allTextContents();
+    expect(rows.findIndex((r) => r.includes(keySecond))).toBeLessThan(rows.findIndex((r) => r.includes(keyFirst)));
   }).toPass();
 
   await page.reload();
+  // Reading row text immediately after reload can race the in-flight refetch (findIndex returns
+  // -1 for both keys); wait for the reordered row to actually reappear first.
+  await expect(page.getByTestId("backlog-list").locator(`[data-testid="row-${keySecond}"]`)).toBeVisible();
   const rowsAfter = await page.getByTestId("backlog-list").locator('[data-testid^="row-"]').allTextContents();
-  expect(rowsAfter.findIndex((r) => r.includes("DEMO-7"))).toBeLessThan(
-    rowsAfter.findIndex((r) => r.includes("DEMO-6"))
+  expect(rowsAfter.findIndex((r) => r.includes(keySecond))).toBeLessThan(
+    rowsAfter.findIndex((r) => r.includes(keyFirst))
   );
 });
 ```
 
-Uses `DEMO-6`/`DEMO-7`, disjoint from the issue keys used by Tasks 3-5's tests, and never leaves the
-backlog (pure reorder), so it's independent of test execution order.
+Self-contained (creates its own issues) and never leaves the backlog (pure reorder), so it's
+independent of test execution order and of how many other issues already exist.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `cd frontend-next && npx playwright test e2e/board.spec.ts`
 Expected: PASS (all tests, including this one).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/e2e/board.spec.ts
