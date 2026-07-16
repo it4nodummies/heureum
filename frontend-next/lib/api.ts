@@ -1032,6 +1032,15 @@ export interface AutomationRule {
   created_at: string;
 }
 
+export interface AutomationRun {
+  id: string;
+  rule_id: string;
+  issue_id?: string;
+  triggered_at: string;
+  status: string; // success | skipped | error | test
+  log: string;
+}
+
 export const integrations = {
   webhooks: (projectKey: string) => apiFetch<Webhook[]>(`/rest/api/3/project/${projectKey}/webhooks`),
   createWebhook: (projectKey: string, url: string, events: string[]) =>
@@ -1054,10 +1063,35 @@ export const integrations = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  // Path segment is named {projectID} in the router — ListRules reads it
-  // straight off the path with no project-key lookup, so pass the project's
-  // internal id (Project.id), not its key.
-  automationRules: (projectID: string) => apiFetch<AutomationRule[]>(`/rest/api/3/project/${projectID}/automation`),
+  automationRules: (key: string) =>
+    apiFetch<AutomationRule[]>(`/rest/api/3/project/${key}/automation`),
+  automationCreate: (
+    key: string,
+    body: { name: string; trigger_type: string; conditions_json: string; actions_json: string }
+  ) =>
+    apiFetch<AutomationRule>(`/rest/api/3/project/${key}/automation`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  automationGet: (ruleId: string) =>
+    apiFetch<AutomationRule>(`/rest/api/3/automation/${ruleId}`),
+  automationUpdate: (
+    ruleId: string,
+    patch: Partial<{ name: string; is_active: boolean; trigger_type: string; conditions_json: string; actions_json: string }>
+  ) =>
+    apiFetch<AutomationRule>(`/rest/api/3/automation/${ruleId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  automationDelete: (ruleId: string) =>
+    apiFetch<void>(`/rest/api/3/automation/${ruleId}`, { method: "DELETE" }),
+  automationTest: (ruleId: string, issueId: string) =>
+    apiFetch<AutomationRun>(`/rest/api/3/automation/${ruleId}/execute`, {
+      method: "POST",
+      body: JSON.stringify({ issue_id: issueId }),
+    }),
+  automationRuns: (ruleId: string) =>
+    apiFetch<AutomationRun[]>(`/rest/api/3/automation/${ruleId}/runs`),
 };
 
 export const issueGit = {
