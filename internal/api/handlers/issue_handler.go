@@ -315,7 +315,11 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 			Priority *struct {
 				ID string `json:"id"`
 			} `json:"priority"`
-			StoryPoints *int `json:"customfield_10016"`
+			StoryPoints  *int `json:"customfield_10016"`
+			TimeTracking *struct {
+				OriginalEstimateSeconds  *int `json:"originalEstimateSeconds"`
+				RemainingEstimateSeconds *int `json:"remainingEstimateSeconds"`
+			} `json:"timetracking"`
 		} `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -350,6 +354,12 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Fields.Labels != nil {
 		if err := h.svc.SetLabels(iss.ID, iss.ProjectID, req.Fields.Labels); err != nil {
 			v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update labels."}, nil)
+			return
+		}
+	}
+	if req.Fields.TimeTracking != nil {
+		if _, err := h.svc.SetTimeTracking(iss.Key, req.Fields.TimeTracking.OriginalEstimateSeconds, req.Fields.TimeTracking.RemainingEstimateSeconds); err != nil {
+			v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update time tracking."}, nil)
 			return
 		}
 	}

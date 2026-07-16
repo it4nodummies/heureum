@@ -155,10 +155,11 @@ func JiraIssue(in IssueInput) IssueBean {
 	if iss.StoryPoints > 0 {
 		fields.StoryPoints = issuePtr(iss.StoryPoints)
 	}
-	if iss.OriginalEstimate > 0 || iss.TimeSpent > 0 {
+	if iss.OriginalEstimate > 0 || iss.TimeSpent > 0 || iss.RemainingEstimate > 0 {
 		fields.TimeTracking = &TimeTracking{
-			OriginalEstimateSeconds: iss.OriginalEstimate,
-			TimeSpentSeconds:        iss.TimeSpent,
+			OriginalEstimateSeconds:  iss.OriginalEstimate,
+			TimeSpentSeconds:         iss.TimeSpent,
+			RemainingEstimateSeconds: iss.RemainingEstimate,
 		}
 	}
 

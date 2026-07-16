@@ -171,6 +171,38 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 	return updated, nil
 }
 
+// SetTimeTracking aggiorna Issue.OriginalEstimate e/o Issue.RemainingEstimate
+// (in secondi) per l'issue identificata da key. Ciascun parametro nil lascia
+// il campo corrispondente invariato. Metodo dedicato invece di allargare la
+// firma di Update, che ha già molti parametri e chiamanti.
+func (s *Service) SetTimeTracking(key string, originalSeconds, remainingSeconds *int) (*Issue, error) {
+	issue, err := s.GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	updates := map[string]interface{}{}
+	if originalSeconds != nil {
+		s.logHistory(issue.ID, "", "original_estimate", fmt.Sprintf("%d", issue.OriginalEstimate), fmt.Sprintf("%d", *originalSeconds))
+		updates["original_estimate"] = *originalSeconds
+	}
+	if remainingSeconds != nil {
+		s.logHistory(issue.ID, "", "remaining_estimate", fmt.Sprintf("%d", issue.RemainingEstimate), fmt.Sprintf("%d", *remainingSeconds))
+		updates["remaining_estimate"] = *remainingSeconds
+	}
+	if len(updates) == 0 {
+		return issue, nil
+	}
+	if err := s.db.Model(issue).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	updated, err := s.GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	s.emit("issue_updated", updated)
+	return updated, nil
+}
+
 func (s *Service) Delete(key string) error {
 	return s.db.Model(&Issue{}).Where("key = ?", key).Update("is_archived", true).Error
 }
