@@ -17,7 +17,7 @@ Reference spec: `docs/superpowers/specs/2026-07-15-workflow-transitions-ui-desig
 **Files:**
 - Modify: `frontend-next/components/workflow/WorkflowEditor.tsx`
 
-- [ ] **Step 1: Replace the component**
+- [x] **Step 1: Replace the component**
 
 Replace the entire content of `frontend-next/components/workflow/WorkflowEditor.tsx` with:
 
@@ -288,12 +288,12 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
 
 This is additive relative to the current file (post-drag-and-drop-reorder state): only the `Transitions` section and the new mutations/state are new; the `Statuses` section is unchanged.
 
-- [ ] **Step 2: Type-check and build**
+- [x] **Step 2: Type-check and build**
 
 Run: `cd frontend-next && npm run build`
 Expected: exits 0, no TypeScript errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/components/workflow/WorkflowEditor.tsx
@@ -307,7 +307,7 @@ git commit -m "feat(workflow): add form to create/remove transitions between sta
 **Files:**
 - Modify: `frontend-next/app/app/boards/[boardId]/page.tsx`
 
-- [ ] **Step 1: Add error state and banner**
+- [x] **Step 1: Add error state and banner**
 
 Replace the full content of `frontend-next/app/app/boards/[boardId]/page.tsx` with:
 
@@ -398,12 +398,12 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
 
 The only changes from the current file: `useState` import, `moveError` state, `onError` on the `move` mutation, `onSuccess` also clears `moveError`, and the new banner block rendered above `BoardColumns`.
 
-- [ ] **Step 2: Type-check and build**
+- [x] **Step 2: Type-check and build**
 
 Run: `cd frontend-next && npm run build`
 Expected: exits 0, no TypeScript errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/app/app/boards/\[boardId\]/page.tsx
@@ -417,7 +417,7 @@ git commit -m "feat(board): show visible error when a drag-and-drop move is reje
 **Files:**
 - Modify: `frontend-next/e2e/workflow.spec.ts`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Append to `frontend-next/e2e/workflow.spec.ts`:
 
@@ -451,12 +451,12 @@ test("workflow editor creates and removes a transition between two statuses", as
 });
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `cd frontend-next && npx playwright test e2e/workflow.spec.ts`
 Expected: PASS (3 tests total: the two pre-existing ones plus this new one).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/e2e/workflow.spec.ts
@@ -470,7 +470,7 @@ git commit -m "test(e2e): cover creating and removing a workflow transition"
 **Files:**
 - Modify: `frontend-next/e2e/board.spec.ts`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Append to `frontend-next/e2e/board.spec.ts`:
 
@@ -517,12 +517,12 @@ test("dragging a card into a column with no valid transition shows an error", as
 });
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `cd frontend-next && npx playwright test e2e/board.spec.ts`
 Expected: PASS (all tests in the file, including this new one).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend-next/e2e/board.spec.ts
@@ -535,30 +535,156 @@ git commit -m "test(e2e): cover error banner on invalid board drag transition"
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Backend build, vet, full test suite**
+- [x] **Step 1: Backend build, vet, full test suite**
 
 Run: `go build ./... && go vet ./... && go test ./...`
 Expected: all pass (this feature made no backend changes, so this just confirms no regression).
 
-- [ ] **Step 2: Frontend build + full e2e suite**
+- [x] **Step 2: Frontend build + full e2e suite**
 
 Run: `cd frontend-next && npm run build && npx playwright test`
 Expected: build succeeds; all Playwright specs pass, including the two new tests from Tasks 3 and 4.
 
-- [ ] **Step 3: Contract freshness check**
+- [x] **Step 3: Contract freshness check**
 
 Run: `go run ./cmd/gapreport`
 Expected: no diff against the committed `docs/contracts/gap-report.md` (no routes changed).
 
-- [ ] **Step 4: Manual smoke check**
+- [x] **Step 4: Manual smoke check**
 
 If a local Docker stack is running and holding ports 8080/3000, stop it first (`docker compose -f deploy/docker/docker-compose.yml stop`) so Playwright's own webServer can bind those ports, then restart it afterward (`docker compose -f deploy/docker/docker-compose.yml start`) — do not leave it stopped.
 
-- [ ] **Step 5: Final commit if any gate step required fixes**
+- [x] **Step 5: Final commit if any gate step required fixes**
 
 Only if Steps 1-3 required code changes:
 
 ```bash
 git add -A
 git commit -m "fix: address quality gate findings for workflow transitions UI"
+```
+
+---
+
+### Task 6: Visible error feedback on Workflow panel mutations
+
+A final holistic review of Tasks 1-5 found that the new `addTransition`/`delTransition` mutations
+(and the pre-existing `addStatus`/`delStatus`) in `WorkflowEditor.tsx` have no `onError`/`isError`
+rendering — the exact "silent failure" defect class this round exists to fix, just relocated to a
+sibling mutation. E.g. a non-admin project member who opens Settings → Workflow and clicks "Add
+transition" gets a 403 with zero visible feedback. Confirmed with the user this should be fixed now
+rather than filed as a separate follow-up.
+
+**Files:**
+- Modify: `frontend-next/components/workflow/WorkflowEditor.tsx`
+
+- [ ] **Step 1: Add per-mutation error paragraphs**
+
+Follow the existing convention already used in `frontend-next/components/projects/ProjectSettings.tsx`
+(e.g. lines 149-152, 181-185): a conditional `<p>` right after the control that triggers the
+mutation, rendered only when `mutation.isError`, showing `mutation.error instanceof Error ?
+mutation.error.message : "<fallback text>"`.
+
+Add four such paragraphs in `WorkflowEditor.tsx`:
+
+1. After the "Add status" button row (inside the `<div className="mt-2 flex gap-2">` block, or
+   directly after it), when `addStatus.isError`:
+   ```tsx
+   {addStatus.isError && (
+     <p className="mt-1 text-sm text-red-600">
+       {addStatus.error instanceof Error ? addStatus.error.message : "Failed to add status"}
+     </p>
+   )}
+   ```
+2. Somewhere visible in the Statuses section (e.g. right after the statuses `<ul>`/`DndContext`
+   block, before the add-status form), when `delStatus.isError`:
+   ```tsx
+   {delStatus.isError && (
+     <p className="mt-1 text-sm text-red-600">
+       {delStatus.error instanceof Error ? delStatus.error.message : "Failed to delete status"}
+     </p>
+   )}
+   ```
+3. After the "Add transition" button row, when `addTransition.isError`:
+   ```tsx
+   {addTransition.isError && (
+     <p className="mt-1 text-sm text-red-600">
+       {addTransition.error instanceof Error ? addTransition.error.message : "Failed to add transition"}
+     </p>
+   )}
+   ```
+4. Right after the transitions `<ul>`, when `delTransition.isError`:
+   ```tsx
+   {delTransition.isError && (
+     <p className="mt-1 text-sm text-red-600">
+       {delTransition.error instanceof Error ? delTransition.error.message : "Failed to delete transition"}
+     </p>
+   )}
+   ```
+
+Exact placement within each section is at the implementer's discretion as long as each paragraph is
+visually associated with the section/control whose mutation it reports on, and only one of the four
+can be relevant at a time in practice (a user triggers one mutation at a time) so no layout
+conflicts are expected.
+
+- [ ] **Step 2: Type-check and build**
+
+Run: `cd frontend-next && npm run build`
+Expected: exits 0, no TypeScript errors.
+
+- [ ] **Step 3: E2E test for one error path**
+
+`cmd/seed/main.go` already seeds a non-admin demo user with a real, deterministic 403 path:
+`dev@example.com` / `dev-demo-123` (username `dev`), added to the DEMO project with `MemberRole`
+`"member"` (`cmd/seed/main.go:45-47,97`). `AddTransition`/`AddStatus` require `AdministerProjects`
+(`router.go:246,249`, `internal/domain/permission`), which a `member` role does not have — so this
+user's login is a real, reliable way to trigger a genuine 403 without any new seed data.
+
+Add a test to `frontend-next/e2e/workflow.spec.ts`:
+
+```ts
+test("workflow editor shows an error when a non-admin tries to add a transition", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("dev@example.com");
+  await page.getByLabel(/password/i).fill("dev-demo-123");
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL(/\/app/);
+
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  await page.getByLabel("From status").selectOption({ label: "TO DO" });
+  await page.getByLabel("To status").selectOption({ label: "DONE" });
+  await page.getByRole("button", { name: "Add transition" }).click();
+
+  await expect(page.getByText("you do not have permission to perform this action")).toBeVisible();
+});
+```
+
+The exact message is not a guess: `authz.WriteForbidden` (`internal/api/authz/enforce.go:13-15`)
+always responds with `v3.WriteError(w, 403, []string{"you do not have permission to perform this
+action"}, nil)`, and `apiFetch` (`lib/api.ts`) joins `errorMessages` into `err.message` verbatim —
+so this exact string is what `addTransition.error.message` will contain, taking precedence over the
+`"Failed to add transition"` fallback from Step 1 (which only applies when `error` isn't an
+`Error` instance, which won't happen here).
+
+- [ ] **Step 4: Manual smoke check**
+
+If a local Docker stack is running and holding ports 8080/3000, stop it first (`docker compose -f
+deploy/docker/docker-compose.yml stop` from the repo root), then restart it afterward (`docker
+compose -f deploy/docker/docker-compose.yml start`) — do not leave it stopped. With the app running,
+log in as `dev@example.com` / `dev-demo-123`, open the DEMO project's Settings → Workflow, and
+confirm the exact rendered error text after clicking "Add transition" matches what Step 3's test
+asserts, before finalizing that test's assertion string.
+
+- [ ] **Step 5: Run the full quality gate once more**
+
+Run: `go build ./... && go vet ./... && go test ./...`, then `cd frontend-next && npm run build &&
+npx playwright test` (full suite, not a single file — this round's history shows full-suite runs can
+surface issues isolation-only runs miss), then `go run ./cmd/gapreport` and confirm no diff.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add frontend-next/components/workflow/WorkflowEditor.tsx frontend-next/e2e/workflow.spec.ts
+git commit -m "feat(workflow): show error feedback on failed status/transition mutations"
 ```
