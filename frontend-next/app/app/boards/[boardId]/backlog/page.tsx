@@ -36,6 +36,11 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   const [items, setItems] = useState<Record<string, string[]>>({});
   const [dragError, setDragError] = useState<string | null>(null);
   const dragStartContainer = useRef<string | null>(null);
+  // See the comment above `handleDragOver`'s use of this ref: guards against a real dnd-kit
+  // multi-container "thrash" bug where moving an item across containers shifts their measured
+  // rects, which can flip `closestCenter`'s pick back and forth with no actual pointer movement,
+  // crashing the page with "Maximum update depth exceeded".
+  const recentlyMovedToNewContainer = useRef(false);
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   const backlog = useQuery({ queryKey: ["board", id, "backlog"], queryFn: () => boards.backlog(id) });
@@ -161,6 +166,17 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
     const activeContainer = findContainer(items, activeKey);
     const overContainer = overId in items ? overId : findContainer(items, overId);
     if (!activeContainer || !overContainer || activeContainer === overContainer) return;
+    // Moving the dragged block out of one container and into another changes both containers'
+    // heights, which shifts their measured center points. If the pointer happens to sit near the
+    // boundary between two containers, closestCenter can then flip which one is "closest" purely
+    // because of the layout shift just caused by our own setItems — with no actual pointer
+    // movement in between — producing a self-sustaining flip-flop that blows past React's update
+    // depth limit and crashes the page (reproduced: two adjacent sprint containers oscillating
+    // forever during a single drag). This is dnd-kit's well-documented multi-container "thrash"
+    // gotcha; their official sortable/multiple-containers example guards it the same way: skip
+    // processing for one render cycle right after we've just moved something across containers,
+    // giving the DOM a frame to settle before re-evaluating collisions.
+    if (recentlyMovedToNewContainer.current) return;
 
     const draggedKeys = selected.has(activeKey) && selected.size > 1 ? Array.from(selected) : [activeKey];
 
@@ -188,7 +204,18 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
       ];
       return withoutDragged;
     });
+    recentlyMovedToNewContainer.current = true;
   };
+
+  // Clears the thrash guard one frame after `items` actually re-renders with the new layout, so
+  // the very next real collision re-evaluation (whether pointer-driven or triggered by the layout
+  // shift itself) is allowed through, but the immediate feedback cycle from this move is not.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      recentlyMovedToNewContainer.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [items]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
