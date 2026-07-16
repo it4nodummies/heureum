@@ -577,7 +577,7 @@ rather than filed as a separate follow-up.
 **Files:**
 - Modify: `frontend-next/components/workflow/WorkflowEditor.tsx`
 
-- [ ] **Step 1: Add per-mutation error paragraphs**
+- [x] **Step 1: Add per-mutation error paragraphs**
 
 Follow the existing convention already used in `frontend-next/components/projects/ProjectSettings.tsx`
 (e.g. lines 149-152, 181-185): a conditional `<p>` right after the control that triggers the
@@ -626,12 +626,12 @@ visually associated with the section/control whose mutation it reports on, and o
 can be relevant at a time in practice (a user triggers one mutation at a time) so no layout
 conflicts are expected.
 
-- [ ] **Step 2: Type-check and build**
+- [x] **Step 2: Type-check and build**
 
 Run: `cd frontend-next && npm run build`
 Expected: exits 0, no TypeScript errors.
 
-- [ ] **Step 3: E2E test for one error path**
+- [x] **Step 3: E2E test for one error path**
 
 `cmd/seed/main.go` already seeds a non-admin demo user with a real, deterministic 403 path:
 `dev@example.com` / `dev-demo-123` (username `dev`), added to the DEMO project with `MemberRole`
@@ -667,7 +667,7 @@ so this exact string is what `addTransition.error.message` will contain, taking 
 `"Failed to add transition"` fallback from Step 1 (which only applies when `error` isn't an
 `Error` instance, which won't happen here).
 
-- [ ] **Step 4: Manual smoke check**
+- [x] **Step 4: Manual smoke check**
 
 If a local Docker stack is running and holding ports 8080/3000, stop it first (`docker compose -f
 deploy/docker/docker-compose.yml stop` from the repo root), then restart it afterward (`docker
@@ -676,13 +676,13 @@ log in as `dev@example.com` / `dev-demo-123`, open the DEMO project's Settings â
 confirm the exact rendered error text after clicking "Add transition" matches what Step 3's test
 asserts, before finalizing that test's assertion string.
 
-- [ ] **Step 5: Run the full quality gate once more**
+- [x] **Step 5: Run the full quality gate once more**
 
 Run: `go build ./... && go vet ./... && go test ./...`, then `cd frontend-next && npm run build &&
 npx playwright test` (full suite, not a single file â€” this round's history shows full-suite runs can
 surface issues isolation-only runs miss), then `go run ./cmd/gapreport` and confirm no diff.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend-next/components/workflow/WorkflowEditor.tsx frontend-next/e2e/workflow.spec.ts
