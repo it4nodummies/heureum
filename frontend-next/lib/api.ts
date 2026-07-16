@@ -767,6 +767,33 @@ export const timeline = {
     apiFetch<TimelineData>(`/rest/api/3/project/${key}/timeline?zoom=${zoom}`),
 };
 
+// ── Calendar ─────────────────────────────────────────────────────────────────
+
+export interface CalendarIssue {
+  id: string;
+  key: string;
+  title: string;
+  priority: string;
+  status: string;
+  due_date: string | null;
+  start_date: string | null;
+}
+export interface CalendarDay {
+  date: string; // "YYYY-MM-DD"
+  day: number;
+  issues: CalendarIssue[];
+}
+export interface CalendarData {
+  year: number;
+  month: number;
+  days: CalendarDay[];
+  total_days: number;
+}
+export const calendar = {
+  get: (key: string, year: number, month: number) =>
+    apiFetch<CalendarData>(`/rest/api/3/project/${key}/calendar?year=${year}&month=${month}`),
+};
+
 // ── Dashboards ───────────────────────────────────────────────────────────────
 //
 // Il backend espone due famiglie di rotte parallele per le dashboard
