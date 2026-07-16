@@ -7,7 +7,7 @@ import { projects as projectsApi, boards as boardsApi } from "@/lib/api";
 import { ProjectAvatar } from "@/components/projects/ProjectAvatar";
 import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
 
-type ActiveTab = "overview" | "board" | "backlog" | "reports" | "settings";
+type ActiveTab = "overview" | "board" | "backlog" | "timeline" | "calendar" | "reports" | "settings";
 
 interface Props {
   projectKey: string;
@@ -144,6 +144,12 @@ export function ProjectHeader({ projectKey, active }: Props) {
             active={active === "backlog"}
           >
             Backlog
+          </TabLink>
+          <TabLink href={`/app/projects/${projectKey}/timeline`} active={active === "timeline"}>
+            Timeline
+          </TabLink>
+          <TabLink href={`/app/projects/${projectKey}/calendar`} active={active === "calendar"}>
+            Calendar
           </TabLink>
           <TabLink href={`/app/projects/${projectKey}/reports`} active={active === "reports"}>
             Reports

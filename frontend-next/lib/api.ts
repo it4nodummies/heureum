@@ -742,6 +742,31 @@ export const reports = {
   summary: (key: string) => apiFetch<ProjectSummary>(`/rest/api/3/project/${key}/summary`),
 };
 
+// ── Timeline (Gantt) ─────────────────────────────────────────────────────────
+
+export interface TimelineBar {
+  id: string;
+  name: string;
+  type: string; // "epic" | "sprint"
+  start_date: string | null;
+  end_date: string | null;
+  progress: number; // 0..100
+  parent_id?: string;
+  color: string; // hex
+}
+export interface TimelineData {
+  project_id: string;
+  zoom: string;
+  start_date: string;
+  end_date: string;
+  bars: TimelineBar[];
+  headers: string[];
+}
+export const timeline = {
+  get: (key: string, zoom: "weeks" | "months" | "quarters" = "weeks") =>
+    apiFetch<TimelineData>(`/rest/api/3/project/${key}/timeline?zoom=${zoom}`),
+};
+
 // ── Dashboards ───────────────────────────────────────────────────────────────
 //
 // Il backend espone due famiglie di rotte parallele per le dashboard
