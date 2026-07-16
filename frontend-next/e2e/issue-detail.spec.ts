@@ -199,3 +199,102 @@ test("Activity History: cambia la priority via Edit mode e la vede loggata nel t
   await expect(priorityRow).toContainText("medium");
   await expect(priorityRow).toContainText("high");
 });
+
+test("Assignee: si assegna l'issue tramite lo UserPicker in Edit mode", async ({ page }) => {
+  await login(page);
+
+  await createIssue(page, `E2E Assignee ${Date.now()}`);
+
+  await expect(page.getByTestId("field-assignee")).toHaveText("Unassigned");
+
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+
+  // Opens the UserPicker dropdown (the trigger button carries
+  // aria-label="Assignee" — see components/common/UserPicker.tsx) and uses
+  // the "Assign to me" shortcut, which is deterministic (no debounced search
+  // round trip to wait on) and assigns the logged-in seeded admin
+  // ("Ada Admin", cmd/seed/main.go) who is already a DEMO project member —
+  // required for GET /user/assignable/search to include anyone at all.
+  await page.getByLabel("Assignee", { exact: true }).click();
+  await page.getByRole("button", { name: "Assign to me" }).click();
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+
+  // Back in read mode: Edit button reappears once the save mutation settles.
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+  await expect(page.getByTestId("field-assignee")).toHaveText("Ada Admin");
+
+  // Re-open Edit mode and unassign via the picker's "Unassigned" option, to
+  // cover the "clear the assignee" path (assignee: {accountId: ""} — see
+  // IssueView.tsx's save mutation comment on why it's always sent).
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByLabel("Assignee", { exact: true }).click();
+  await page.getByRole("button", { name: "Unassigned", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+  await expect(page.getByTestId("field-assignee")).toHaveText("Unassigned");
+});
+
+test("Create issue modal: crea una issue con description, priority e assignee impostati dal modale", async ({
+  page,
+}) => {
+  await login(page);
+
+  await page.goto("/app/projects");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.getByRole("button", { name: "Issue", exact: true }).click();
+  const createModal = page.locator("div.fixed.inset-0.z-50");
+  await expect(createModal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+  await createModal.getByLabel("Project").selectOption({ label: "Demo Project (DEMO)" });
+
+  const summary = `E2E Create Rich ${Date.now()}`;
+  await createModal.locator("#issue-summary").fill(summary);
+  await createModal.locator("#issue-description").fill("Created from the rich create modal e2e test.");
+  await createModal.getByLabel("Priority", { exact: true }).selectOption({ label: "High" });
+
+  await createModal.getByLabel("Assignee", { exact: true }).click();
+  await createModal.getByRole("button", { name: "Assign to me" }).click();
+
+  await createModal.getByRole("button", { name: "Create", exact: true }).click();
+
+  await page.waitForURL(/\/app\/browse\/DEMO-\d+/);
+
+  await expect(page.getByTestId("field-priority")).toHaveText("High");
+  await expect(page.getByTestId("field-assignee")).toHaveText("Ada Admin");
+  await expect(page.getByText("Created from the rich create modal e2e test.")).toBeVisible();
+});
+
+test("Create issue modal: 'Create another' resetta summary/description e mantiene il modale aperto", async ({
+  page,
+}) => {
+  await login(page);
+
+  await page.goto("/app/projects");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.getByRole("button", { name: "Issue", exact: true }).click();
+  const createModal = page.locator("div.fixed.inset-0.z-50");
+  await expect(createModal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+  await createModal.getByLabel("Project").selectOption({ label: "Demo Project (DEMO)" });
+
+  await createModal.getByRole("checkbox", { name: "Create another" }).check();
+
+  const unique = Date.now();
+  const firstSummary = `E2E Create Another First ${unique}`;
+  await createModal.locator("#issue-summary").fill(firstSummary);
+  await createModal.getByRole("button", { name: "Create", exact: true }).click();
+
+  // Stays open: the "Create issue" heading is still visible, the summary
+  // input is cleared, and a small confirmation names the just-created key.
+  await expect(createModal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+  await expect(createModal.locator("#issue-summary")).toHaveValue("");
+  await expect(createModal.getByText(/DEMO-\d+ created\./)).toBeVisible();
+
+  const secondSummary = `E2E Create Another Second ${unique}`;
+  await createModal.locator("#issue-summary").fill(secondSummary);
+  await createModal.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(createModal.getByText(/DEMO-\d+ created\./)).toBeVisible();
+
+  await createModal.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(createModal).not.toBeVisible();
+});

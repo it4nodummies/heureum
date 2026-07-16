@@ -11,6 +11,7 @@ import { DevelopmentPanel } from "./DevelopmentPanel";
 import { LinkedWorkItems } from "./LinkedWorkItems";
 import { Subtasks } from "./Subtasks";
 import { TimeTracking } from "./TimeTracking";
+import { UserPicker } from "@/components/common/UserPicker";
 
 interface Props {
   issueKey: string;
@@ -24,13 +25,14 @@ export function IssueView({ issueKey }: Props) {
 
   const qc = useQueryClient();
 
-  // Single "Edit" mode covers summary, description, priority and labels —
-  // they're saved together via one PUT /rest/api/3/issue/{key}. Assignee
-  // stays read-only here (needs a user picker — out of scope for now).
+  // Single "Edit" mode covers summary, description, priority, assignee and
+  // labels — they're saved together via one PUT /rest/api/3/issue/{key}.
   const [editMode, setEditMode] = useState(false);
   const [draftSummary, setDraftSummary] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
   const [draftPriorityId, setDraftPriorityId] = useState("");
+  const [draftAssigneeId, setDraftAssigneeId] = useState<string | null>(null);
+  const [draftAssigneeLabel, setDraftAssigneeLabel] = useState<string | null>(null);
   const [draftLabels, setDraftLabels] = useState("");
   const [draftStoryPoints, setDraftStoryPoints] = useState("");
   const [draftOriginalEstimate, setDraftOriginalEstimate] = useState("");
@@ -48,6 +50,10 @@ export function IssueView({ issueKey }: Props) {
         summary: draftSummary,
         description: textToAdf(draftDescription),
         ...(draftPriorityId ? { priority: { id: draftPriorityId } } : {}),
+        // Always sent (not conditional on truthy) so picking "Unassigned"
+        // (draftAssigneeId === null) actually clears the assignee rather than
+        // being silently dropped from the payload.
+        assignee: { accountId: draftAssigneeId ?? "" },
         labels: draftLabels
           .split(",")
           .map((l) => l.trim())
@@ -100,6 +106,8 @@ export function IssueView({ issueKey }: Props) {
     setDraftSummary(f.summary);
     setDraftDescription(adfToText(f.description));
     setDraftPriorityId(f.priority?.id ?? "");
+    setDraftAssigneeId(f.assignee?.accountId ?? null);
+    setDraftAssigneeLabel(f.assignee?.displayName ?? null);
     setDraftLabels(f.labels.join(", "));
     setDraftStoryPoints(f.customfield_10016 != null ? String(f.customfield_10016) : "");
     setDraftOriginalEstimate(
@@ -204,7 +212,22 @@ export function IssueView({ issueKey }: Props) {
             <Field label="Priority" value={f.priority?.name} />
           )}
 
-          <Field label="Assignee" value={f.assignee?.displayName ?? "Unassigned"} />
+          {editMode ? (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Assignee</div>
+              <UserPicker
+                projectKey={projectKey}
+                value={draftAssigneeId}
+                valueLabel={draftAssigneeLabel}
+                onChange={(accountId, user) => {
+                  setDraftAssigneeId(accountId);
+                  setDraftAssigneeLabel(user?.displayName ?? null);
+                }}
+              />
+            </div>
+          ) : (
+            <Field label="Assignee" value={f.assignee?.displayName ?? "Unassigned"} />
+          )}
           <Field label="Reporter" value={f.reporter?.displayName ?? "—"} />
 
           {editMode ? (
@@ -312,7 +335,9 @@ function Field({ label, value }: { label: string; value?: string }) {
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-      <div className="text-sm text-[#1a1f36] mt-0.5">{value ?? "—"}</div>
+      <div data-testid={`field-${label.toLowerCase()}`} className="text-sm text-[#1a1f36] mt-0.5">
+        {value ?? "—"}
+      </div>
     </div>
   );
 }

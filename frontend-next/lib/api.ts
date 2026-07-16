@@ -271,6 +271,7 @@ export const issues = {
     description?: ADFNode;
     labels?: string[];
     parentKey?: string;
+    assigneeId?: string;
   }) =>
     apiFetch<{ id: string; key: string; self: string }>("/rest/api/3/issue", {
       method: "POST",
@@ -283,6 +284,7 @@ export const issues = {
           ...(payload.description ? { description: payload.description } : {}),
           ...(payload.labels ? { labels: payload.labels } : {}),
           ...(payload.parentKey ? { parent: { key: payload.parentKey } } : {}),
+          ...(payload.assigneeId ? { assignee: { accountId: payload.assigneeId } } : {}),
         },
       }),
     }),
@@ -832,6 +834,18 @@ export const profile = {
   update: (patch: { displayName?: string; timeZone?: string; locale?: string; avatarUrl?: string }) =>
     apiFetch<JiraUser>("/rest/api/3/myself", { method: "PUT", body: JSON.stringify(patch) }),
   searchUsers: (query: string) => apiFetch<JiraUser[]>(`/rest/api/3/user/search?query=${encodeURIComponent(query)}`),
+};
+
+// ── Users (assignable search, for the UserPicker) ───────────────────────────
+
+export const users = {
+  // GET /rest/api/3/user/assignable/search?project={KEY}&query={q} —
+  // membership-scoped (the caller must be a member of the project /
+  // BROWSE_PROJECTS, see internal/api/handlers/user_handler.go
+  // AssignableSearch); an empty query returns all project members ordered by
+  // displayName rather than an empty list.
+  assignableSearch: (projectKey: string, query = "") =>
+    apiFetch<JiraUserRef[]>(`/rest/api/3/user/assignable/search${buildQuery({ project: projectKey, query })}`),
 };
 
 // ── Permissions ──────────────────────────────────────────────────────────────

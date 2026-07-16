@@ -186,7 +186,10 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Parent struct {
 				Key string `json:"key"`
 			} `json:"parent"`
-			Labels []string `json:"labels"`
+			Labels   []string `json:"labels"`
+			Assignee *struct {
+				AccountID string `json:"accountId"`
+			} `json:"assignee"`
 		} `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -268,6 +271,16 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		}
+	}
+	// Create's payload doesn't route through Update's generic field-diffing —
+	// wire the assignee through the same Update path Update itself uses
+	// (assigneeID as the 5th positional arg) rather than teaching Create a
+	// second way to set it.
+	if req.Fields.Assignee != nil && req.Fields.Assignee.AccountID != "" {
+		accountID := req.Fields.Assignee.AccountID
+		if updated, uerr := h.svc.Update(iss.Key, nil, nil, nil, &accountID, nil, nil); uerr == nil {
+			iss = updated
 		}
 	}
 	for _, name := range req.Fields.Labels {
