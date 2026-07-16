@@ -309,7 +309,39 @@ export const issues = {
 
   subtasks: (idOrKey: string) =>
     apiFetch<{ values: Issue[]; total: number }>(`/rest/api/3/issue/${idOrKey}/subtasks`),
+
+  changelog: (idOrKey: string) => apiFetch<PageOfChangelogs>(`/rest/api/3/issue/${idOrKey}/changelog`),
 };
+
+// ── Changelog (issue history) ───────────────────────────────────────────────
+// v3.Changelog / v3.ChangeItem (internal/api/v3/collab.go). `author` is
+// usually absent: the backend logs history entries with ActorID="" (see
+// HistoryHandler.GetHistory), so the UI falls back to "System".
+
+export interface ChangeItem {
+  field: string;
+  fieldId?: string;
+  fieldtype: string;
+  from?: string;
+  fromString?: string;
+  to?: string;
+  toString?: string;
+}
+
+export interface Changelog {
+  id: string;
+  author?: JiraUserRef | null;
+  created: string;
+  items: ChangeItem[];
+}
+
+export interface PageOfChangelogs {
+  startAt: number;
+  maxResults: number;
+  total: number;
+  isLast: boolean;
+  values: Changelog[];
+}
 
 // ── Metadata (priorities, issue types, statuses) ────────────────────────────
 

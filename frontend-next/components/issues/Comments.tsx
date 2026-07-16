@@ -18,7 +18,7 @@ export function Comments({ issueKey }: { issueKey: string }) {
   });
   const list = data?.comments ?? [];
   return (
-    <section className="mt-8">
+    <section>
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Comments</h2>
       <div className="space-y-4">
         {list.map((c) => (

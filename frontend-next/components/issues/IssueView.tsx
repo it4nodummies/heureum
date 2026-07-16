@@ -5,8 +5,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { issues, meta, watchers, votes, parseJiraDuration, formatSeconds } from "@/lib/api";
 import { AdfRenderer, adfToText, textToAdf } from "./adf";
+import { Activity } from "./Activity";
 import { Attachments } from "./Attachments";
-import { Comments } from "./Comments";
 import { DevelopmentPanel } from "./DevelopmentPanel";
 import { LinkedWorkItems } from "./LinkedWorkItems";
 import { Subtasks } from "./Subtasks";
@@ -303,7 +303,7 @@ export function IssueView({ issueKey }: Props) {
 
       <TimeTracking issueKey={issue.key} />
 
-      <Comments issueKey={issue.key} />
+      <Activity issueKey={issue.key} />
     </div>
   );
 }

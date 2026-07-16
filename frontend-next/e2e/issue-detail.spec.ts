@@ -161,3 +161,41 @@ test("Time tracking: registra tempo con 'Log work' e lo vede riflesso nel blocco
   await expect(row).toHaveCount(0);
   await expect(section.getByText("No work logged yet.")).toBeVisible();
 });
+
+test("Activity History: cambia la priority via Edit mode e la vede loggata nel tab History", async ({ page }) => {
+  await login(page);
+
+  await createIssue(page, `E2E Activity History ${Date.now()}`);
+
+  // Comments is the default Activity tab (regression guard for collaboration.spec.ts).
+  const tabs = page.getByTestId("activity-tabs");
+  await expect(tabs.getByRole("button", { name: "Comments" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Comments" })).toBeVisible();
+
+  // New issues default to priority "Medium" (issue.PriorityMedium in
+  // internal/api/handlers/issue_handler.go) — switch to "High" via Edit
+  // mode so the changelog logs an old→new "priority" change.
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const prioritySelect = page.locator("select").first();
+  await prioritySelect.selectOption({ label: "High" });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+
+  // Back in read mode: Edit button reappears once the save mutation settles.
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+
+  await tabs.getByRole("button", { name: "History" }).click();
+  await expect(page.getByRole("heading", { name: "Comments" })).not.toBeVisible();
+
+  const historyList = page.getByTestId("history-list");
+  await expect(historyList).toBeVisible();
+
+  // Several fields get re-logged on every Edit→Save (title, description,
+  // story points, estimates) even when unchanged — see issue_handler.go's
+  // Update, which always forwards summary/description/etc. Filter to the
+  // one row about "priority" so the assertion is specific to this change.
+  const priorityRow = page.getByTestId("history-row").filter({ hasText: "priority" });
+  await expect(priorityRow).toHaveCount(1);
+  await expect(priorityRow).toContainText("System");
+  await expect(priorityRow).toContainText("medium");
+  await expect(priorityRow).toContainText("high");
+});
