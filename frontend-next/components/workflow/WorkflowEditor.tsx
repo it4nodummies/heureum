@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DndContext, DragEndEvent, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { workflow, type Workflow, type WorkflowStatus } from "@/lib/api";
+import { workflow, type Workflow, type WorkflowStatus, type WorkflowTransition } from "@/lib/api";
 
 const CATEGORIES = [
   { value: "todo", label: "To Do" },
@@ -60,6 +60,10 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
   const [transitionName, setTransitionName] = useState("");
   const [requireAssignee, setRequireAssignee] = useState(false);
   const [setResolutionFlag, setSetResolutionFlag] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRequireAssignee, setEditRequireAssignee] = useState(false);
+  const [editSetResolution, setEditSetResolution] = useState(false);
 
   const wf = useQuery({ queryKey: ["workflow", projectKey], queryFn: () => workflow.get(projectKey) });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["workflow", projectKey] });
@@ -122,6 +126,26 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
       addTransition.reset();
     },
   });
+  const editTransition = useMutation({
+    mutationFn: (id: string) =>
+      workflow.updateTransition(projectKey, id, {
+        name: editName,
+        require_assignee: editRequireAssignee,
+        set_resolution: editSetResolution,
+      }),
+    onSuccess: () => {
+      setEditingId(null);
+      invalidate();
+    },
+  });
+
+  const startEdit = (t: WorkflowTransition) => {
+    setEditingId(t.id);
+    setEditName(t.name);
+    setEditRequireAssignee(t.require_assignee);
+    setEditSetResolution(t.set_resolution);
+    editTransition.reset();
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -202,20 +226,77 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
           {(wf.data?.transitions ?? []).map((t) => {
             const label = t.name || `${nameByID(t.from_status_id)} → ${nameByID(t.to_status_id)}`;
             return (
-              <li key={t.id} className="flex items-center gap-2" data-testid={`transition-${label}`}>
-                <span className="text-[#1a1f36]">{label}</span>
-                <span className="text-xs text-slate-400">
-                  {nameByID(t.from_status_id)} → {nameByID(t.to_status_id)}
-                  {t.require_assignee ? " · requires assignee" : ""}
-                  {t.set_resolution ? " · sets resolution" : ""}
-                </span>
-                <button
-                  onClick={() => delTransition.mutate(t.id)}
-                  className="ml-auto text-xs text-red-600 hover:underline"
-                  aria-label={`Delete transition ${label}`}
-                >
-                  Remove
-                </button>
+              <li key={t.id} className="space-y-2" data-testid={`transition-${label}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[#1a1f36]">{label}</span>
+                  <span className="text-xs text-slate-400">
+                    {nameByID(t.from_status_id)} → {nameByID(t.to_status_id)}
+                    {t.require_assignee ? " · requires assignee" : ""}
+                    {t.set_resolution ? " · sets resolution" : ""}
+                  </span>
+                  <button
+                    onClick={() => startEdit(t)}
+                    className="ml-auto text-xs text-[#0052cc] hover:underline"
+                    aria-label={`Edit transition ${label}`}
+                    data-testid="transition-edit"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => delTransition.mutate(t.id)}
+                    className="text-xs text-red-600 hover:underline"
+                    aria-label={`Delete transition ${label}`}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {editingId === t.id && (
+                  <div className="flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 p-2">
+                    <input
+                      aria-label="Transition name (edit)"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Transition name (optional)"
+                      className="rounded border border-slate-300 px-2 py-1 text-sm"
+                    />
+                    <label className="flex items-center gap-1 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        aria-label="Require assignee (edit)"
+                        checked={editRequireAssignee}
+                        onChange={(e) => setEditRequireAssignee(e.target.checked)}
+                      />
+                      Require assignee
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        aria-label="Set resolution (edit)"
+                        checked={editSetResolution}
+                        onChange={(e) => setEditSetResolution(e.target.checked)}
+                      />
+                      Set resolution
+                    </label>
+                    <button
+                      onClick={() => editTransition.mutate(t.id)}
+                      disabled={editTransition.isPending}
+                      className="rounded bg-[#0052cc] px-3 py-1 text-sm text-white disabled:opacity-60"
+                    >
+                      Save transition
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600"
+                    >
+                      Cancel
+                    </button>
+                    {editTransition.isError && (
+                      <p className="w-full text-sm text-red-600">
+                        {editTransition.error instanceof Error ? editTransition.error.message : "Failed to update transition"}
+                      </p>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}

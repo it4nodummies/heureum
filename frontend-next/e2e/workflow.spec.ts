@@ -105,6 +105,38 @@ test("workflow editor creates and removes a transition between two statuses", as
   await expect(page.getByTestId("transition-Test Transition")).not.toBeVisible();
 });
 
+test("workflow editor edits a transition's require-assignee flag", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  // Two fresh statuses and a transition between them (mirrors the create test).
+  await page.getByLabel("New status name").fill("Edit A");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Edit A")).toBeVisible();
+
+  await page.getByLabel("New status name").fill("Edit B");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Edit B")).toBeVisible();
+
+  await page.getByLabel("From status").selectOption({ label: "Edit A" });
+  await page.getByLabel("To status").selectOption({ label: "Edit B" });
+  await page.getByLabel("Transition name").fill("Edit Transition");
+  await page.getByRole("button", { name: "Add transition" }).click();
+  const row = page.getByTestId("transition-Edit Transition");
+  await expect(row).toBeVisible();
+  await expect(row).not.toContainText("requires assignee");
+
+  // Open the inline edit form and enable "Require assignee".
+  await row.getByTestId("transition-edit").click();
+  await page.getByLabel("Require assignee (edit)").check();
+  await page.getByRole("button", { name: "Save transition" }).click();
+
+  await expect(page.getByTestId("transition-Edit Transition")).toContainText("requires assignee");
+});
+
 test("workflow editor shows an error when a non-admin tries to add a transition", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel(/email/i).fill("dev@example.com");
