@@ -192,3 +192,44 @@ test("dragging a card into a column with no valid transition shows an error", as
   await page.getByRole("button", { name: "Dismiss error" }).click();
   await expect(page.getByTestId("move-error")).not.toBeVisible();
 });
+
+async function dragBetween(page: Page, fromTestId: string, toTestId: string) {
+  const source = page.getByTestId(fromTestId);
+  const target = page.getByTestId(toTestId);
+  await source.scrollIntoViewIfNeeded();
+  const sourceBox = await source.boundingBox();
+  if (!sourceBox) throw new Error(`source ${fromTestId} not found`);
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await target.scrollIntoViewIfNeeded();
+  const targetBox = await target.boundingBox();
+  if (!targetBox) throw new Error(`target ${toTestId} not found`);
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 10 });
+  await page.mouse.up();
+}
+
+test("backlog: drag a single issue into a sprint", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/boards/1/backlog");
+
+  const sprintName = `Sprint DnD ${Date.now()}`;
+  await page.getByLabel("New sprint name").fill(sprintName);
+  await page.getByRole("button", { name: "Create sprint" }).click();
+  await expect(page.getByText(sprintName)).toBeVisible();
+
+  // The sprint's name lives in DroppableList's `header`, a DOM sibling of the inner droppable
+  // div — not a descendant of it — so the lookup goes through the outer wrapper's
+  // `container-{testId}` testid (see Task 1's note) to find the sprint by name, then strips the
+  // prefix to get the real drop-target/containment testid.
+  const sprintOuter = page.locator('[data-testid^="container-sprint-"]').filter({ hasText: sprintName });
+  const outerTestId = await sprintOuter.getAttribute("data-testid");
+  if (!outerTestId) throw new Error("sprint container testid not found");
+  const sprintTestId = outerTestId.replace("container-", "");
+  const sprintContainer = page.getByTestId(sprintTestId);
+
+  await expect(page.getByTestId("row-DEMO-1")).toBeVisible();
+  await dragBetween(page, "drag-handle-DEMO-1", sprintTestId);
+
+  await expect(sprintContainer.getByTestId("row-DEMO-1")).toBeVisible();
+  await expect(page.getByTestId("backlog-list").getByTestId("row-DEMO-1")).not.toBeVisible();
+});
