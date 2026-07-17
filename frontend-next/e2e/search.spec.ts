@@ -38,8 +38,9 @@ test("save filter then run it from the sidebar", async ({ page }) => {
   await page.goto("/app/filters");
   await page.getByLabel("JQL").fill("project = DEMO ORDER BY created DESC");
 
-  page.once("dialog", (d) => d.accept("E2E filter")); // prompt del nome
-  await page.getByRole("button", { name: "Save filter" }).click();
+  // la Save ora è un form inline (name input + Save), non più window.prompt()
+  await page.getByLabel(/filter name/i).fill("E2E filter");
+  await page.getByRole("button", { name: /^save$/i }).click();
 
   await expect(page.getByRole("button", { name: "E2E filter" })).toBeVisible();
   await page.getByRole("button", { name: "E2E filter" }).click();
