@@ -100,7 +100,11 @@ func (s *Service) Start(sprintID string) (*Sprint, error) {
 	return &sp, nil
 }
 
-func (s *Service) Complete(sprintID string, moveOpenToBacklog bool) (*Sprint, error) {
+// Complete chiude lo sprint e gestisce le issue incomplete (categoria != 'done'):
+//   - moveToSprintID != nil → riassegnate allo sprint target (UUID)
+//   - altrimenti moveOpenToBacklog → sprint_id NULL (backlog)
+//   - altrimenti restano sullo sprint chiuso
+func (s *Service) Complete(sprintID string, moveOpenToBacklog bool, moveToSprintID *string) (*Sprint, error) {
 	var sp Sprint
 	if err := s.db.First(&sp, "id = ?", sprintID).Error; err != nil {
 		return nil, errors.New("sprint not found")
@@ -112,7 +116,10 @@ func (s *Service) Complete(sprintID string, moveOpenToBacklog bool) (*Sprint, er
 	if err := s.db.Save(&sp).Error; err != nil {
 		return nil, err
 	}
-	if moveOpenToBacklog {
+	switch {
+	case moveToSprintID != nil:
+		s.db.Exec("UPDATE issues SET sprint_id = ? WHERE sprint_id = ? AND status_id NOT IN (SELECT id FROM workflow_statuses WHERE category = 'done')", *moveToSprintID, sprintID)
+	case moveOpenToBacklog:
 		s.db.Exec("UPDATE issues SET sprint_id = NULL WHERE sprint_id = ? AND status_id NOT IN (SELECT id FROM workflow_statuses WHERE category = 'done')", sprintID)
 	}
 	if s.notifier != nil {

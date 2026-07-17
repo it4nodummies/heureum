@@ -96,7 +96,7 @@ func (h *SprintHandler) Complete(w http.ResponseWriter, r *http.Request) {
 		MoveOpenToBacklog bool `json:"move_open_to_backlog"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
-	sp, err := h.svc.Complete(r.PathValue("id"), req.MoveOpenToBacklog)
+	sp, err := h.svc.Complete(r.PathValue("id"), req.MoveOpenToBacklog, nil)
 	if err != nil {
 		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
 		return

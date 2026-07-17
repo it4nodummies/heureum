@@ -308,6 +308,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/agile/1.0/sprint/{sprintId}", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.Delete))))
 	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.SprintIssues))))
 	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.MoveToSprint))))
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/complete", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.CompleteSprint))))
 
 	// PUT /issue/rank, POST /backlog/issue: project resolved from body (first
 	// issue in the list) -> enforced in-handler (AgileMiscHandler) per the

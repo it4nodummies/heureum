@@ -59,7 +59,7 @@ func TestComplete_SetsCompleteDate(t *testing.T) {
 	svc := NewService(newDB(t))
 	sp, _ := svc.CreateFull("proj-1", "S1", "", nil, nil, nil)
 	svc.Start(sp.ID)
-	done, err := svc.Complete(sp.ID, false)
+	done, err := svc.Complete(sp.ID, false, nil)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -68,5 +68,76 @@ func TestComplete_SetsCompleteDate(t *testing.T) {
 	}
 	if done.CompleteDate == nil {
 		t.Error("completeDate deve essere valorizzata dopo Complete")
+	}
+}
+
+// seedIssuesTables crea le tabelle minime toccate dalla query di Complete
+// (issues + workflow_statuses) senza importare il dominio issue (evita cicli).
+func seedIssuesTables(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	if err := db.Exec("CREATE TABLE workflow_statuses (id TEXT PRIMARY KEY, category TEXT)").Error; err != nil {
+		t.Fatalf("create workflow_statuses: %v", err)
+	}
+	if err := db.Exec("CREATE TABLE issues (id TEXT PRIMARY KEY, sprint_id TEXT, status_id TEXT)").Error; err != nil {
+		t.Fatalf("create issues: %v", err)
+	}
+	db.Exec("INSERT INTO workflow_statuses (id, category) VALUES ('st-todo','todo'), ('st-done','done')")
+}
+
+func TestComplete_MoveIncompleteToAnotherSprint(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	seedIssuesTables(t, db)
+
+	s1, _ := svc.CreateFull("proj-1", "S1", "", nil, nil, nil)
+	s2, _ := svc.CreateFull("proj-1", "S2", "", nil, nil, nil)
+	svc.Start(s1.ID)
+
+	// una issue incompleta (todo) e una completata (done) su s1
+	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-open', ?, 'st-todo')", s1.ID)
+	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-done', ?, 'st-done')", s1.ID)
+
+	done, err := svc.Complete(s1.ID, false, &s2.ID)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if done.State != StateClosed {
+		t.Errorf("s1 atteso closed, got %s", done.State)
+	}
+
+	var openSprint, doneSprint string
+	db.Raw("SELECT sprint_id FROM issues WHERE id = 'iss-open'").Scan(&openSprint)
+	db.Raw("SELECT sprint_id FROM issues WHERE id = 'iss-done'").Scan(&doneSprint)
+	if openSprint != s2.ID {
+		t.Errorf("issue incompleta attesa su s2 (%s), got %q", s2.ID, openSprint)
+	}
+	if doneSprint != s1.ID {
+		t.Errorf("issue completata deve restare su s1 (%s), got %q", s1.ID, doneSprint)
+	}
+}
+
+func TestComplete_MoveIncompleteToBacklog(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	seedIssuesTables(t, db)
+
+	s3, _ := svc.CreateFull("proj-1", "S3", "", nil, nil, nil)
+	svc.Start(s3.ID)
+	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-open2', ?, 'st-todo')", s3.ID)
+	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-done2', ?, 'st-done')", s3.ID)
+
+	if _, err := svc.Complete(s3.ID, true, nil); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	var openSprint *string
+	var doneSprint string
+	db.Raw("SELECT sprint_id FROM issues WHERE id = 'iss-open2'").Scan(&openSprint)
+	db.Raw("SELECT sprint_id FROM issues WHERE id = 'iss-done2'").Scan(&doneSprint)
+	if openSprint != nil {
+		t.Errorf("issue incompleta attesa in backlog (NULL), got %q", *openSprint)
+	}
+	if doneSprint != s3.ID {
+		t.Errorf("issue completata deve restare su s3 (%s), got %q", s3.ID, doneSprint)
 	}
 }
