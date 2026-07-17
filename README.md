@@ -1,5 +1,7 @@
 # Heureum
 
+**Issue & project tracking that's easy for product owners.**
+
 A self-hostable, open-source project & issue tracker with a drop-in Jira Cloud REST API v3-compatible surface.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
