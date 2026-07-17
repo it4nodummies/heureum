@@ -134,8 +134,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="6" fill="#0052CC"/><path d="M14 14h20v20H14z" fill="#fff" opacity="0.85"/></svg>`))
 	})
 
-	mux.HandleFunc("POST /rest/api/3/auth/register", authH.Register)
-	mux.HandleFunc("POST /rest/api/3/auth/login", authH.Login)
+	// Rate-limit the public (unauthenticated) auth endpoints per client IP to
+	// blunt credential brute-forcing. One shared limiter across register+login
+	// so an attacker can't double their budget by alternating routes. Defaults
+	// are generous enough that normal logins and the E2E suite are unaffected.
+	authLimiter := middleware.RateLimit(10, 5*time.Minute)
+	mux.Handle("POST /rest/api/3/auth/register", authLimiter(http.HandlerFunc(authH.Register)))
+	mux.Handle("POST /rest/api/3/auth/login", authLimiter(http.HandlerFunc(authH.Login)))
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/redirect", oauthH.Redirect)
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/callback", oauthH.Callback)
 
