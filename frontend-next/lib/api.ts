@@ -299,6 +299,55 @@ export const projects = {
   },
 };
 
+// ── Versions / Releases ──────────────────────────────────────────────────────
+
+// Jira-conformant Version (internal/api/v3/version.go). Dates are date-only
+// `YYYY-MM-DD` strings (omitted when unset); `projectId` is the project seq id.
+export interface Version {
+  self?: string;
+  id: string;
+  name: string;
+  description?: string;
+  released: boolean;
+  archived: boolean;
+  overdue?: boolean;
+  startDate?: string;
+  releaseDate?: string;
+  projectId: number;
+}
+
+export interface VersionInput {
+  name: string;
+  description?: string;
+  startDate?: string;
+  releaseDate?: string;
+}
+
+export const versions = {
+  // GET /rest/api/3/project/{key}/versions -> Version[]
+  list: (key: string) => apiFetch<Version[]>(`/rest/api/3/project/${key}/versions`),
+
+  // POST /rest/api/3/version. The backend accepts `{project: "<key>"}` to resolve
+  // the owning project, so no extra fetch for the numeric seq id is needed.
+  create: (key: string, body: VersionInput) =>
+    apiFetch<Version>("/rest/api/3/version", {
+      method: "POST",
+      body: JSON.stringify({ ...body, project: key }),
+    }),
+
+  // PUT /rest/api/3/version/{id}. Any subset of fields (nil = unchanged).
+  update: (
+    id: string,
+    body: Partial<VersionInput> & { released?: boolean; archived?: boolean }
+  ) =>
+    apiFetch<Version>(`/rest/api/3/version/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  remove: (id: string) => apiFetch<void>(`/rest/api/3/version/${id}`, { method: "DELETE" }),
+};
+
 // ── Issues ───────────────────────────────────────────────────────────────────
 
 // v3.IssueTransition (internal/api/v3/transitions.go): one entry of the
