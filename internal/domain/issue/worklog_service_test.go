@@ -57,6 +57,50 @@ func TestWorklogService_AddListDelete(t *testing.T) {
 	}
 }
 
+// TestWorklogService_AddIncrementsIssueTimeSpent verifica che aggiungere un
+// worklog aggiorni anche Issue.TimeSpent (somma dei secondi loggati), non solo
+// la riga di worklog: senza questo, "Time tracking" nella issue view resta a
+// zero anche dopo aver loggato lavoro.
+func TestWorklogService_AddIncrementsIssueTimeSpent(t *testing.T) {
+	db := newIssueTestDB(t)
+	if err := db.AutoMigrate(&Worklog{}); err != nil {
+		t.Fatal(err)
+	}
+	issueSvc := NewService(db)
+	iss, err := issueSvc.Create("DEMO", "p1", "Some issue", "", PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iss.TimeSpent != 0 {
+		t.Fatalf("TimeSpent = %d, want 0 before logging work", iss.TimeSpent)
+	}
+
+	svc := NewWorklogService(db)
+	if _, err := svc.Add(iss.ID, "user-1", "", 3600); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := issueSvc.GetByKey(iss.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.TimeSpent != 3600 {
+		t.Errorf("TimeSpent = %d, want 3600", reloaded.TimeSpent)
+	}
+
+	// Un secondo worklog deve accumularsi (non sovrascrivere).
+	if _, err := svc.Add(iss.ID, "user-1", "", 1800); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err = issueSvc.GetByKey(iss.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.TimeSpent != 5400 {
+		t.Errorf("TimeSpent after second worklog = %d, want 5400", reloaded.TimeSpent)
+	}
+}
+
 func TestWorklogService_AddDefaultsEmptyComment(t *testing.T) {
 	db := newIssueTestDB(t)
 	if err := db.AutoMigrate(&Worklog{}); err != nil {

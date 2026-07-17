@@ -7,6 +7,9 @@ import { projects as projectsApi } from "@/lib/api";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
 import { ProjectSummary } from "@/components/projects/ProjectSummary";
 import { IntegrationsTab } from "@/components/projects/IntegrationsTab";
+import { AutomationTab } from "@/components/projects/AutomationTab";
+import { CustomFieldsTab } from "@/components/projects/CustomFieldsTab";
+import { AccessTab } from "@/components/projects/AccessTab";
 
 interface Props {
   projectKey: string;
@@ -23,7 +26,7 @@ export function ProjectSettings({ projectKey }: Props) {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [tab, setTab] = useState<"general" | "workflow" | "summary" | "integrations">("general");
+  const [tab, setTab] = useState<"general" | "workflow" | "summary" | "integrations" | "automation" | "fields" | "access">("general");
 
   useEffect(() => {
     if (project) {
@@ -109,6 +112,24 @@ export function ProjectSettings({ projectKey }: Props) {
             className={tab === "integrations" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
             Integrations
+          </button>
+          <button
+            onClick={() => setTab("automation")}
+            className={tab === "automation" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
+          >
+            Automation
+          </button>
+          <button
+            onClick={() => setTab("fields")}
+            className={tab === "fields" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
+          >
+            Fields
+          </button>
+          <button
+            onClick={() => setTab("access")}
+            className={tab === "access" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
+          >
+            Access
           </button>
         </div>
 
@@ -202,6 +223,12 @@ export function ProjectSettings({ projectKey }: Props) {
         )}
 
         {tab === "integrations" && <IntegrationsTab projectKey={projectKey} />}
+
+        {tab === "automation" && <AutomationTab projectKey={projectKey} />}
+
+        {tab === "fields" && <CustomFieldsTab projectKey={projectKey} />}
+
+        {tab === "access" && <AccessTab projectKey={projectKey} />}
       </div>
     </div>
   );

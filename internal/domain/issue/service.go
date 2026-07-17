@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -167,6 +169,38 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 	if statusChanged {
 		s.emit("issue_transitioned", updated)
 	}
+	return updated, nil
+}
+
+// SetTimeTracking aggiorna Issue.OriginalEstimate e/o Issue.RemainingEstimate
+// (in secondi) per l'issue identificata da key. Ciascun parametro nil lascia
+// il campo corrispondente invariato. Metodo dedicato invece di allargare la
+// firma di Update, che ha già molti parametri e chiamanti.
+func (s *Service) SetTimeTracking(key string, originalSeconds, remainingSeconds *int) (*Issue, error) {
+	issue, err := s.GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	updates := map[string]interface{}{}
+	if originalSeconds != nil {
+		s.logHistory(issue.ID, "", "original_estimate", fmt.Sprintf("%d", issue.OriginalEstimate), fmt.Sprintf("%d", *originalSeconds))
+		updates["original_estimate"] = *originalSeconds
+	}
+	if remainingSeconds != nil {
+		s.logHistory(issue.ID, "", "remaining_estimate", fmt.Sprintf("%d", issue.RemainingEstimate), fmt.Sprintf("%d", *remainingSeconds))
+		updates["remaining_estimate"] = *remainingSeconds
+	}
+	if len(updates) == 0 {
+		return issue, nil
+	}
+	if err := s.db.Model(issue).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	updated, err := s.GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	s.emit("issue_updated", updated)
 	return updated, nil
 }
 
@@ -356,6 +390,40 @@ func (s *Service) SetResolution(key string, resolutionID *string) error {
 	return s.db.Model(&Issue{}).Where("id = ?", iss.ID).Update("resolution_id", resolutionID).Error
 }
 
+// TypeIDByName restituisce l'id del tipo issue con quel nome nel progetto
+// (case-insensitive), creando la riga al volo se non esiste ancora: le
+// issue_types non vengono seedate di default per un progetto nuovo (solo
+// cmd/seed inserisce una riga "Task" per il progetto demo), quindi senza
+// questo fallback ogni issue creata passando issuetype.name invece di
+// issuetype.id (il caso comune: la UI manda sempre il nome) risolverebbe a
+// nessun tipo. Mirror del pattern di auto-vivificazione già usato da AddLabel.
+func (s *Service) TypeIDByName(projectID, name string) (string, error) {
+	var it IssueType
+	err := s.db.Where("project_id = ? AND LOWER(name) = LOWER(?)", projectID, name).First(&it).Error
+	if err == nil {
+		return it.ID, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", err
+	}
+	icon, isSubtask := "task", false
+	switch strings.ToLower(name) {
+	case "subtask", "sub-task":
+		icon, isSubtask = "subtask", true
+	case "bug":
+		icon = "bug"
+	case "story":
+		icon = "story"
+	case "epic":
+		icon = "epic"
+	}
+	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: icon, IsSubtask: isSubtask}
+	if err := s.db.Create(&it).Error; err != nil {
+		return "", err
+	}
+	return it.ID, nil
+}
+
 // ResolutionIDByName restituisce l'id della resolution con quel nome (case-insensitive).
 func (s *Service) ResolutionIDByName(name string) (string, bool) {
 	var row struct{ ID string }
@@ -388,4 +456,41 @@ func WithSprint(sprintID string) ListOption {
 
 func WithNotArchived() ListOption {
 	return func(db *gorm.DB) *gorm.DB { return db.Where("is_archived = ?", false) }
+}
+
+// ExportRow is a flattened, human-readable issue row for CSV export: the
+// status/type/assignee foreign keys are resolved to their display names here
+// (via LEFT JOINs) so the handler never leaks raw UUIDs. Unassigned or
+// unresolved FKs come back as empty strings.
+type ExportRow struct {
+	Key         string
+	Title       string
+	Priority    string
+	Status      string
+	Type        string
+	Assignee    string
+	StoryPoints int
+	Created     time.Time
+	Updated     time.Time
+}
+
+// ExportRows returns every issue in the project (ordered by seq_id) with FK
+// names resolved. Assignee falls back to email when display_name is blank.
+func (s *Service) ExportRows(projectID string) ([]ExportRow, error) {
+	var rows []ExportRow
+	err := s.db.Raw(`
+		SELECT i.key AS "key", i.title AS title, i.priority AS priority,
+			COALESCE(ws.name, '') AS status,
+			COALESCE(it.name, '') AS type,
+			COALESCE(NULLIF(u.display_name, ''), u.email, '') AS assignee,
+			i.story_points AS story_points,
+			i.created_at AS created, i.updated_at AS updated
+		FROM issues i
+		LEFT JOIN workflow_statuses ws ON i.status_id = ws.id
+		LEFT JOIN issue_types it ON i.type_id = it.id
+		LEFT JOIN users u ON i.assignee_id = u.id
+		WHERE i.project_id = ?
+		ORDER BY i.seq_id ASC
+	`, projectID).Scan(&rows).Error
+	return rows, err
 }

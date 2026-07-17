@@ -1,0 +1,1 @@
+ALTER TABLE issues ADD COLUMN remaining_estimate INTEGER NOT NULL DEFAULT 0;

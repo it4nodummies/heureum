@@ -76,3 +76,80 @@ test("workflow editor persists status order after drag-and-drop reorder", async 
     rowsAfter.findIndex((r) => r.includes("TO DO"))
   );
 });
+
+test("workflow editor creates and removes a transition between two statuses", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  // Two fresh statuses with no transitions between them yet.
+  await page.getByLabel("New status name").fill("Test A");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Test A")).toBeVisible();
+
+  await page.getByLabel("New status name").fill("Test B");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Test B")).toBeVisible();
+
+  // Create a transition Test A -> Test B.
+  await page.getByLabel("From status").selectOption({ label: "Test A" });
+  await page.getByLabel("To status").selectOption({ label: "Test B" });
+  await page.getByLabel("Transition name").fill("Test Transition");
+  await page.getByRole("button", { name: "Add transition" }).click();
+  await expect(page.getByTestId("transition-Test Transition")).toBeVisible();
+
+  // Remove it again.
+  await page.getByLabel("Delete transition Test Transition").click();
+  await expect(page.getByTestId("transition-Test Transition")).not.toBeVisible();
+});
+
+test("workflow editor edits a transition's require-assignee flag", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  // Two fresh statuses and a transition between them (mirrors the create test).
+  await page.getByLabel("New status name").fill("Edit A");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Edit A")).toBeVisible();
+
+  await page.getByLabel("New status name").fill("Edit B");
+  await page.getByLabel("Category (reporting only)").selectOption("inprogress");
+  await page.getByRole("button", { name: "Add status" }).click();
+  await expect(page.getByTestId("status-Edit B")).toBeVisible();
+
+  await page.getByLabel("From status").selectOption({ label: "Edit A" });
+  await page.getByLabel("To status").selectOption({ label: "Edit B" });
+  await page.getByLabel("Transition name").fill("Edit Transition");
+  await page.getByRole("button", { name: "Add transition" }).click();
+  const row = page.getByTestId("transition-Edit Transition");
+  await expect(row).toBeVisible();
+  await expect(row).not.toContainText("requires assignee");
+
+  // Open the inline edit form and enable "Require assignee".
+  await row.getByTestId("transition-edit").click();
+  await page.getByLabel("Require assignee (edit)").check();
+  await page.getByRole("button", { name: "Save transition" }).click();
+
+  await expect(page.getByTestId("transition-Edit Transition")).toContainText("requires assignee");
+});
+
+test("workflow editor shows an error when a non-admin tries to add a transition", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill("dev@example.com");
+  await page.getByLabel(/password/i).fill("dev-demo-123");
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL(/\/app/);
+
+  await page.goto("/app/projects/DEMO/settings");
+  await page.getByRole("button", { name: "Workflow" }).click();
+
+  await page.getByLabel("From status").selectOption({ label: "TO DO" });
+  await page.getByLabel("To status").selectOption({ label: "DONE" });
+  await page.getByRole("button", { name: "Add transition" }).click();
+
+  await expect(page.getByText("you do not have permission to perform this action")).toBeVisible();
+});

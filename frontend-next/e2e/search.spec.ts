@@ -14,8 +14,10 @@ test("JQL search on filters page returns seeded issues", async ({ page }) => {
   await page.getByLabel("JQL").fill("project = DEMO");
   await page.getByRole("button", { name: "Search" }).click();
 
-  // la list view mostra almeno una issue del progetto DEMO
-  await expect(page.getByRole("cell", { name: /DEMO-1/ })).toBeVisible();
+  // la list view mostra almeno una issue del progetto DEMO; regex ancorata
+  // per non matchare anche DEMO-10/DEMO-11/... una volta che il seed aggiunge
+  // più issue (subtask/link demo del Round 13).
+  await expect(page.getByRole("cell", { name: /^DEMO-1$/ })).toBeVisible();
 });
 
 test("column toggle hides a column", async ({ page }) => {
@@ -31,15 +33,35 @@ test("column toggle hides a column", async ({ page }) => {
   await expect(page.getByRole("columnheader", { name: "Priority" })).toHaveCount(0);
 });
 
+test("cursor pagination: count label renders, Prev/Next disabled on a single page", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/app/filters");
+  await page.getByLabel("JQL").fill("project = DEMO");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  // Il conteggio risultati compare dopo la ricerca (pagina corrente, no total).
+  const count = page.getByTestId("list-count");
+  await expect(count).toBeVisible();
+  await expect(count).toHaveText(/^\d+ results?$/);
+
+  // Prev sempre disabilitato in pagina 1. maxResults=25 e il seed DEMO ha < 25
+  // issue → un'unica pagina (isLast) → Next disabilitato.
+  await expect(page.getByTestId("page-prev")).toBeDisabled();
+  await expect(page.getByTestId("page-next")).toBeDisabled();
+});
+
 test("save filter then run it from the sidebar", async ({ page }) => {
   await login(page);
   await page.goto("/app/filters");
   await page.getByLabel("JQL").fill("project = DEMO ORDER BY created DESC");
 
-  page.once("dialog", (d) => d.accept("E2E filter")); // prompt del nome
-  await page.getByRole("button", { name: "Save filter" }).click();
+  // la Save ora è un form inline (name input + Save), non più window.prompt()
+  await page.getByLabel(/filter name/i).fill("E2E filter");
+  await page.getByRole("button", { name: /^save$/i }).click();
 
   await expect(page.getByRole("button", { name: "E2E filter" })).toBeVisible();
   await page.getByRole("button", { name: "E2E filter" }).click();
-  await expect(page.getByRole("cell", { name: /DEMO-1/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /^DEMO-1$/ })).toBeVisible();
 });

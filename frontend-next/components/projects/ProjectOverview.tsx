@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { projects as projectsApi, boards as boardsApi, search as searchApi } from "@/lib/api";
+import { projects as projectsApi, boards as boardsApi, search as searchApi, issues } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
 
@@ -90,7 +90,15 @@ export function ProjectOverview({ projectKey }: Props) {
           </div>
         )}
 
-        <h2 className="mb-3 text-sm font-semibold text-[#1a1f36]">Recent issues</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-[#1a1f36]">Recent issues</h2>
+          <button
+            onClick={() => issues.exportCsv(projectKey)}
+            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Export CSV
+          </button>
+        </div>
         <div className="bg-white border border-slate-100 rounded-2xl shadow-sm shadow-slate-100/80 p-4">
           {recentIssues.isLoading ? (
             <div className="flex items-center justify-center py-10">

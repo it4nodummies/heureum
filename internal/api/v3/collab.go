@@ -108,6 +108,32 @@ func LinkedIssue(id, key, self, summary, status string) LinkedIssueRef {
 	return LinkedIssueRef{ID: id, Key: key, Self: self, Fields: map[string]any{"summary": summary, "status": map[string]any{"name": status}}}
 }
 
+// LinkedIssueFields è lo schema minimale dei fields esposti per una issue
+// collegata nella lista per-issue (GET /issue/{key}/issuelinks): solo
+// summary + status, che è tutto ciò che serve alla UI "Linked work items".
+type LinkedIssueFields struct {
+	Summary string     `json:"summary"`
+	Status  *StatusRef `json:"status,omitempty"`
+}
+
+// LinkedIssueForIssue è la issue collegata (l'altro capo del link) come
+// esposta da GET /issue/{issueIdOrKey}/issuelinks.
+type LinkedIssueForIssue struct {
+	Key    string            `json:"key"`
+	Fields LinkedIssueFields `json:"fields"`
+}
+
+// IssueLinkForIssue è lo schema di un singolo elemento dell'array
+// "issuelinks" restituito da GET /issue/{issueIdOrKey}/issuelinks: solo il
+// capo del link diverso dalla issue richiesta è popolato (inwardIssue se la
+// issue richiesta è l'outward/source del link, outwardIssue altrimenti).
+type IssueLinkForIssue struct {
+	ID           string               `json:"id"`
+	Type         LinkTypeRef          `json:"type"`
+	InwardIssue  *LinkedIssueForIssue `json:"inwardIssue,omitempty"`
+	OutwardIssue *LinkedIssueForIssue `json:"outwardIssue,omitempty"`
+}
+
 // ChangeItem è lo schema v3 ChangeDetails (additionalProperties:false).
 type ChangeItem struct {
 	Field      string `json:"field"`

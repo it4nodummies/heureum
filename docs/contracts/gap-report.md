@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **114**
 - Nel contratto ma mancanti: **607**
-- Implementati ma fuori contratto (estensioni): **84**
+- Implementati ma fuori contratto (estensioni): **88**
 
 ## Mancanti (dal contratto)
 
@@ -637,8 +637,11 @@
 - `GET /rest/api/3/custom-fields/{}/options`
 - `GET /rest/api/3/dashboards`
 - `GET /rest/api/3/dashboards/{}`
+- `GET /rest/api/3/issue/{}/attachments`
 - `GET /rest/api/3/issue/{}/custom-values`
 - `GET /rest/api/3/issue/{}/git`
+- `GET /rest/api/3/issue/{}/issuelinks`
+- `GET /rest/api/3/issue/{}/subtasks`
 - `GET /rest/api/3/notifications`
 - `GET /rest/api/3/notifications/settings`
 - `GET /rest/api/3/notifications/unread-count`
@@ -685,6 +688,7 @@
 - `POST /rest/api/3/dashboards`
 - `POST /rest/api/3/dashboards/{}/widgets`
 - `POST /rest/api/3/issue/{}/labels`
+- `POST /rest/api/3/issues/bulk`
 - `POST /rest/api/3/issues/rank`
 - `POST /rest/api/3/project/{}/automation`
 - `POST /rest/api/3/project/{}/custom-fields`

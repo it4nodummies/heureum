@@ -2,41 +2,73 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/domain/customfield"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/permission"
+	"github.com/it4nodummies/heureum/internal/domain/project"
 )
 
 type CustomFieldHandler struct {
-	svc *customfield.Service
-	chk *authz.Checker
+	svc        *customfield.Service
+	chk        *authz.Checker
+	projectSvc *project.Service
+	issueSvc   *issue.Service
 }
 
-func NewCustomFieldHandler(svc *customfield.Service, chk *authz.Checker) *CustomFieldHandler {
-	return &CustomFieldHandler{svc: svc, chk: chk}
+func NewCustomFieldHandler(svc *customfield.Service, chk *authz.Checker, projectSvc *project.Service, issueSvc *issue.Service) *CustomFieldHandler {
+	return &CustomFieldHandler{svc: svc, chk: chk, projectSvc: projectSvc, issueSvc: issueSvc}
+}
+
+// resolveIssueID maps a {issueIdOrKey} path value (numeric seq_id or issue key)
+// to the internal issue UUID.
+func (h *CustomFieldHandler) resolveIssueID(idOrKey string) (string, bool) {
+	if idOrKey == "" {
+		return "", false
+	}
+	if n, err := strconv.ParseInt(idOrKey, 10, 64); err == nil {
+		if iss, err := h.issueSvc.GetBySeqID(n); err == nil {
+			return iss.ID, true
+		}
+	}
+	if iss, err := h.issueSvc.GetByKey(idOrKey); err == nil {
+		return iss.ID, true
+	}
+	return "", false
 }
 
 func (h *CustomFieldHandler) ListFields(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectID")
-	fields, _ := h.svc.ListFields(projectID)
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	fields, _ := h.svc.ListFields(p.ID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fields)
 }
 
 func (h *CustomFieldHandler) CreateField(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectID")
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
 	var req struct {
 		Name      string                `json:"name"`
 		FieldType customfield.FieldType `json:"field_type"`
+		Required  bool                  `json:"required"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	f, err := h.svc.CreateField(projectID, req.Name, req.FieldType)
+	f, err := h.svc.CreateField(p.ID, req.Name, req.FieldType, req.Required)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
@@ -106,7 +138,11 @@ func (h *CustomFieldHandler) RemoveOption(w http.ResponseWriter, r *http.Request
 }
 
 func (h *CustomFieldHandler) SetValue(w http.ResponseWriter, r *http.Request) {
-	issueID := r.PathValue("issueID")
+	issueID, ok := h.resolveIssueID(r.PathValue("issueIdOrKey"))
+	if !ok {
+		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+		return
+	}
 	fieldID := r.PathValue("fieldID")
 	var req struct {
 		Value    interface{} `json:"value"`
@@ -123,7 +159,14 @@ func (h *CustomFieldHandler) SetValue(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if err := h.svc.SetValue(issueID, fieldID, req.Value); err != nil {
-			http.Error(w, `{"error":"failed to set value"}`, http.StatusInternalServerError)
+			switch {
+			case errors.Is(err, customfield.ErrFieldNotFound):
+				http.Error(w, `{"error":"custom field not found"}`, http.StatusNotFound)
+			case errors.Is(err, customfield.ErrInvalidValue):
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+			default:
+				http.Error(w, `{"error":"failed to set value"}`, http.StatusInternalServerError)
+			}
 			return
 		}
 	}
@@ -131,7 +174,11 @@ func (h *CustomFieldHandler) SetValue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CustomFieldHandler) GetValues(w http.ResponseWriter, r *http.Request) {
-	issueID := r.PathValue("issueID")
+	issueID, ok := h.resolveIssueID(r.PathValue("issueIdOrKey"))
+	if !ok {
+		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
+		return
+	}
 	values, _ := h.svc.GetValues(issueID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(values)

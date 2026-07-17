@@ -5,25 +5,35 @@ import (
 	"net/http"
 
 	"github.com/it4nodummies/heureum/internal/domain/automation"
+	"github.com/it4nodummies/heureum/internal/domain/project"
 )
 
 type AutomationHandler struct {
-	svc *automation.Service
+	svc        *automation.Service
+	projectSvc *project.Service
 }
 
-func NewAutomationHandler(svc *automation.Service) *AutomationHandler {
-	return &AutomationHandler{svc: svc}
+func NewAutomationHandler(svc *automation.Service, projectSvc *project.Service) *AutomationHandler {
+	return &AutomationHandler{svc: svc, projectSvc: projectSvc}
 }
 
 func (h *AutomationHandler) ListRules(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectID")
-	rules, _ := h.svc.ListRules(projectID)
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
+	rules, _ := h.svc.ListRules(p.ID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(rules)
 }
 
 func (h *AutomationHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectID")
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return
+	}
 	var req struct {
 		Name           string `json:"name"`
 		TriggerType    string `json:"trigger_type"`
@@ -34,7 +44,7 @@ func (h *AutomationHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	rule, err := h.svc.CreateRule(projectID, req.Name, req.TriggerType, req.ConditionsJSON, req.ActionsJSON)
+	rule, err := h.svc.CreateRule(p.ID, req.Name, req.TriggerType, req.ConditionsJSON, req.ActionsJSON)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return

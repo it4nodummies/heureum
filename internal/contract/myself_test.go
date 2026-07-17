@@ -20,8 +20,9 @@ func newTestServer(t *testing.T) (*httptest.Server, *auth.Service) {
 	dsn := filepath.Join(t.TempDir(), "test.db")
 	cfg := &config.Config{
 		Port: 0, Env: "test", Secret: "contract-test-secret",
-		BaseURL: "http://localhost:8080",
-		DB:      config.DBConfig{Driver: "sqlite", DSN: dsn},
+		BaseURL:    "http://localhost:8080",
+		DB:         config.DBConfig{Driver: "sqlite", DSN: dsn},
+		UploadsDir: filepath.Join(t.TempDir(), "uploads"),
 	}
 	s, err := store.New(cfg.DB, cfg.Env)
 	if err != nil {

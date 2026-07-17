@@ -132,34 +132,26 @@ func (h *IssueHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
 		return
 	}
-	issues, _ := h.svc.ListByProject(p.ID)
+	rows, err := h.svc.ExportRows(p.ID)
+	if err != nil {
+		http.Error(w, `{"error":"export failed"}`, http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-issues.csv", p.Key))
 	wr := csv.NewWriter(w)
 	wr.Write([]string{"Key", "Title", "Priority", "Status", "Type", "Assignee", "Story Points", "Created", "Updated"})
-	for _, iss := range issues {
-		status := ""
-		if iss.StatusID != nil {
-			status = *iss.StatusID
-		}
-		typeName := ""
-		if iss.TypeID != nil {
-			typeName = *iss.TypeID
-		}
-		assignee := ""
-		if iss.AssigneeID != nil {
-			assignee = *iss.AssigneeID
-		}
+	for _, row := range rows {
 		wr.Write([]string{
-			iss.Key,
-			iss.Title,
-			string(iss.Priority),
-			status,
-			typeName,
-			assignee,
-			fmt.Sprintf("%d", iss.StoryPoints),
-			iss.CreatedAt.Format("2006-01-02"),
-			iss.UpdatedAt.Format("2006-01-02"),
+			row.Key,
+			row.Title,
+			row.Priority,
+			row.Status,
+			row.Type,
+			row.Assignee,
+			fmt.Sprintf("%d", row.StoryPoints),
+			row.Created.Format("2006-01-02"),
+			row.Updated.Format("2006-01-02"),
 		})
 	}
 	wr.Flush()
@@ -186,7 +178,10 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Parent struct {
 				Key string `json:"key"`
 			} `json:"parent"`
-			Labels []string `json:"labels"`
+			Labels   []string `json:"labels"`
+			Assignee *struct {
+				AccountID string `json:"accountId"`
+			} `json:"assignee"`
 		} `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -243,6 +238,15 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var typeID *string
 	if req.Fields.IssueType.ID != "" {
 		typeID = &req.Fields.IssueType.ID
+	} else if req.Fields.IssueType.Name != "" {
+		// La UI (e Jira reale) manda tipicamente issuetype.name, non .id: senza
+		// questa risoluzione l'issue veniva creata con TypeID nil e la v3
+		// mapping layer applicava un fallback "Task" fisso (v3/issue.go),
+		// mascherando silenziosamente qualunque altro tipo richiesto — incluso
+		// "Subtask" per le sottotask create dalla sezione Subtasks.
+		if id, terr := h.svc.TypeIDByName(proj.ID, req.Fields.IssueType.Name); terr == nil {
+			typeID = &id
+		}
 	}
 
 	iss, err := h.svc.Create(proj.Key, proj.ID, req.Fields.Summary, descJSON, priority, parentID, typeID)
@@ -259,6 +263,16 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		}
+	}
+	// Create's payload doesn't route through Update's generic field-diffing —
+	// wire the assignee through the same Update path Update itself uses
+	// (assigneeID as the 5th positional arg) rather than teaching Create a
+	// second way to set it.
+	if req.Fields.Assignee != nil && req.Fields.Assignee.AccountID != "" {
+		accountID := req.Fields.Assignee.AccountID
+		if updated, uerr := h.svc.Update(iss.Key, nil, nil, nil, &accountID, nil, nil); uerr == nil {
+			iss = updated
 		}
 	}
 	for _, name := range req.Fields.Labels {
@@ -306,7 +320,11 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 			Priority *struct {
 				ID string `json:"id"`
 			} `json:"priority"`
-			StoryPoints *int `json:"customfield_10016"`
+			StoryPoints  *int `json:"customfield_10016"`
+			TimeTracking *struct {
+				OriginalEstimateSeconds  *int `json:"originalEstimateSeconds"`
+				RemainingEstimateSeconds *int `json:"remainingEstimateSeconds"`
+			} `json:"timetracking"`
 		} `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -344,6 +362,12 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Fields.TimeTracking != nil {
+		if _, err := h.svc.SetTimeTracking(iss.Key, req.Fields.TimeTracking.OriginalEstimateSeconds, req.Fields.TimeTracking.RemainingEstimateSeconds); err != nil {
+			v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update time tracking."}, nil)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -360,6 +384,27 @@ func (h *IssueHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Subtasks implementa GET /rest/api/3/issue/{issueIdOrKey}/subtasks: elenca i
+// figli (issue.parent_id == issue.ID) come v3 issue completi, riusando la
+// stessa costruzione (buildIssueInput + v3.JiraIssue) di Get.
+func (h *IssueHandler) Subtasks(w http.ResponseWriter, r *http.Request) {
+	iss, err := h.resolveIssue(r.PathValue("issueIdOrKey"))
+	if err != nil || iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
+		return
+	}
+	children, err := h.svc.GetChildren(iss.ID)
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list subtasks"}, nil)
+		return
+	}
+	out := make([]v3.IssueBean, 0, len(children))
+	for i := range children {
+		out = append(out, v3.JiraIssue(h.buildIssueInput(&children[i])))
+	}
+	v3.WriteJSON(w, http.StatusOK, map[string]any{"values": out, "total": len(out)})
 }
 
 func (h *IssueHandler) List(w http.ResponseWriter, r *http.Request) {

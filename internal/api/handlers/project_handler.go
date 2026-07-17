@@ -338,6 +338,14 @@ func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// projectMember is the hydrated wire shape for GET /project/{key}/members: the
+// user's v3 fields (accountId, displayName, avatarUrls, and emailAddress when
+// visible) inlined via embedding, plus the member's project role.
+type projectMember struct {
+	v3.User
+	Role project.MemberRole `json:"role"`
+}
+
 func (h *ProjectHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	p, err := h.svc.GetByKey(r.PathValue("key"))
 	if err != nil {
@@ -345,8 +353,24 @@ func (h *ProjectHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	members, _ := h.svc.ListMembers(p.ID)
+	// Email visibility mirrors the user directory handlers: only the caller's
+	// own address and (for a global admin) everyone's is exposed; otherwise the
+	// field is zeroed before mapping and omitempty drops it from the JSON.
+	uid := middleware.UserIDFromContext(r.Context())
+	includeEmail := h.isGlobalAdmin(uid)
+	out := make([]projectMember, 0, len(members))
+	for _, m := range members {
+		var u user.User
+		if h.svc.DB().First(&u, "id = ?", m.UserID).Error != nil {
+			continue
+		}
+		if !includeEmail && u.ID != uid {
+			u.Email = ""
+		}
+		out = append(out, projectMember{User: v3.JiraUser(u, h.baseURL), Role: m.Role})
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(members)
+	json.NewEncoder(w).Encode(out)
 }
 
 func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {

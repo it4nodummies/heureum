@@ -38,6 +38,20 @@ export interface Project {
   projectCategory?: ProjectCategoryRef;
 }
 
+export type ProjectRole = "admin" | "member" | "viewer";
+
+// Hydrated project member: the user's public JiraUser fields plus their
+// per-project role. Returned by GET /rest/api/3/project/{key}/members.
+// emailAddress is present only when the caller may see it (self or global
+// admin), mirroring v3.JiraUser's omitempty gating.
+export interface ProjectMember {
+  accountId: string;
+  displayName: string;
+  emailAddress?: string;
+  avatarUrls?: Record<string, string>;
+  role: ProjectRole;
+}
+
 export interface ADFNode {
   type: string;
   version?: number;
@@ -82,6 +96,13 @@ export interface IssueFields {
   parent?: { id: string; key: string };
   project?: { id: string; key: string; name: string };
   customfield_10016?: number | null;
+  // Absent (not null) when neither estimate nor logged time has ever been
+  // set — mirrors the backend's omitempty on v3.TimeTracking (internal/api/v3/issue.go).
+  timetracking?: {
+    originalEstimateSeconds?: number;
+    timeSpentSeconds?: number;
+    remainingEstimateSeconds?: number;
+  };
 }
 
 export interface Issue {
@@ -98,6 +119,10 @@ export interface PagedResponse<T> {
   isLast: boolean;
   values: T[];
 }
+
+// Alias for the same startAt/maxResults/total/isLast/values page shape, named
+// to match Jira's "PageBean" (used e.g. by GET /group/member → PageBeanUser).
+export type PageBean<T> = PagedResponse<T>;
 
 export interface User {
   id: string;
@@ -168,7 +193,12 @@ async function apiFetch<T>(
   }
 
   if (res.status === 204) return undefined as unknown as T;
-  return res.json() as Promise<T>;
+  // Some 201 responses (e.g. POST /rest/api/3/issueLink) are body-less —
+  // guard against `res.json()` throwing "Unexpected end of JSON input" on an
+  // empty string rather than assuming every non-204 response has a body.
+  const text = await res.text();
+  if (!text) return undefined as unknown as T;
+  return JSON.parse(text) as T;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -244,12 +274,70 @@ export const projects = {
   types: () => apiFetch<{ key: string; formattedKey: string }[]>("/rest/api/3/project/type"),
 
   categories: () => apiFetch<ProjectCategoryRef[]>("/rest/api/3/projectCategory"),
+
+  // Project members/roles. GET/POST /project/{key}/members returns the hydrated
+  // shape (JiraUser fields + role); DELETE removes by accountId; POST /invites
+  // creates an invite token for an email not yet a user.
+  members: {
+    list: (key: string) => apiFetch<ProjectMember[]>(`/rest/api/3/project/${key}/members`),
+    // add is also "change role" (upsert): POSTing an existing member's id with a
+    // new role updates it.
+    add: (key: string, body: { user_id: string; role: ProjectRole }) =>
+      apiFetch<ProjectMember>(`/rest/api/3/project/${key}/members`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    remove: (key: string, userId: string) =>
+      apiFetch<void>(`/rest/api/3/project/${key}/members/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+      }),
+    invite: (key: string, body: { email: string; role: ProjectRole }) =>
+      apiFetch<{ token: string }>(`/rest/api/3/project/${key}/invites`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  },
 };
 
 // ── Issues ───────────────────────────────────────────────────────────────────
 
+// v3.IssueTransition (internal/api/v3/transitions.go): one entry of the
+// { transitions: [...] } response from GET /issue/{key}/transitions. `to` is the
+// target status (reuses StatusRef).
+export interface IssueTransitionOption {
+  id: string;
+  name: string;
+  to: StatusRef;
+  hasScreen: boolean;
+  isGlobal: boolean;
+  isInitial: boolean;
+  isAvailable: boolean;
+  isConditional: boolean;
+  looped: boolean;
+}
+
 export const issues = {
   get: (idOrKey: string) => apiFetch<Issue>(`/rest/api/3/issue/${idOrKey}`),
+
+  // CSV export must go through fetch + bearer header (auth is header-based, so a
+  // plain <a href> would 401). Mirrors attachments.contentBlobUrl: fetch bytes,
+  // wrap in an object URL, click a synthetic anchor, then revoke.
+  exportCsv: async (key: string): Promise<void> => {
+    const res = await fetch(`${BASE_URL}/rest/api/3/project/${key}/issues/export`, {
+      headers: authHeaders(),
+    });
+    handleUnauthorized(res);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${key}-issues.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 
   create: (payload: {
     projectKey: string;
@@ -258,6 +346,8 @@ export const issues = {
     priorityId?: string;
     description?: ADFNode;
     labels?: string[];
+    parentKey?: string;
+    assigneeId?: string;
   }) =>
     apiFetch<{ id: string; key: string; self: string }>("/rest/api/3/issue", {
       method: "POST",
@@ -269,6 +359,8 @@ export const issues = {
           ...(payload.priorityId ? { priority: { id: payload.priorityId } } : {}),
           ...(payload.description ? { description: payload.description } : {}),
           ...(payload.labels ? { labels: payload.labels } : {}),
+          ...(payload.parentKey ? { parent: { key: payload.parentKey } } : {}),
+          ...(payload.assigneeId ? { assignee: { accountId: payload.assigneeId } } : {}),
         },
       }),
     }),
@@ -278,6 +370,29 @@ export const issues = {
       method: "PUT",
       body: JSON.stringify({ fields }),
     }),
+
+  // Heureum extension (not in the Jira spec): POST /rest/api/3/issues/bulk
+  // applies a partial field set to a list of issue keys with per-issue
+  // authorization and partial-failure reporting (see BulkUpdate in
+  // internal/api/handlers). `assignee: null` clears the assignee where the
+  // backend supports it; `delete: true` deletes each targeted issue. Status is
+  // NOT settable here (it goes through transitions).
+  bulk: (body: {
+    keys: string[];
+    fields?: { assignee?: { accountId: string } | null; priority?: { id: string }; labels?: string[] };
+    delete?: boolean;
+  }) =>
+    apiFetch<{ results: { key: string; ok: boolean; error?: string }[] }>("/rest/api/3/issues/bulk", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // GET /rest/api/3/issue/{key}/transitions → v3.Transitions
+  // (internal/api/v3/transitions.go), the transitions available FROM the
+  // issue's current status. Same route as availableTransitions but typed to
+  // the full v3.IssueTransition shape (used by inline status edit).
+  transitions: (key: string) =>
+    apiFetch<{ transitions: IssueTransitionOption[] }>(`/rest/api/3/issue/${key}/transitions`),
 
   // PUT /rest/api/3/issue/{key} non gestisce lo status (non è un campo "fields"
   // libero come Jira reale: richiede una transizione validata dal workflow).
@@ -292,7 +407,42 @@ export const issues = {
 
   availableTransitions: (idOrKey: string) =>
     apiFetch<{ transitions: AvailableTransition[] }>(`/rest/api/3/issue/${idOrKey}/transitions`),
+
+  subtasks: (idOrKey: string) =>
+    apiFetch<{ values: Issue[]; total: number }>(`/rest/api/3/issue/${idOrKey}/subtasks`),
+
+  changelog: (idOrKey: string) => apiFetch<PageOfChangelogs>(`/rest/api/3/issue/${idOrKey}/changelog`),
 };
+
+// ── Changelog (issue history) ───────────────────────────────────────────────
+// v3.Changelog / v3.ChangeItem (internal/api/v3/collab.go). `author` is
+// usually absent: the backend logs history entries with ActorID="" (see
+// HistoryHandler.GetHistory), so the UI falls back to "System".
+
+export interface ChangeItem {
+  field: string;
+  fieldId?: string;
+  fieldtype: string;
+  from?: string;
+  fromString?: string;
+  to?: string;
+  toString?: string;
+}
+
+export interface Changelog {
+  id: string;
+  author?: JiraUserRef | null;
+  created: string;
+  items: ChangeItem[];
+}
+
+export interface PageOfChangelogs {
+  startAt: number;
+  maxResults: number;
+  total: number;
+  isLast: boolean;
+  values: Changelog[];
+}
 
 // ── Metadata (priorities, issue types, statuses) ────────────────────────────
 
@@ -322,6 +472,89 @@ export const comments = {
     apiFetch<void>(`/rest/api/3/issue/${issueKey}/comment/${id}`, { method: "DELETE" }),
 };
 
+// ── Worklogs (time tracking) ────────────────────────────────────────────────
+
+// Mirrors parseJiraDuration in internal/api/handlers/worklog_handler.go exactly:
+// w(eek)=5*8h, d(ay)=8h, h(our)=3600s, m(inute)=60s, space-separated tokens,
+// a token with no recognized unit suffix is treated as minutes.
+export function parseJiraDuration(s: string): number {
+  let total = 0;
+  for (const tok of s.trim().split(/\s+/).filter(Boolean)) {
+    const lastChar = tok.slice(-1);
+    let unit = lastChar;
+    let numStr = tok;
+    if (unit === "w" || unit === "d" || unit === "h" || unit === "m") {
+      numStr = tok.slice(0, -1);
+    } else {
+      unit = "m";
+    }
+    const n = parseInt(numStr, 10);
+    if (Number.isNaN(n)) continue;
+    switch (unit) {
+      case "w":
+        total += n * 5 * 8 * 3600;
+        break;
+      case "d":
+        total += n * 8 * 3600;
+        break;
+      case "h":
+        total += n * 3600;
+        break;
+      case "m":
+        total += n * 60;
+        break;
+    }
+  }
+  return total;
+}
+
+// Mirrors formatSeconds in internal/api/v3/worklog.go exactly (e.g. "1h 30m",
+// "2h", "45m"; zero or negative → "0m").
+export function formatSeconds(sec: number): string {
+  if (sec <= 0) return "0m";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+// v3.Worklog (internal/api/v3/worklog.go).
+export interface Worklog {
+  self: string;
+  id: string;
+  issueId: string;
+  author: JiraUserRef | null;
+  updateAuthor?: JiraUserRef | null;
+  comment: ADFNode | null;
+  created: string;
+  updated: string;
+  started: string;
+  timeSpent: string;
+  timeSpentSeconds: number;
+}
+
+export interface PageOfWorklogs {
+  startAt: number;
+  maxResults: number;
+  total: number;
+  worklogs: Worklog[];
+}
+
+export const worklogs = {
+  list: (issueKey: string) => apiFetch<PageOfWorklogs>(`/rest/api/3/issue/${issueKey}/worklog`),
+  // Sends timeSpentSeconds (parsed client-side via parseJiraDuration) rather
+  // than the raw timeSpent string, to avoid depending on the server's own
+  // duration parsing for a value we already parsed to validate the form.
+  add: (issueKey: string, payload: { timeSpentSeconds: number; comment?: ADFNode }) =>
+    apiFetch<Worklog>(`/rest/api/3/issue/${issueKey}/worklog`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  delete: (issueKey: string, id: string) =>
+    apiFetch<void>(`/rest/api/3/issue/${issueKey}/worklog/${id}`, { method: "DELETE" }),
+};
+
 // ── Watchers & Votes ─────────────────────────────────────────────────────────
 
 export interface Watchers { self: string; isWatching: boolean; watchCount: number; watchers: JiraUserRef[]; }
@@ -346,12 +579,30 @@ export interface SearchIssue {
   self: string;
   fields: {
     summary?: string;
-    status?: { name: string; statusCategory?: { key: string; colorName: string } };
-    priority?: { name: string };
-    assignee?: { displayName: string } | null;
+    status?: { id?: string; name: string; statusCategory?: { key: string; colorName: string } };
+    priority?: { id?: string; name: string };
+    assignee?: { accountId?: string; displayName: string } | null;
     updated?: string;
+    issuetype?: { name: string; iconUrl?: string };
+    parent?: { key: string } | null;
+    customfield_10016?: number;
   };
 }
+
+// Richer default field set for the productive issue list (row inline-edit +
+// hierarchy). status/priority/assignee carry the ids the inline-edit needs; the
+// v3 search projection emits status.id/priority.id/assignee.accountId/parent
+// when these fields are requested (internal/api/v3/issue.go + fields.go).
+export const LIST_FIELDS = [
+  "summary",
+  "status",
+  "priority",
+  "assignee",
+  "updated",
+  "issuetype",
+  "parent",
+  "customfield_10016",
+];
 
 export interface SearchJqlResponse {
   issues: SearchIssue[];
@@ -366,6 +617,17 @@ export interface Filter {
   jql: string;
   favourite: boolean;
   owner?: { displayName: string };
+  // The wire has NO isShared boolean: sharing is expressed via sharePermissions
+  // ([{type:"global"}] = shared, [] / absent = private). Requests still send
+  // is_shared (snake) on create/update — the backend parses it — but to READ
+  // whether a filter is shared, derive it from this array (see filterIsShared).
+  sharePermissions?: { type: string }[];
+}
+
+// Derives whether a filter is shared from its sharePermissions array. There is
+// no isShared boolean on the wire.
+export function filterIsShared(f: Filter): boolean {
+  return (f.sharePermissions?.length ?? 0) > 0;
 }
 
 export const search = {
@@ -385,10 +647,15 @@ export const filters = {
   list: () => apiFetch<Filter[]>("/rest/api/3/filter/my"),
   favourites: () => apiFetch<Filter[]>("/rest/api/3/filter/favourite"),
   get: (id: string) => apiFetch<Filter>(`/rest/api/3/filter/${id}`),
-  create: (name: string, jql: string, description?: string) =>
+  create: (name: string, jql: string, opts?: { description?: string; is_shared?: boolean }) =>
     apiFetch<Filter>("/rest/api/3/filter", {
       method: "POST",
-      body: JSON.stringify({ name, jql, description }),
+      body: JSON.stringify({ name, jql, description: opts?.description, is_shared: opts?.is_shared }),
+    }),
+  update: (id: string, patch: { name?: string; jql?: string; description?: string; is_shared?: boolean }) =>
+    apiFetch<Filter>(`/rest/api/3/filter/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
     }),
   del: (id: string) => apiFetch<void>(`/rest/api/3/filter/${id}`, { method: "DELETE" }),
   setFavourite: (id: string, fav: boolean) =>
@@ -580,12 +847,66 @@ export interface ProjectSummary {
 export const reports = {
   burndown: (key: string, sprintId: string) =>
     apiFetch<BurndownData>(`/rest/api/3/project/${key}/reports/burndown?sprintId=${sprintId}`),
+  burnup: (key: string, sprintId: string) =>
+    apiFetch<BurndownData>(`/rest/api/3/project/${key}/reports/burnup?sprintId=${sprintId}`),
   velocity: (key: string) => apiFetch<VelocityData>(`/rest/api/3/project/${key}/reports/velocity`),
   cfd: (key: string) => apiFetch<CFDData>(`/rest/api/3/project/${key}/reports/cfd`),
   pie: (key: string, field: string) => apiFetch<PieSlice[]>(`/rest/api/3/project/${key}/reports/pie?field=${field}`),
   createdVsResolved: (key: string, days = 30) =>
     apiFetch<CreatedVsResolvedData>(`/rest/api/3/project/${key}/reports/created-vs-resolved?days=${days}`),
   summary: (key: string) => apiFetch<ProjectSummary>(`/rest/api/3/project/${key}/summary`),
+};
+
+// ── Timeline (Gantt) ─────────────────────────────────────────────────────────
+
+export interface TimelineBar {
+  id: string;
+  name: string;
+  type: string; // "epic" | "sprint"
+  start_date: string | null;
+  end_date: string | null;
+  progress: number; // 0..100
+  parent_id?: string;
+  color: string; // hex
+}
+export interface TimelineData {
+  project_id: string;
+  zoom: string;
+  start_date: string;
+  end_date: string;
+  bars: TimelineBar[];
+  headers: string[];
+}
+export const timeline = {
+  get: (key: string, zoom: "weeks" | "months" | "quarters" = "weeks") =>
+    apiFetch<TimelineData>(`/rest/api/3/project/${key}/timeline?zoom=${zoom}`),
+};
+
+// ── Calendar ─────────────────────────────────────────────────────────────────
+
+export interface CalendarIssue {
+  id: string;
+  key: string;
+  title: string;
+  priority: string;
+  status: string;
+  due_date: string | null;
+  start_date: string | null;
+}
+export interface CalendarDay {
+  date: string; // "YYYY-MM-DD"
+  day: number;
+  issues: CalendarIssue[];
+}
+export interface CalendarData {
+  year: number;
+  month: number;
+  days: CalendarDay[];
+  total_days: number;
+}
+export const calendar = {
+  get: (key: string, year: number, month: number) =>
+    apiFetch<CalendarData>(`/rest/api/3/project/${key}/calendar?year=${year}&month=${month}`),
 };
 
 // ── Dashboards ───────────────────────────────────────────────────────────────
@@ -645,6 +966,13 @@ export const dashboards = {
   get: (id: string) => apiFetch<Dashboard & { widgets: DashboardWidget[] }>(`/rest/api/3/dashboards/${id}`),
   create: (name: string) =>
     apiFetch<Dashboard>("/rest/api/3/dashboards", { method: "POST", body: JSON.stringify({ name }) }),
+  addWidget: (id: string, body: { widget_type: string; config_json: string }) =>
+    apiFetch<DashboardWidget>(`/rest/api/3/dashboards/${id}/widgets`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  removeWidget: (id: string, widgetId: string) =>
+    apiFetch<void>(`/rest/api/3/dashboards/${id}/widgets/${widgetId}`, { method: "DELETE" }),
 };
 
 // ── Notifications ────────────────────────────────────────────────────────────
@@ -702,6 +1030,18 @@ export const profile = {
   searchUsers: (query: string) => apiFetch<JiraUser[]>(`/rest/api/3/user/search?query=${encodeURIComponent(query)}`),
 };
 
+// ── Users (assignable search, for the UserPicker) ───────────────────────────
+
+export const users = {
+  // GET /rest/api/3/user/assignable/search?project={KEY}&query={q} —
+  // membership-scoped (the caller must be a member of the project /
+  // BROWSE_PROJECTS, see internal/api/handlers/user_handler.go
+  // AssignableSearch); an empty query returns all project members ordered by
+  // displayName rather than an empty list.
+  assignableSearch: (projectKey: string, query = "") =>
+    apiFetch<JiraUserRef[]>(`/rest/api/3/user/assignable/search${buildQuery({ project: projectKey, query })}`),
+};
+
 // ── Permissions ──────────────────────────────────────────────────────────────
 
 export interface UserPermission {
@@ -737,6 +1077,22 @@ export const groups = {
     ),
   create: (name: string) =>
     apiFetch<GroupRef>("/rest/api/3/group", { method: "POST", body: JSON.stringify({ name }) }),
+  get: (groupname: string) =>
+    apiFetch<GroupRef>(`/rest/api/3/group?groupname=${encodeURIComponent(groupname)}`),
+  del: (groupname: string) =>
+    apiFetch<void>(`/rest/api/3/group?groupname=${encodeURIComponent(groupname)}`, { method: "DELETE" }),
+  members: (groupname: string) =>
+    apiFetch<PageBean<JiraUser>>(`/rest/api/3/group/member?groupname=${encodeURIComponent(groupname)}`),
+  addUser: (groupname: string, accountId: string) =>
+    apiFetch<void>(`/rest/api/3/group/user?groupname=${encodeURIComponent(groupname)}`, {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    }),
+  removeUser: (groupname: string, accountId: string) =>
+    apiFetch<void>(
+      `/rest/api/3/group/user?groupname=${encodeURIComponent(groupname)}&accountId=${encodeURIComponent(accountId)}`,
+      { method: "DELETE" }
+    ),
 };
 
 // ── Integrations ─────────────────────────────────────────────────────────────
@@ -812,6 +1168,15 @@ export interface AutomationRule {
   created_at: string;
 }
 
+export interface AutomationRun {
+  id: string;
+  rule_id: string;
+  issue_id?: string;
+  triggered_at: string;
+  status: string; // success | skipped | error | test
+  log: string;
+}
+
 export const integrations = {
   webhooks: (projectKey: string) => apiFetch<Webhook[]>(`/rest/api/3/project/${projectKey}/webhooks`),
   createWebhook: (projectKey: string, url: string, events: string[]) =>
@@ -834,12 +1199,213 @@ export const integrations = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  // Path segment is named {projectID} in the router — ListRules reads it
-  // straight off the path with no project-key lookup, so pass the project's
-  // internal id (Project.id), not its key.
-  automationRules: (projectID: string) => apiFetch<AutomationRule[]>(`/rest/api/3/project/${projectID}/automation`),
+  automationRules: (key: string) =>
+    apiFetch<AutomationRule[]>(`/rest/api/3/project/${key}/automation`),
+  automationCreate: (
+    key: string,
+    body: { name: string; trigger_type: string; conditions_json: string; actions_json: string }
+  ) =>
+    apiFetch<AutomationRule>(`/rest/api/3/project/${key}/automation`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  automationGet: (ruleId: string) =>
+    apiFetch<AutomationRule>(`/rest/api/3/automation/${ruleId}`),
+  automationUpdate: (
+    ruleId: string,
+    patch: Partial<{ name: string; is_active: boolean; trigger_type: string; conditions_json: string; actions_json: string }>
+  ) =>
+    apiFetch<AutomationRule>(`/rest/api/3/automation/${ruleId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  automationDelete: (ruleId: string) =>
+    apiFetch<void>(`/rest/api/3/automation/${ruleId}`, { method: "DELETE" }),
+  automationTest: (ruleId: string, issueId: string) =>
+    apiFetch<AutomationRun>(`/rest/api/3/automation/${ruleId}/execute`, {
+      method: "POST",
+      body: JSON.stringify({ issue_id: issueId }),
+    }),
+  automationRuns: (ruleId: string) =>
+    apiFetch<AutomationRun[]>(`/rest/api/3/automation/${ruleId}/runs`),
 };
 
 export const issueGit = {
   info: (issueKey: string) => apiFetch<IssueGitInfo>(`/rest/api/3/issue/${issueKey}/git`),
+};
+
+// ── Issue links ──────────────────────────────────────────────────────────────
+
+// v3.LinkTypeRef (internal/api/v3/collab.go). "inward"/"outward" are the two
+// human-readable phrasings of the same relation depending on which side you
+// stand on, e.g. Blocks: outward="blocks", inward="is blocked by".
+export interface LinkTypeRef {
+  id: string;
+  name: string;
+  inward: string;
+  outward: string;
+  self?: string;
+}
+
+// v3.LinkedIssueForIssue: the minimal shape (key + summary/status) of "the
+// other end" of a link, as returned by GET /issue/{key}/issuelinks.
+export interface LinkedIssueForIssue {
+  key: string;
+  fields: {
+    summary: string;
+    status?: StatusRef;
+  };
+}
+
+// v3.IssueLinkForIssue: only the side opposite the requested issue is
+// populated — see the handler comment in internal/api/handlers/issuelink_handler.go.
+// If `inwardIssue` is populated, the requested issue is the outward/source
+// side of the link; if `outwardIssue` is populated, the requested issue is
+// the inward/target side.
+export interface IssueLinkForIssue {
+  id: string;
+  type: LinkTypeRef;
+  inwardIssue?: LinkedIssueForIssue;
+  outwardIssue?: LinkedIssueForIssue;
+}
+
+export interface IssueLinksResponse {
+  issuelinks: IssueLinkForIssue[];
+}
+
+export type IssueLinkTypeName = "Blocks" | "Duplicate" | "Relates";
+
+export const issueLinks = {
+  list: (issueKey: string) => apiFetch<IssueLinksResponse>(`/rest/api/3/issue/${issueKey}/issuelinks`),
+  // Convention (matches internal/api/handlers/issuelink_handler.go Create):
+  // outwardKey is always the link's source, inwardKey its target. Callers
+  // decide which one is "this issue" based on the chosen relation.
+  create: (payload: { typeName: IssueLinkTypeName; outwardKey: string; inwardKey: string }) =>
+    apiFetch<void>("/rest/api/3/issueLink", {
+      method: "POST",
+      body: JSON.stringify({
+        type: { name: payload.typeName },
+        outwardIssue: { key: payload.outwardKey },
+        inwardIssue: { key: payload.inwardKey },
+      }),
+    }),
+  delete: (id: string) => apiFetch<void>(`/rest/api/3/issueLink/${id}`, { method: "DELETE" }),
+};
+
+// ── Attachments ──────────────────────────────────────────────────────────────
+
+// v3.Attachment (internal/api/v3/attachment.go). `content` is the path to
+// GET /rest/api/3/attachment/content/{id} — bearer-protected like every other
+// route (see internal/api/router.go, internal/api/middleware/auth.go: no
+// cookie/query-token fallback), so it can NEVER be used as a naked <a href>/
+// <img src>: fetch it with the token via contentBlobUrl() and use the
+// resulting object URL instead.
+export interface Attachment {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  created: string;
+  content: string;
+}
+
+// Shared by upload/contentBlobUrl below: apiFetch forces
+// Content-Type: application/json, which breaks multipart (the browser needs
+// to set its own boundary) and isn't meaningful for a binary GET either — so
+// both bypass apiFetch and rebuild just the auth + 401-redirect handling.
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function handleUnauthorized(res: Response): void {
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+    throw new Error("Unauthorized");
+  }
+}
+
+export const attachments = {
+  list: (issueKey: string) => apiFetch<Attachment[]>(`/rest/api/3/issue/${issueKey}/attachments`),
+
+  // Multipart upload — deliberately does NOT go through apiFetch. Field name
+  // must be "file" (see AttachmentHandler.Upload's r.FormFile("file")).
+  upload: async (issueKey: string, file: File): Promise<Attachment> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE_URL}/rest/api/3/issue/${issueKey}/attachments`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+    });
+    handleUnauthorized(res);
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = `HTTP ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json.error) msg = json.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return res.json() as Promise<Attachment>;
+  },
+
+  delete: (id: string) => apiFetch<void>(`/rest/api/3/attachment/${id}`, { method: "DELETE" }),
+
+  // Fetches the attachment's bytes with the bearer token and returns an
+  // object URL suitable for <img src>/download links. AttachmentHandler.
+  // ServeFile always answers with Content-Type: application/octet-stream
+  // regardless of the real file type, so the blob is re-tagged with the
+  // mimeType already known from the list/upload response — otherwise image
+  // previews would never render. Callers must URL.revokeObjectURL() the
+  // result once done with it.
+  contentBlobUrl: async (att: Attachment): Promise<string> => {
+    const res = await fetch(`${BASE_URL}${att.content}`, { headers: authHeaders() });
+    handleUnauthorized(res);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.blob();
+    const typed = att.mimeType ? new Blob([raw], { type: att.mimeType }) : raw;
+    return URL.createObjectURL(typed);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Custom fields
+// ---------------------------------------------------------------------------
+
+export interface CustomField {
+  id: string;
+  project_id: string;
+  name: string;
+  field_type: "text" | "number" | "date" | "select" | "multiselect" | "user";
+  required: boolean;
+}
+export interface CustomFieldOption { id: string; field_id: string; value: string; position: number; }
+export interface IssueCustomValue {
+  issue_id: string;
+  field_id: string;
+  value_text: string;
+  value_number?: number;
+  value_date?: string;
+  option_id?: string;
+}
+export const customFields = {
+  list: (key: string) => apiFetch<CustomField[]>(`/rest/api/3/project/${key}/custom-fields`),
+  create: (key: string, body: { name: string; field_type: CustomField["field_type"]; required: boolean }) =>
+    apiFetch<CustomField>(`/rest/api/3/project/${key}/custom-fields`, { method: "POST", body: JSON.stringify(body) }),
+  remove: (fieldId: string) => apiFetch<void>(`/rest/api/3/custom-fields/${fieldId}`, { method: "DELETE" }),
+  options: (fieldId: string) => apiFetch<CustomFieldOption[]>(`/rest/api/3/custom-fields/${fieldId}/options`),
+  addOption: (fieldId: string, value: string) =>
+    apiFetch<CustomFieldOption>(`/rest/api/3/custom-fields/${fieldId}/options`, { method: "POST", body: JSON.stringify({ value }) }),
+  removeOption: (optionId: string) =>
+    apiFetch<void>(`/rest/api/3/custom-fields/options/${optionId}`, { method: "DELETE" }),
+  values: (issueKey: string) => apiFetch<IssueCustomValue[]>(`/rest/api/3/issue/${issueKey}/custom-values`),
+  setValue: (issueKey: string, fieldId: string, body: { value?: unknown; option_id?: string }) =>
+    apiFetch<void>(`/rest/api/3/issue/${issueKey}/custom-values/${fieldId}`, { method: "PUT", body: JSON.stringify(body) }),
 };

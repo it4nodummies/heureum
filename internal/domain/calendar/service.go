@@ -29,10 +29,19 @@ func (s *Service) GetCalendarData(projectID string, year, month int) (*CalendarD
 
 	issueMap := make(map[int][]CalendarIssue)
 	for _, iss := range issues {
-		if iss.DueDate != nil {
-			d := iss.DueDate.Day()
-			issueMap[d] = append(issueMap[d], iss)
+		// Prefer the due date; fall back to start date for issues that only
+		// have a start_date in this month (otherwise they'd be fetched but
+		// never placed on a day).
+		var day int
+		switch {
+		case iss.DueDate != nil && int(iss.DueDate.Month()) == month && iss.DueDate.Year() == year:
+			day = iss.DueDate.Day()
+		case iss.StartDate != nil && int(iss.StartDate.Month()) == month && iss.StartDate.Year() == year:
+			day = iss.StartDate.Day()
+		default:
+			continue
 		}
+		issueMap[day] = append(issueMap[day], iss)
 	}
 
 	days := make([]CalendarDay, 0, lastDay.Day())

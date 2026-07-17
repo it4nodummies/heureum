@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DndContext, DragEndEvent, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { workflow, type Workflow, type WorkflowStatus } from "@/lib/api";
+import { workflow, type Workflow, type WorkflowStatus, type WorkflowTransition } from "@/lib/api";
 
 const CATEGORIES = [
   { value: "todo", label: "To Do" },
@@ -55,6 +55,15 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
   const qc = useQueryClient();
   const [newStatus, setNewStatus] = useState("");
   const [newCat, setNewCat] = useState("todo");
+  const [fromStatusId, setFromStatusId] = useState("");
+  const [toStatusId, setToStatusId] = useState("");
+  const [transitionName, setTransitionName] = useState("");
+  const [requireAssignee, setRequireAssignee] = useState(false);
+  const [setResolutionFlag, setSetResolutionFlag] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRequireAssignee, setEditRequireAssignee] = useState(false);
+  const [editSetResolution, setEditSetResolution] = useState(false);
 
   const wf = useQuery({ queryKey: ["workflow", projectKey], queryFn: () => workflow.get(projectKey) });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["workflow", projectKey] });
@@ -64,11 +73,15 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
     onSuccess: () => {
       setNewStatus("");
       invalidate();
+      delStatus.reset();
     },
   });
   const delStatus = useMutation({
     mutationFn: (id: string) => workflow.deleteStatus(projectKey, id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      addStatus.reset();
+    },
   });
   const reorderStatuses = useMutation({
     mutationFn: (orderedIds: string[]) => workflow.reorderStatuses(projectKey, orderedIds),
@@ -87,6 +100,52 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
     },
     onSettled: invalidate,
   });
+  const addTransition = useMutation({
+    mutationFn: () =>
+      workflow.addTransition(projectKey, {
+        from_status_id: fromStatusId,
+        to_status_id: toStatusId,
+        name: transitionName,
+        require_assignee: requireAssignee,
+        set_resolution: setResolutionFlag,
+      }),
+    onSuccess: () => {
+      setFromStatusId("");
+      setToStatusId("");
+      setTransitionName("");
+      setRequireAssignee(false);
+      setSetResolutionFlag(false);
+      invalidate();
+      delTransition.reset();
+    },
+  });
+  const delTransition = useMutation({
+    mutationFn: (id: string) => workflow.deleteTransition(projectKey, id),
+    onSuccess: () => {
+      invalidate();
+      addTransition.reset();
+    },
+  });
+  const editTransition = useMutation({
+    mutationFn: (id: string) =>
+      workflow.updateTransition(projectKey, id, {
+        name: editName,
+        require_assignee: editRequireAssignee,
+        set_resolution: editSetResolution,
+      }),
+    onSuccess: () => {
+      setEditingId(null);
+      invalidate();
+    },
+  });
+
+  const startEdit = (t: WorkflowTransition) => {
+    setEditingId(t.id);
+    setEditName(t.name);
+    setEditRequireAssignee(t.require_assignee);
+    setEditSetResolution(t.set_resolution);
+    editTransition.reset();
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -119,6 +178,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
             </ul>
           </SortableContext>
         </DndContext>
+        {delStatus.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {delStatus.error instanceof Error ? delStatus.error.message : "Failed to delete status"}
+          </p>
+        )}
         <div className="mt-2 flex gap-2">
           <input
             aria-label="New status name"
@@ -145,6 +209,11 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
             Add status
           </button>
         </div>
+        {addStatus.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {addStatus.error instanceof Error ? addStatus.error.message : "Failed to add status"}
+          </p>
+        )}
         <p className="mt-1 text-xs text-slate-400">
           Category is used for reports and to auto-set the resolution — it does not control column order.
           Drag statuses in the list above to reorder board columns.
@@ -154,17 +223,150 @@ export function WorkflowEditor({ projectKey }: { projectKey: string }) {
       <section>
         <h3 className="mb-2 text-sm font-semibold text-slate-700">Transitions</h3>
         <ul className="space-y-1 text-sm" data-testid="workflow-transitions">
-          {(wf.data?.transitions ?? []).map((t) => (
-            <li key={t.id} className="flex items-center gap-2">
-              <span className="text-[#1a1f36]">{t.name || `${nameByID(t.from_status_id)} → ${nameByID(t.to_status_id)}`}</span>
-              <span className="text-xs text-slate-400">
-                {nameByID(t.from_status_id)} → {nameByID(t.to_status_id)}
-                {t.require_assignee ? " · requires assignee" : ""}
-                {t.set_resolution ? " · sets resolution" : ""}
-              </span>
-            </li>
-          ))}
+          {(wf.data?.transitions ?? []).map((t) => {
+            const label = t.name || `${nameByID(t.from_status_id)} → ${nameByID(t.to_status_id)}`;
+            return (
+              <li key={t.id} className="space-y-2" data-testid={`transition-${label}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[#1a1f36]">{label}</span>
+                  <span className="text-xs text-slate-400">
+                    {nameByID(t.from_status_id)} → {nameByID(t.to_status_id)}
+                    {t.require_assignee ? " · requires assignee" : ""}
+                    {t.set_resolution ? " · sets resolution" : ""}
+                  </span>
+                  <button
+                    onClick={() => startEdit(t)}
+                    className="ml-auto text-xs text-[#0052cc] hover:underline"
+                    aria-label={`Edit transition ${label}`}
+                    data-testid="transition-edit"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => delTransition.mutate(t.id)}
+                    className="text-xs text-red-600 hover:underline"
+                    aria-label={`Delete transition ${label}`}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {editingId === t.id && (
+                  <div className="flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 p-2">
+                    <input
+                      aria-label="Transition name (edit)"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Transition name (optional)"
+                      className="rounded border border-slate-300 px-2 py-1 text-sm"
+                    />
+                    <label className="flex items-center gap-1 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        aria-label="Require assignee (edit)"
+                        checked={editRequireAssignee}
+                        onChange={(e) => setEditRequireAssignee(e.target.checked)}
+                      />
+                      Require assignee
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        aria-label="Set resolution (edit)"
+                        checked={editSetResolution}
+                        onChange={(e) => setEditSetResolution(e.target.checked)}
+                      />
+                      Set resolution
+                    </label>
+                    <button
+                      onClick={() => editTransition.mutate(t.id)}
+                      disabled={editTransition.isPending}
+                      className="rounded bg-[#0052cc] px-3 py-1 text-sm text-white disabled:opacity-60"
+                    >
+                      Save transition
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600"
+                    >
+                      Cancel
+                    </button>
+                    {editTransition.isError && (
+                      <p className="w-full text-sm text-red-600">
+                        {editTransition.error instanceof Error ? editTransition.error.message : "Failed to update transition"}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
+        {delTransition.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {delTransition.error instanceof Error ? delTransition.error.message : "Failed to delete transition"}
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            aria-label="From status"
+            value={fromStatusId}
+            onChange={(e) => setFromStatusId(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">From status</option>
+            {statuses.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <select
+            aria-label="To status"
+            value={toStatusId}
+            onChange={(e) => setToStatusId(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">To status</option>
+            {statuses.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <input
+            aria-label="Transition name"
+            value={transitionName}
+            onChange={(e) => setTransitionName(e.target.value)}
+            placeholder="Transition name (optional)"
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              aria-label="Require assignee"
+              checked={requireAssignee}
+              onChange={(e) => setRequireAssignee(e.target.checked)}
+            />
+            Require assignee
+          </label>
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              aria-label="Set resolution"
+              checked={setResolutionFlag}
+              onChange={(e) => setSetResolutionFlag(e.target.checked)}
+            />
+            Set resolution
+          </label>
+          <button
+            onClick={() => fromStatusId && toStatusId && addTransition.mutate()}
+            disabled={!fromStatusId || !toStatusId || addTransition.isPending}
+            className="rounded bg-[#0052cc] px-3 py-1 text-sm text-white disabled:opacity-60"
+          >
+            Add transition
+          </button>
+        </div>
+        {addTransition.isError && (
+          <p className="mt-1 text-sm text-red-600">
+            {addTransition.error instanceof Error ? addTransition.error.message : "Failed to add transition"}
+          </p>
+        )}
       </section>
     </div>
   );

@@ -26,8 +26,11 @@ type WorklogService struct{ db *gorm.DB }
 
 func NewWorklogService(db *gorm.DB) *WorklogService { return &WorklogService{db: db} }
 
-// Add crea un worklog per issueID. authorID può essere vuoto (nessun autore),
-// commentJSON vuoto viene normalizzato a "{}" (nessun commento ADF).
+// Add crea un worklog per issueID e incrementa Issue.TimeSpent di seconds
+// (il worklog è la fonte di verità del tempo loggato; TimeSpent è la somma
+// denormalizzata usata dalla issue view e dal mapper v3 timetracking).
+// authorID può essere vuoto (nessun autore), commentJSON vuoto viene
+// normalizzato a "{}" (nessun commento ADF).
 func (s *WorklogService) Add(issueID, authorID, commentJSON string, seconds int) (*Worklog, error) {
 	now := time.Now()
 	wl := &Worklog{
@@ -43,7 +46,14 @@ func (s *WorklogService) Add(issueID, authorID, commentJSON string, seconds int)
 	if commentJSON == "" {
 		wl.CommentJSON = "{}"
 	}
-	if err := s.db.Create(wl).Error; err != nil {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(wl).Error; err != nil {
+			return err
+		}
+		return tx.Model(&Issue{}).Where("id = ?", issueID).
+			UpdateColumn("time_spent", gorm.Expr("time_spent + ?", seconds)).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return wl, nil

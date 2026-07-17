@@ -95,16 +95,16 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	commentSvc.SetNotifier(notifSvc)
 	sprintSvc.SetNotifier(notifSvc)
 
-	cfH := handlers.NewCustomFieldHandler(cfSvc, chk)
-	autoH := handlers.NewAutomationHandler(autoSvc)
+	cfH := handlers.NewCustomFieldHandler(cfSvc, chk, projectSvc, issueSvc)
+	autoH := handlers.NewAutomationHandler(autoSvc, projectSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
 	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc, &http.Client{Timeout: 10 * time.Second})
 	issueSvc.SetEventSink(dispatcher)
 	timelineSvc := timeline.NewService(db)
-	timelineH := handlers.NewTimelineHandler(timelineSvc)
+	timelineH := handlers.NewTimelineHandler(timelineSvc, projectSvc)
 	calendarSvc := calendar.NewService(db)
-	calendarH := handlers.NewCalendarHandler(calendarSvc)
+	calendarH := handlers.NewCalendarHandler(calendarSvc, projectSvc)
 	refH := handlers.NewReferenceHandler(db, cfg.BaseURL, chk, projectSvc)
 
 	groupSvc := group.NewService(db)
@@ -201,6 +201,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/issue/{issueKey}/labels", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueKey"), http.HandlerFunc(issueH.AddLabel))))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/changelog", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueKey"), http.HandlerFunc(historyH.GetHistory))))
 	mux.Handle("GET /rest/api/3/issue/{issueKey}/git", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueKey"), http.HandlerFunc(gitH.GetIssueGitInfo))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/subtasks", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.Subtasks))))
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.GetWatchers))))
 	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.AddWatcher))))
 	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/watchers", authMw(chk.Enforce(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueH.RemoveWatcher))))
@@ -225,6 +226,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink/{id}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(remoteLinkH.Delete))))
 
 	mux.Handle("POST /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(attachmentH.Upload))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/attachments", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(attachmentH.ListForIssue))))
 	mux.Handle("GET /rest/api/3/attachment/{id}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByAttachment("id"), http.HandlerFunc(attachmentH.Get))))
 	// DELETE /attachment/{id}: two-hop resolver (attachment -> issue -> project);
 	// enforced in-handler (AttachmentHandler.Delete) per the Round 11 plan.
@@ -235,6 +237,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/attachment/meta", authMw(http.HandlerFunc(attachmentH.Meta)))
 
 	mux.Handle("GET /rest/api/3/issueLink/{linkId}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueLink("linkId"), http.HandlerFunc(issueLinkH.Get))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/issuelinks", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueLinkH.ListForIssue))))
 	// POST /issueLink: project resolved from body (source/outward issue) ->
 	// enforced in-handler (IssueLinkHandler.Create) per the Round 11 plan.
 	mux.Handle("POST /rest/api/3/issueLink", authMw(http.HandlerFunc(issueLinkH.Create)))
@@ -278,6 +281,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	// POST /issues/rank: project resolved from body (target issue_id) ->
 	// enforced in-handler (BoardHandler.RankIssue) per the Round 11 plan.
 	mux.Handle("POST /rest/api/3/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
+	// POST /issues/bulk: applica un set parziale di campi a una LISTA di issue,
+	// con autorizzazione per-issue in-handler e fallimenti parziali. Non-gate
+	// dal decoratore (non può filtrare una lista nel body), come /issues/rank.
+	mux.Handle("POST /rest/api/3/issues/bulk", authMw(http.HandlerFunc(issueH.BulkUpdate)))
 
 	// --- Agile API 1.0 (Round 5) ---
 	mux.Handle("GET /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.List)))
@@ -373,8 +380,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	mux.Handle("GET /rest/api/3/project/{key}/issues/export", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(issueH.ExportCSV))))
 
-	mux.Handle("GET /rest/api/3/project/{projectID}/custom-fields", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(cfH.ListFields))))
-	mux.Handle("POST /rest/api/3/project/{projectID}/custom-fields", authMw(chk.Enforce(permission.AdministerProjects, chk.ByProjectID, http.HandlerFunc(cfH.CreateField))))
+	mux.Handle("GET /rest/api/3/project/{key}/custom-fields", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(cfH.ListFields))))
+	mux.Handle("POST /rest/api/3/project/{key}/custom-fields", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(cfH.CreateField))))
 	mux.Handle("DELETE /rest/api/3/custom-fields/{fieldID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.DeleteField))))
 	mux.Handle("GET /rest/api/3/custom-fields/{fieldID}/options", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.ListOptions))))
 	mux.Handle("POST /rest/api/3/custom-fields/{fieldID}/options", authMw(chk.Enforce(permission.AdministerProjects, chk.ByCustomField("fieldID"), http.HandlerFunc(cfH.AddOption))))
@@ -382,19 +389,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	// enforced in-handler (CustomFieldHandler.RemoveOption) per the Round 11 plan
 	// (customfield.Service.GetOption added for the option->field lookup).
 	mux.Handle("DELETE /rest/api/3/custom-fields/options/{optionID}", authMw(http.HandlerFunc(cfH.RemoveOption)))
-	mux.Handle("GET /rest/api/3/issue/{issueID}/custom-values", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueUUID, http.HandlerFunc(cfH.GetValues))))
-	mux.Handle("PUT /rest/api/3/issue/{issueID}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueUUID, http.HandlerFunc(cfH.SetValue))))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/custom-values", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.GetValues))))
+	mux.Handle("PUT /rest/api/3/issue/{issueIdOrKey}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.SetValue))))
 
-	mux.Handle("GET /rest/api/3/project/{projectID}/automation", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(autoH.ListRules))))
-	mux.Handle("POST /rest/api/3/project/{projectID}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByProjectID, http.HandlerFunc(autoH.CreateRule))))
+	mux.Handle("GET /rest/api/3/project/{key}/automation", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(autoH.ListRules))))
+	mux.Handle("POST /rest/api/3/project/{key}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(autoH.CreateRule))))
 	mux.Handle("GET /rest/api/3/automation/{ruleID}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.GetRule))))
 	mux.Handle("PATCH /rest/api/3/automation/{ruleID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.UpdateRule))))
 	mux.Handle("DELETE /rest/api/3/automation/{ruleID}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.DeleteRule))))
 	mux.Handle("POST /rest/api/3/automation/{ruleID}/execute", authMw(chk.Enforce(permission.AdministerProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.ExecuteRule))))
 	mux.Handle("GET /rest/api/3/automation/{ruleID}/runs", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByAutomationRule("ruleID"), http.HandlerFunc(autoH.ListRuns))))
 
-	mux.Handle("GET /rest/api/3/project/{projectID}/timeline", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(timelineH.GetTimeline))))
-	mux.Handle("GET /rest/api/3/project/{projectID}/calendar", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByProjectID, http.HandlerFunc(calendarH.GetCalendar))))
+	mux.Handle("GET /rest/api/3/project/{key}/timeline", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(timelineH.GetTimeline))))
+	mux.Handle("GET /rest/api/3/project/{key}/calendar", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(calendarH.GetCalendar))))
 
 	// --- Gruppi (Round 8) ---
 	mux.Handle("GET /rest/api/3/group", authMw(http.HandlerFunc(groupH.Get)))
