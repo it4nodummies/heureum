@@ -1,23 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { profile, notifications, type NotificationSetting } from "@/lib/api";
+import { profile, notifications, type NotificationSetting, type JiraUser } from "@/lib/api";
+import { ThemeToggle } from "@/components/layout/ThemeProvider";
 
-export default function ProfilePage() {
+// Editable identity fields. Rendered only once `me` has loaded, and seeds its
+// local state LAZILY from the loaded user (no post-mount useEffect reset). This
+// keeps the inputs stable: an unrelated re-render (a background query resolving,
+// theme context, etc.) can never re-assert a stale controlled value mid-edit,
+// which otherwise races fast programmatic input.
+function ProfileDetails({ me }: { me: JiraUser }) {
   const qc = useQueryClient();
-  const me = useQuery({ queryKey: ["profile", "me"], queryFn: profile.me });
-  const [displayName, setDisplayName] = useState("");
-  const [timeZone, setTimeZone] = useState("");
-  const [locale, setLocale] = useState("");
-
-  useEffect(() => {
-    if (me.data) {
-      setDisplayName(me.data.displayName ?? "");
-      setTimeZone(me.data.timeZone ?? "");
-      setLocale(me.data.locale ?? "");
-    }
-  }, [me.data]);
+  const [displayName, setDisplayName] = useState(me.displayName ?? "");
+  const [timeZone, setTimeZone] = useState(me.timeZone ?? "");
+  const [locale, setLocale] = useState(me.locale ?? "");
 
   const save = useMutation({
     mutationFn: () => profile.update({ displayName, timeZone, locale }),
@@ -29,13 +26,99 @@ export default function ProfilePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["profile", "me"] }),
   });
 
-  const initials = (me.data?.displayName ?? me.data?.emailAddress ?? "?")
+  const initials = (me.displayName ?? me.emailAddress ?? "?")
     .trim()
     .split(/\s+/)
     .map((p) => p[0])
     .slice(0, 2)
     .join("")
     .toUpperCase();
+
+  return (
+    <section className="mb-6 rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]">
+      <label className="mb-1 block text-xs font-semibold text-slate-500">Avatar</label>
+      <div className="mb-3 flex items-center gap-3">
+        {me.avatarUrls?.["48x48"] ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={me.avatarUrls["48x48"]}
+            alt="Avatar"
+            className="h-12 w-12 rounded-full border border-slate-200 object-cover"
+          />
+        ) : (
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+            {initials}
+          </span>
+        )}
+        <div>
+          <label className="inline-block cursor-pointer rounded border border-slate-300 px-3 py-1.5 text-sm text-[#1a1f36] hover:bg-slate-50 dark:border-[#2a3142] dark:text-[#e6e8eb] dark:hover:bg-[#232a3a]">
+            {uploadAvatar.isPending ? "Uploading…" : "Upload avatar"}
+            <input
+              data-testid="avatar-upload"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadAvatar.mutate(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {uploadAvatar.isError && (
+            <p className="mt-1 text-xs text-red-600">
+              {(uploadAvatar.error as Error)?.message ?? "Upload failed"}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <label className="mb-1 block text-xs font-semibold text-slate-500">Display name</label>
+      <input
+        aria-label="Display name"
+        value={displayName}
+        onChange={(e) => setDisplayName(e.target.value)}
+        className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
+      />
+      <label className="mb-1 block text-xs font-semibold text-slate-500">Time zone</label>
+      <input
+        aria-label="Time zone"
+        value={timeZone}
+        onChange={(e) => setTimeZone(e.target.value)}
+        placeholder="Europe/Rome"
+        className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
+      />
+      <label className="mb-1 block text-xs font-semibold text-slate-500">Language</label>
+      <select
+        data-testid="profile-locale"
+        aria-label="Language"
+        value={locale}
+        onChange={(e) => setLocale(e.target.value)}
+        className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
+      >
+        <option value="">Default</option>
+        <option value="en">English</option>
+        <option value="it">Italiano</option>
+        <option value="es">Español</option>
+        <option value="fr">Français</option>
+        <option value="de">Deutsch</option>
+        <option value="pt">Português</option>
+      </select>
+      <button
+        onClick={() => save.mutate()}
+        disabled={save.isPending}
+        className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
+      >
+        Save profile
+      </button>
+      <p className="mt-2 text-xs text-slate-500">{me.emailAddress}</p>
+    </section>
+  );
+}
+
+export default function ProfilePage() {
+  const qc = useQueryClient();
+  const me = useQuery({ queryKey: ["profile", "me"], queryFn: profile.me });
 
   const settings = useQuery({ queryKey: ["notif", "settings"], queryFn: notifications.settings });
   const updateSetting = useMutation({
@@ -60,98 +143,35 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-xl font-semibold text-[#1a1f36]">Profile</h1>
+      <h1 className="mb-4 text-xl font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">Profile</h1>
 
-      <section className="mb-6 rounded border border-slate-200 bg-white p-4">
-        <label className="mb-1 block text-xs font-semibold text-slate-500">Avatar</label>
-        <div className="mb-3 flex items-center gap-3">
-          {me.data?.avatarUrls?.["48x48"] ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={me.data.avatarUrls["48x48"]}
-              alt="Avatar"
-              className="h-12 w-12 rounded-full border border-slate-200 object-cover"
-            />
-          ) : (
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
-              {initials}
-            </span>
-          )}
-          <div>
-            <label className="inline-block cursor-pointer rounded border border-slate-300 px-3 py-1.5 text-sm text-[#1a1f36] hover:bg-slate-50">
-              {uploadAvatar.isPending ? "Uploading…" : "Upload avatar"}
-              <input
-                data-testid="avatar-upload"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) uploadAvatar.mutate(f);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            {uploadAvatar.isError && (
-              <p className="mt-1 text-xs text-red-600">
-                {(uploadAvatar.error as Error)?.message ?? "Upload failed"}
-              </p>
-            )}
-          </div>
+      <section className="mb-6 rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]">
+        <label className="mb-1 block text-xs font-semibold text-slate-500">Appearance</label>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <span className="text-sm text-slate-500 dark:text-[#8b95a5]">Toggle light / dark theme</span>
         </div>
-
-        <label className="mb-1 block text-xs font-semibold text-slate-500">Display name</label>
-        <input
-          aria-label="Display name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
-        />
-        <label className="mb-1 block text-xs font-semibold text-slate-500">Time zone</label>
-        <input
-          aria-label="Time zone"
-          value={timeZone}
-          onChange={(e) => setTimeZone(e.target.value)}
-          placeholder="Europe/Rome"
-          className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
-        />
-        <label className="mb-1 block text-xs font-semibold text-slate-500">Language</label>
-        <select
-          data-testid="profile-locale"
-          aria-label="Language"
-          value={locale}
-          onChange={(e) => setLocale(e.target.value)}
-          className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
-        >
-          <option value="">Default</option>
-          <option value="en">English</option>
-          <option value="it">Italiano</option>
-          <option value="es">Español</option>
-          <option value="fr">Français</option>
-          <option value="de">Deutsch</option>
-          <option value="pt">Português</option>
-        </select>
-        <button
-          onClick={() => save.mutate()}
-          disabled={save.isPending}
-          className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
-        >
-          Save profile
-        </button>
-        <p className="mt-2 text-xs text-slate-500">{me.data?.emailAddress}</p>
       </section>
 
-      <section className="rounded border border-slate-200 bg-white p-4" data-testid="notif-prefs">
-        <h2 className="mb-2 text-sm font-semibold text-[#1a1f36]">Notification preferences</h2>
+      {me.data ? (
+        <ProfileDetails me={me.data} />
+      ) : (
+        <section className="mb-6 rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]">
+          <p className="text-sm text-slate-400">Loading profile…</p>
+        </section>
+      )}
+
+      <section className="rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]" data-testid="notif-prefs">
+        <h2 className="mb-2 text-sm font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">Notification preferences</h2>
         <ul className="space-y-1 text-sm">
           {(settings.data ?? []).map((s) => (
             <li
               key={`${s.project_id}:${s.event_type}`}
               data-testid="notif-pref-row"
               data-event={s.event_type}
-              className="flex items-center justify-between border-b border-slate-100 py-1"
+              className="flex items-center justify-between border-b border-slate-100 py-1 dark:border-[#2a3142]"
             >
-              <span className="text-[#1a1f36]">
+              <span className="text-[#1a1f36] dark:text-[#e6e8eb]">
                 <span className="font-medium">{s.event_type}</span>
                 <span className="text-slate-400"> · {s.project_id ? "Project-scoped" : "All projects"}</span>
               </span>
@@ -172,7 +192,7 @@ export default function ProfilePage() {
 
         <form
           data-testid="add-pref-form"
-          className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4"
+          className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4 dark:border-[#2a3142]"
           onSubmit={(e) => {
             e.preventDefault();
             addPref();
@@ -184,7 +204,7 @@ export default function ProfilePage() {
               aria-label="Event type"
               value={newEvent}
               onChange={(e) => setNewEvent(e.target.value)}
-              className="rounded border border-slate-300 px-2 py-1 text-sm"
+              className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
             >
               <option value="assignment">assignment</option>
               <option value="comment">comment</option>
@@ -196,7 +216,7 @@ export default function ProfilePage() {
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-500">Scope</label>
-            <span className="block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm text-slate-500">
+            <span className="block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm text-slate-500 dark:border-[#2a3142] dark:bg-[#0e1116]">
               All projects
             </span>
           </div>

@@ -9,6 +9,7 @@ import CreateProjectModal from "@/components/projects/CreateProjectModal";
 import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
 import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { ThemeToggle } from "@/components/layout/ThemeProvider";
 
 export default function TopBar() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function TopBar() {
 
   return (
     <>
-      <header className="h-[52px] bg-white border-b border-slate-100 flex items-center px-4 gap-4 shrink-0 z-30">
+      <header className="h-[52px] bg-white dark:bg-[#161b22] border-b border-slate-100 dark:border-[#2a3142] flex items-center px-4 gap-4 shrink-0 z-30">
         {/* Search */}
         <div className="flex-1 max-w-lg">
           <GlobalSearch />
@@ -81,13 +82,13 @@ export default function TopBar() {
             </button>
 
             {createMenuOpen && (
-              <div className="absolute left-0 top-10 w-44 bg-white rounded-xl shadow-lg shadow-slate-200/80 border border-slate-100 py-1.5 z-50">
+              <div className="absolute left-0 top-10 w-44 bg-white dark:bg-[#1a1f2e] rounded-xl shadow-lg shadow-slate-200/80 dark:shadow-black/40 border border-slate-100 dark:border-[#2a3142] py-1.5 z-50">
                 <button
                   onClick={() => {
                     setCreateMenuOpen(false);
                     setCreateIssueOpen(true);
                   }}
-                  className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-50 dark:hover:bg-[#232a3a] transition-colors"
                 >
                   Issue
                 </button>
@@ -96,7 +97,7 @@ export default function TopBar() {
                     setCreateMenuOpen(false);
                     setCreateProjectOpen(true);
                   }}
-                  className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-50 dark:hover:bg-[#232a3a] transition-colors"
                 >
                   Project
                 </button>
@@ -152,31 +153,34 @@ export default function TopBar() {
             </button>
 
             {userMenuOpen && (
-              <div className="absolute right-0 top-10 w-56 bg-white rounded-xl shadow-lg shadow-slate-200/80 border border-slate-100 py-1.5 z-50">
+              <div className="absolute right-0 top-10 w-56 bg-white dark:bg-[#1a1f2e] rounded-xl shadow-lg shadow-slate-200/80 dark:shadow-black/40 border border-slate-100 dark:border-[#2a3142] py-1.5 z-50">
                 {user && (
-                  <div className="px-4 py-2.5 border-b border-slate-100 mb-1">
-                    <p className="text-sm font-semibold text-[#1a1f36] truncate">
+                  <div className="px-4 py-2.5 border-b border-slate-100 dark:border-[#2a3142] mb-1">
+                    <p className="text-sm font-semibold text-[#1a1f36] dark:text-[#e6e8eb] truncate">
                       {user.display_name || user.username}
                     </p>
                     <p className="text-xs text-slate-400 truncate">{user.email}</p>
                   </div>
                 )}
-                <button className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] hover:bg-slate-50 transition-colors">
+                <div className="px-4 py-1.5">
+                  <ThemeToggle className="flex w-full items-center gap-2.5 rounded-lg px-0 py-1 text-sm text-[#42526e] dark:text-[#c3c9d3]" />
+                </div>
+                <button className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-50 dark:hover:bg-[#232a3a] transition-colors">
                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400">
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                   </svg>
                   Profile
                 </button>
-                <button className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] hover:bg-slate-50 transition-colors">
+                <button className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-50 dark:hover:bg-[#232a3a] transition-colors">
                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400">
                     <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
                   </svg>
                   Settings
                 </button>
-                <div className="border-t border-slate-100 mt-1 pt-1">
+                <div className="border-t border-slate-100 dark:border-[#2a3142] mt-1 pt-1">
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
                   >
                     <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                       <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode for Tailwind v4 (no tailwind.config). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f8f9fc;
   --foreground: #1a1f36;
@@ -13,6 +16,17 @@
   --muted: #64748b;
   --surface: #ffffff;
   --row-hover: #f1f5fb;
+}
+
+.dark {
+  --background: #0e1116;
+  --foreground: #e6e8eb;
+  --sidebar-bg: #161b22;
+  --accent-light: #1c2b46;
+  --border: #2a3142;
+  --muted: #8b95a5;
+  --surface: #1a1f2e;
+  --row-hover: #1c2333;
 }
 
 * {
