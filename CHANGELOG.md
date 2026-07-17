@@ -7,6 +7,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Notifications failed to insert on Postgres.** The `Notification.CreatedAt` field was declared as
+  `int64` with `gorm:"autoCreateTime"`, which made GORM write a Unix epoch integer into the
+  `created_at TIMESTAMP` column. The pgx driver rejects this (`unable to encode ... into binary
+  format for timestamp`), so every notification insert — welcome (seed), @mention, comment/watch,
+  sprint and status-change notifications — failed on the production-default Postgres driver (SQLite
+  masked the bug because it is loosely typed). `CreatedAt` is now `time.Time`, matching every other
+  domain model; the JSON `created_at` field is consequently now an RFC3339 string (frontend
+  `AppNotification.created_at` type updated accordingly).
+- Added a Postgres-backed `postgres-smoke` CI job that runs `cmd/seed` against a real Postgres
+  service container, exercising the notification insert path so this class of Go-model/DB-column
+  type mismatch can no longer ship undetected.
+
 ## [1.1.0] - 2026-07-17
 
 Accumulates Rounds 13–22 of the Jira-parity effort: complete issue view, project views

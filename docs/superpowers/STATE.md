@@ -3,6 +3,8 @@
 > Aggiornato: 2026-07-17 (dopo Round 22 — hardening post-1.0; **R13→R22 ora TUTTI in `main`**). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
 >
 > **Il progetto è stato rinominato in `Heureum`** (owner GitHub `it4nodummies`, module path `github.com/it4nodummies/heureum`). UI servita sotto `/app`. Le superfici API `/rest/api/3` + `/rest/agile/1.0` + JQL restano compat Jira Cloud v3 (intoccabili).
+>
+> **Hotfix post-1.1.0 (2026-07-17), branch `fix/notification-created-at-timestamp`:** `notification.Notification.CreatedAt` era `int64` ma la colonna è `TIMESTAMP` → **ogni insert di notifica falliva su Postgres** (driver di default: welcome/@mention/watching), invisibile ai gate perché tutti girano su SQLite. Fix: campo → `time.Time` (coerente con gli altri modelli) + tipo frontend `AppNotification.created_at` → `string`. **Nuovo job CI `postgres-smoke`** (service `postgres:16` + `go run ./cmd/seed`) che esercita il percorso insert su Postgres reale: prima assenza totale di copertura Postgres in CI. Verificato end-to-end sul Postgres Docker (insert ok, seed exit 0).
 
 ## Obiettivo
 
