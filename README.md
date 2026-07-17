@@ -1,5 +1,7 @@
 # Heureum
 
+**Issue & project tracking that's easy for product owners.**
+
 A self-hostable, open-source project & issue tracker with a drop-in Jira Cloud REST API v3-compatible surface.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
@@ -99,12 +101,12 @@ Official images are published to the GitHub Container Registry on every release 
 publicly pullable:
 
 ```bash
-docker pull ghcr.io/it4nodummies/heureum-api:1.0.0
-docker pull ghcr.io/it4nodummies/heureum-worker:1.0.0
-docker pull ghcr.io/it4nodummies/heureum-frontend:1.0.0
+docker pull ghcr.io/it4nodummies/heureum-api:1.1.0
+docker pull ghcr.io/it4nodummies/heureum-worker:1.1.0
+docker pull ghcr.io/it4nodummies/heureum-frontend:1.1.0
 ```
 
-Each image is also tagged `latest` and with the major.minor (`1.0`).
+Each image is also tagged `latest` and with the major.minor (`1.1`).
 
 ### Run the full stack from GHCR
 
