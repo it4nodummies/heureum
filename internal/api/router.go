@@ -62,7 +62,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	userH := handlers.NewUserHandler(db, cfg.BaseURL, chk)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
 
-	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, cfg.BaseURL)
+	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, versionSvc, cfg.BaseURL)
 	commentSvc := issue.NewCommentService(db)
 	commentH := handlers.NewCommentHandler(commentSvc, issueSvc, cfg.BaseURL)
 	worklogSvc := issue.NewWorklogService(db)

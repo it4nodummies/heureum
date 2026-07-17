@@ -47,7 +47,7 @@ func newBulkTestHandler(t *testing.T, db *gorm.DB, adminUID string) *IssueHandle
 	userSvc := user.NewService(db)
 	projSvc := project.NewService(db, &user.User{ID: adminUID})
 	chk := authz.New(userSvc, projSvc, issueSvc, nil, nil, nil, nil, nil)
-	return NewIssueHandler(issueSvc, projSvc, nil, chk, "http://localhost:8080")
+	return NewIssueHandler(issueSvc, projSvc, nil, chk, nil, "http://localhost:8080")
 }
 
 func bulkPost(t *testing.T, h *IssueHandler, uid string, body map[string]any) (*httptest.ResponseRecorder, []bulkResult) {

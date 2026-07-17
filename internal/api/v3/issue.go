@@ -46,6 +46,7 @@ type IssueFields struct {
 	Project      *ProjectRef    `json:"project,omitempty"`
 	Parent       *ParentRef     `json:"parent,omitempty"`
 	Labels       []string       `json:"labels"`
+	FixVersions  []VersionRef   `json:"fixVersions"`
 	Created      string         `json:"created"`
 	Updated      string         `json:"updated"`
 	DueDate      string         `json:"duedate,omitempty"`
@@ -72,8 +73,9 @@ type IssueInput struct {
 	Status     *StatusRef
 	Resolution *ResolutionRef
 	Project    *ProjectRef
-	Parent     *ParentRef
-	Labels     []string
+	Parent      *ParentRef
+	Labels      []string
+	FixVersions []VersionRef
 }
 
 // descriptionADF converte il DescriptionJSON grezzo dell'issue in un nodo
@@ -114,11 +116,15 @@ func JiraIssue(in IssueInput) IssueBean {
 		Description: descriptionADF(iss.DescriptionJSON),
 		Priority:    issuePtr(PriorityForEnum(string(iss.Priority), in.BaseURL)),
 		Labels:      in.Labels,
+		FixVersions: in.FixVersions,
 		Created:     JiraTime(iss.CreatedAt),
 		Updated:     JiraTime(iss.UpdatedAt),
 	}
 	if fields.Labels == nil {
 		fields.Labels = []string{}
+	}
+	if fields.FixVersions == nil {
+		fields.FixVersions = []VersionRef{}
 	}
 
 	if in.IssueType != nil {
