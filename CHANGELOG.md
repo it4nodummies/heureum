@@ -57,6 +57,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   labels / delete) backed by a new `POST /issues/bulk` endpoint; **inline edit** of priority,
   assignee, and status directly in list cells; real **cursor pagination** with a result count; and
   epic/parent **children indented** under their parent when both are on the current page.
+- **Sprint goal & dates**: create/edit sprints with a goal and start/end dates; the goal and date
+  range show on the sprint header; **Complete sprint** now opens a dialog to move incomplete issues
+  to the backlog OR another sprint (new `POST /rest/agile/1.0/sprint/{id}/complete`).
+- **Configurable board**: a Board settings editor to define columns that map a **set** of statuses,
+  choose a **swimlane** mode (none / assignee / epic), and save **quick-filter** JQL chips
+  (migration `000018` + `GET`/`PUT /rest/agile/1.0/board/{id}/config`). The board renders the
+  configured columns (bucketing by status id), swimlane bands, and quick-filter chips; unconfigured
+  boards keep the previous 1:1-status layout.
 
 ### Fixed
 
@@ -127,6 +135,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   POST routes). List pagination is cursor-based (`/search/jql` has no total), so there's no numbered
   "N of M" — Prev/Next + a per-page count only. Hierarchy indentation is per-page and derived from
   `parent_id` (there is no distinct epic-link field).
+- Board config: card layout and per-column min/max constraints aren't implemented; a status can be
+  mapped to more than one column in the editor (real Jira disallows it — first-matching column wins
+  at render); quick-filter chips evaluate their JQL server-side capped at 200 results and are not yet
+  covered by an end-to-end test; the `000018` migration adds no indexes on the new tables' `board_id`.
 
 ## [1.0.2] - 2026-07-14
 
