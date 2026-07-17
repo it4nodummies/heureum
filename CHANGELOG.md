@@ -65,6 +65,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (migration `000018` + `GET`/`PUT /rest/agile/1.0/board/{id}/config`). The board renders the
   configured columns (bucketing by status id), swimlane bands, and quick-filter chips; unconfigured
   boards keep the previous 1:1-status layout.
+- **Releases / Versions**: project versions with a **Releases** tab/page (create, edit, mark
+  released, released/unreleased filter, start/release dates), multi **Fix versions** on issues (view
+  + edit + create), and a **Releases lane** in the Timeline (version bars with done/total progress).
+  Backed by Jira-conformant endpoints — `GET /rest/api/3/project/{key}/versions`, `POST /version`,
+  `GET`/`PUT`/`DELETE /rest/api/3/version/{id}` — over the pre-existing `versions` table plus an
+  `issue_versions` pivot for multi fix-versions (migration `000019`).
 
 ### Fixed
 
@@ -139,6 +145,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mapped to more than one column in the editor (real Jira disallows it — first-matching column wins
   at render); quick-filter chips evaluate their JQL server-side capped at 200 results and are not yet
   covered by an end-to-end test; the `000018` migration adds no indexes on the new tables' `board_id`.
+- Releases: JQL has no `fixVersion` field yet, so the Releases page shows version status/dates but
+  not a live per-version progress bar (the Timeline lane does show version progress via the pivot).
+  The `/version/{id}/relatedIssueCounts`, `/unresolvedIssueCount`, and `/move` endpoints and version
+  archiving UI aren't implemented; the dead single `issue.version_id` FK remains unused.
 
 ## [1.0.2] - 2026-07-14
 
