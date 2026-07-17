@@ -44,6 +44,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (view + edit). Native story points (`customfield_10016`) remain separate from this system.
 - **Workflow transition rules**: existing transitions can now be edited in place (name +
   require-assignee / set-resolution) in the workflow editor, not just added and deleted.
+- **Access / People**: a project-settings tab to list members with their roles, change a member's
+  role, remove members, and add a member by global user search (`/project/{key}/members`).
+- **Groups admin**: a global `/app/groups` page to create/list/delete groups and manage their
+  members (reachable from the sidebar).
+- **Shared filters**: a "Share with team" toggle when saving a filter, a shared/private badge in the
+  filter list, and inline rename / re-share / delete — sharing is expressed through the Jira-native
+  `sharePermissions` field.
+- **Dashboard gadgets**: add a gadget from the supported catalog (Assigned to me, Activity stream)
+  and remove gadgets on the dashboard detail page.
 
 ### Fixed
 
@@ -79,6 +88,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Custom-field `SetValue` now rejects an unknown field id (previously it silently wrote an orphaned
   value row) and returns `400`/`404` for invalid-value / unknown-field instead of a blanket `500`;
   it also gained `date` (RFC3339) and `user` write paths and a `required` flag on fields.
+- Filter sharing is now settable through the API (create/update accept `is_shared`, and the filter
+  response carries `sharePermissions`) — it was previously hardcoded to private at the HTTP layer.
+- `GET /project/{key}/members` now returns each member's display name / avatar (and email, subject
+  to the usual self-or-global-admin visibility rule) instead of only the user id and role.
 
 ### Known gaps (tracked for a follow-up round)
 
@@ -100,6 +113,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Custom fields: the value model stores a single option per field, so a `multiselect` field's UI
   persists only the first selected option; `required` is enforced in the UI (create + edit) but not
   server-side.
+- Access/People: a project admin who is not a global admin can demote or remove their own membership
+  (no self-guard yet). Project invites can be created but there is no accept-invite route.
+- Groups: there is no "list all groups" endpoint, so the admin page lists via the name picker; dashboard
+  gadgets are limited to the two hydrated types and gadget layout/position isn't persisted.
 
 ## [1.0.2] - 2026-07-14
 
