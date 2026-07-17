@@ -77,6 +77,40 @@ export function SearchResults({
   const allShownKeys = useMemo(() => rows.map((r) => r.key), [rows]);
   const allSelected = allShownKeys.length > 0 && allShownKeys.every((k) => selected.has(k));
 
+  // Lightweight, purely-presentational hierarchy: an issue whose parent key is
+  // ALSO present in the current result set renders directly beneath its parent
+  // with a visual indent (depth > 0 → data-testid="child-row"). Parents absent
+  // (or null) stay at top level. This only re-orders the current page — no
+  // cross-page/epic fetch. Cycles/orphans fall back to top level so every row
+  // is always rendered exactly once.
+  const ordered = useMemo(() => {
+    const present = new Set(rows.map((r) => r.key));
+    const childrenOf = new Map<string, SearchIssue[]>();
+    const roots: SearchIssue[] = [];
+    for (const r of rows) {
+      const pk = r.fields.parent?.key;
+      if (pk && pk !== r.key && present.has(pk)) {
+        const arr = childrenOf.get(pk) ?? [];
+        arr.push(r);
+        childrenOf.set(pk, arr);
+      } else {
+        roots.push(r);
+      }
+    }
+    const out: { iss: SearchIssue; depth: number }[] = [];
+    const emitted = new Set<string>();
+    const visit = (iss: SearchIssue, depth: number) => {
+      if (emitted.has(iss.key)) return; // guard against parent cycles
+      emitted.add(iss.key);
+      out.push({ iss, depth });
+      for (const c of childrenOf.get(iss.key) ?? []) visit(c, depth + 1);
+    };
+    for (const r of roots) visit(r, 0);
+    // Any row not reached (e.g. mutual parent cycle) still renders top level.
+    for (const r of rows) if (!emitted.has(r.key)) visit(r, 0);
+    return out;
+  }, [rows]);
+
   const toggleAll = () =>
     setSelected((prev) => {
       if (allSelected) return new Set();
@@ -242,8 +276,12 @@ export function SearchResults({
           </tr>
         </thead>
         <tbody>
-          {rows.map((iss) => (
-            <tr key={iss.id} className="border-b border-slate-100 hover:bg-slate-50">
+          {ordered.map(({ iss, depth }) => (
+            <tr
+              key={iss.id}
+              data-testid={depth > 0 ? "child-row" : undefined}
+              className="border-b border-slate-100 hover:bg-slate-50"
+            >
               <td className="w-8 py-2 pr-2">
                 <input
                   type="checkbox"
@@ -253,11 +291,25 @@ export function SearchResults({
                   onChange={() => toggleRow(iss.key)}
                 />
               </td>
-              {visible.map((c) => (
-                <td key={c.key} className="py-2 pr-4 text-[#1a1f36]">
-                  {cell(iss, c.key)}
-                </td>
-              ))}
+              {visible.map((c, ci) => {
+                // Indent only the first visible content column so table columns
+                // stay aligned; deeper nesting adds more left padding + marker.
+                const indent = ci === 0 && depth > 0;
+                return (
+                  <td
+                    key={c.key}
+                    className="py-2 pr-4 text-[#1a1f36]"
+                    style={indent ? { paddingLeft: depth * 20 } : undefined}
+                  >
+                    {indent && (
+                      <span aria-hidden className="mr-1 text-slate-300">
+                        ↳
+                      </span>
+                    )}
+                    {cell(iss, c.key)}
+                  </td>
+                );
+              })}
             </tr>
           ))}
           {rows.length === 0 && (
