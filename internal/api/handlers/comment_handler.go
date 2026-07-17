@@ -125,15 +125,15 @@ func (h *CommentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authorID := middleware.UserIDFromContext(r.Context())
-	comment, err := h.svc.AddComment(iss.ID, authorID, string(bodyJSON))
+	// Estrae gli accountId dai nodi ADF mention (attrs.id = user id) e li passa
+	// al service, che li unisce alle mention testuali @username notificando ogni
+	// utente una sola volta (dedupe lato notifier).
+	mentionUserIDs := v3.ExtractMentions(string(bodyJSON))
+	comment, err := h.svc.AddComment(iss.ID, authorID, string(bodyJSON), mentionUserIDs...)
 	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to add comment"}, nil)
 		return
 	}
-	// Le mention vengono estratte per un eventuale utilizzo futuro (es.
-	// notifiche mirate su ADF); la notifica "commented" e quella basata su
-	// @username testuale sono già gestite da CommentService.AddComment.
-	_ = v3.ExtractMentions(string(bodyJSON))
 	author := h.author(comment)
 	v3.WriteJSON(w, http.StatusCreated, h.toComment(*comment, author))
 }
