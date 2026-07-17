@@ -281,6 +281,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	// POST /issues/rank: project resolved from body (target issue_id) ->
 	// enforced in-handler (BoardHandler.RankIssue) per the Round 11 plan.
 	mux.Handle("POST /rest/api/3/issues/rank", authMw(http.HandlerFunc(boardH.RankIssue)))
+	// POST /issues/bulk: applica un set parziale di campi a una LISTA di issue,
+	// con autorizzazione per-issue in-handler e fallimenti parziali. Non-gate
+	// dal decoratore (non può filtrare una lista nel body), come /issues/rank.
+	mux.Handle("POST /rest/api/3/issues/bulk", authMw(http.HandlerFunc(issueH.BulkUpdate)))
 
 	// --- Agile API 1.0 (Round 5) ---
 	mux.Handle("GET /rest/agile/1.0/board", authMw(http.HandlerFunc(agileBoardH.List)))

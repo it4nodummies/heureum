@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **114**
 - Nel contratto ma mancanti: **607**
-- Implementati ma fuori contratto (estensioni): **87**
+- Implementati ma fuori contratto (estensioni): **88**
 
 ## Mancanti (dal contratto)
 
@@ -688,6 +688,7 @@
 - `POST /rest/api/3/dashboards`
 - `POST /rest/api/3/dashboards/{}/widgets`
 - `POST /rest/api/3/issue/{}/labels`
+- `POST /rest/api/3/issues/bulk`
 - `POST /rest/api/3/issues/rank`
 - `POST /rest/api/3/project/{}/automation`
 - `POST /rest/api/3/project/{}/custom-fields`
