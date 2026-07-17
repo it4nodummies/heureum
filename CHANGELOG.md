@@ -82,6 +82,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Email delivery**: the worker sends notification emails over **SMTP** (config `SMTP_*`),
   respecting the `via_email` preference and emailing each notification at most once (migration
   `000020` adds an `email_sent` flag); email is a no-op when SMTP is unconfigured.
+- **Profile — language, theme, avatar**: a language/locale selector on the profile; a persisted
+  **light/dark theme** toggle (in the profile and the top-bar menu) applied to the app chrome; and
+  **avatar upload** (`POST /rest/api/3/myself/avatar`, image-validated, served publicly at
+  `GET /rest/api/3/user/avatar/{userId}`), surfaced in the top bar and user pickers.
 
 ### Fixed
 
@@ -166,6 +170,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   settings API keys on the internal project UUID, which the frontend doesn't hold); notification
   emails are plain text (no HTML templating) and the `SMTP_*` vars remain commented in
   `.env.example`.
+- Profile: the dark theme covers the app chrome (top bar, sidebar, page backgrounds, profile) —
+  deep per-view content (project tables, board columns, issue detail, charts, modals) still uses the
+  light palette and is a follow-up; avatars have no crop/resize and are served publicly by design.
 
 ## [1.0.2] - 2026-07-14
 
