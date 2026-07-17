@@ -86,6 +86,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **light/dark theme** toggle (in the profile and the top-bar menu) applied to the app chrome; and
   **avatar upload** (`POST /rest/api/3/myself/avatar`, image-validated, served publicly at
   `GET /rest/api/3/user/avatar/{userId}`), surfaced in the top bar and user pickers.
+- **Webhook delivery is now a persistent retry queue** (migration `000021`): the dispatcher enqueues
+  a delivery and the worker delivers it with exponential backoff (up to 5 attempts, then `dead`),
+  so a crash no longer loses a webhook (previously fire-and-forget in the request goroutine).
+- **Auth rate limiting**: per-IP limiting on `/auth/register` and `/auth/login` (configurable via
+  `APP_AUTH_RATELIMIT`, default 10 per 5 min; `0` disables).
 
 ### Fixed
 
@@ -173,6 +178,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Profile: the dark theme covers the app chrome (top bar, sidebar, page backgrounds, profile) —
   deep per-view content (project tables, board columns, issue detail, charts, modals) still uses the
   light palette and is a follow-up; avatars have no crop/resize and are served publicly by design.
+- The worker no longer double-processes automation rules (the dispatcher already runs them
+  event-driven); git commit links + auto-comments are de-duplicated on a repeated commit SHA
+  (unique index, migration `000022`); the stale "SMTP planned/not wired" docs are corrected (SMTP
+  email is wired since the previous round).
+- Known limits: the rate limiter is in-memory (per-instance, not shared across replicas) and trusts
+  the `X-Forwarded-For` first hop (assumes a trusted proxy sets it); the webhook queue assumes a
+  single worker instance (no row-level lease for horizontal scale).
 
 ## [1.0.2] - 2026-07-14
 
