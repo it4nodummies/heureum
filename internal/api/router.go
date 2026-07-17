@@ -294,6 +294,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Get))))
 	mux.Handle("DELETE /rest/agile/1.0/board/{boardId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Delete))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/configuration", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Configuration))))
+	// Heureum-custom (non-Jira): full editable board config (columns + swimlane + quickFilters).
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/config", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.GetCustomConfig))))
+	mux.Handle("PUT /rest/agile/1.0/board/{boardId}/config", authMw(chk.Enforce(permission.AdministerProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.SaveCustomConfig))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/backlog", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Backlog))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardIssues))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/sprint", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardSprints))))

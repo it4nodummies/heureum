@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strconv"
 
 	"gorm.io/gorm"
@@ -164,12 +163,18 @@ func (h *AgileBoardHandler) Configuration(w http.ResponseWriter, r *http.Request
 		Type: b.Type,
 	}
 	cfg.ColumnConfig.ConstraintType = "none"
-	if wf, err := h.workflowSvc.GetWorkflow(b.ProjectID); err == nil {
-		sort.Slice(wf.Statuses, func(i, j int) bool { return wf.Statuses[i].Position < wf.Statuses[j].Position })
-		for _, st := range wf.Statuses {
+	// Colonne persistite (o fallback 1:1 dagli stati del workflow). Ogni colonna
+	// può mappare più stati: columnConfig.columns[].statuses[] è già multi-status
+	// e resta conforme allo schema agile (nessun campo custom qui).
+	if bc, err := h.boardSvc.GetConfig(b.ID, h.fallbackStatuses(b.ProjectID)); err == nil {
+		for _, col := range bc.Columns {
+			statuses := make([]v3.BoardColumnStatus, 0, len(col.StatusIDs))
+			for _, sid := range col.StatusIDs {
+				statuses = append(statuses, v3.BoardColumnStatus{ID: sid})
+			}
 			cfg.ColumnConfig.Columns = append(cfg.ColumnConfig.Columns, v3.BoardColumnConfig{
-				Name:     st.Name,
-				Statuses: []v3.BoardColumnStatus{{ID: st.ID}},
+				Name:     col.Name,
+				Statuses: statuses,
 			})
 		}
 	}

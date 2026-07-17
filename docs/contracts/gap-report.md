@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **114**
 - Nel contratto ma mancanti: **607**
-- Implementati ma fuori contratto (estensioni): **89**
+- Implementati ma fuori contratto (estensioni): **91**
 
 ## Mancanti (dal contratto)
 
@@ -630,6 +630,7 @@
 - `DELETE /rest/api/3/project/{}/workflow/statuses/{}`
 - `DELETE /rest/api/3/project/{}/workflow/transitions/{}`
 - `GET /healthz`
+- `GET /rest/agile/1.0/board/{}/config`
 - `GET /rest/api/3/auth/oauth/{}/callback`
 - `GET /rest/api/3/auth/oauth/{}/redirect`
 - `GET /rest/api/3/automation/{}`
@@ -703,6 +704,7 @@
 - `POST /rest/api/3/project/{}/workflow/statuses`
 - `POST /rest/api/3/project/{}/workflow/transitions`
 - `POST /rest/api/3/webhooks/git/{}`
+- `PUT /rest/agile/1.0/board/{}/config`
 - `PUT /rest/api/3/issue/{}/custom-values/{}`
 - `PUT /rest/api/3/myself`
 - `PUT /rest/api/3/project/{}/star`
