@@ -45,6 +45,23 @@ test("profile page loads and saves display name", async ({ page }) => {
   await expect(page.getByLabel("Display name")).toHaveValue("Ada Lovelace");
 });
 
+test("profile page has a language selector that persists, and an avatar upload control", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/profile");
+  await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+
+  // Language/locale selector exists and can be changed + persisted.
+  const locale = page.getByTestId("profile-locale");
+  await expect(locale).toBeVisible();
+  await locale.selectOption("it");
+  await page.getByRole("button", { name: "Save profile" }).click();
+  await page.reload();
+  await expect(page.getByTestId("profile-locale")).toHaveValue("it");
+
+  // The avatar upload control renders.
+  await expect(page.getByTestId("avatar-upload")).toBeAttached();
+});
+
 test("profile page can add a notification preference", async ({ page }) => {
   await login(page);
   await page.goto("/app/profile");

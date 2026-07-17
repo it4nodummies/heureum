@@ -1148,6 +1148,33 @@ export const profile = {
   update: (patch: { displayName?: string; timeZone?: string; locale?: string; avatarUrl?: string }) =>
     apiFetch<JiraUser>("/rest/api/3/myself", { method: "PUT", body: JSON.stringify(patch) }),
   searchUsers: (query: string) => apiFetch<JiraUser[]>(`/rest/api/3/user/search?query=${encodeURIComponent(query)}`),
+
+  // Multipart upload — deliberately does NOT go through apiFetch (which forces
+  // Content-Type: application/json). The browser must set its own multipart
+  // boundary, so we build a bare fetch with just auth + 401 handling. Field
+  // name must be "file" (see AvatarHandler.Upload's r.FormFile("file")).
+  uploadAvatar: async (file: File): Promise<JiraUser> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`${BASE_URL}/rest/api/3/myself/avatar`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: fd,
+    });
+    handleUnauthorized(res);
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = `HTTP ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json.error) msg = json.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return res.json() as Promise<JiraUser>;
+  },
 };
 
 // ── Users (assignable search, for the UserPicker) ───────────────────────────

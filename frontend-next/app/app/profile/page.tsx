@@ -9,18 +9,33 @@ export default function ProfilePage() {
   const me = useQuery({ queryKey: ["profile", "me"], queryFn: profile.me });
   const [displayName, setDisplayName] = useState("");
   const [timeZone, setTimeZone] = useState("");
+  const [locale, setLocale] = useState("");
 
   useEffect(() => {
     if (me.data) {
       setDisplayName(me.data.displayName ?? "");
       setTimeZone(me.data.timeZone ?? "");
+      setLocale(me.data.locale ?? "");
     }
   }, [me.data]);
 
   const save = useMutation({
-    mutationFn: () => profile.update({ displayName, timeZone }),
+    mutationFn: () => profile.update({ displayName, timeZone, locale }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["profile", "me"] }),
   });
+
+  const uploadAvatar = useMutation({
+    mutationFn: (file: File) => profile.uploadAvatar(file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["profile", "me"] }),
+  });
+
+  const initials = (me.data?.displayName ?? me.data?.emailAddress ?? "?")
+    .trim()
+    .split(/\s+/)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   const settings = useQuery({ queryKey: ["notif", "settings"], queryFn: notifications.settings });
   const updateSetting = useMutation({
@@ -48,6 +63,43 @@ export default function ProfilePage() {
       <h1 className="mb-4 text-xl font-semibold text-[#1a1f36]">Profile</h1>
 
       <section className="mb-6 rounded border border-slate-200 bg-white p-4">
+        <label className="mb-1 block text-xs font-semibold text-slate-500">Avatar</label>
+        <div className="mb-3 flex items-center gap-3">
+          {me.data?.avatarUrls?.["48x48"] ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={me.data.avatarUrls["48x48"]}
+              alt="Avatar"
+              className="h-12 w-12 rounded-full border border-slate-200 object-cover"
+            />
+          ) : (
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+              {initials}
+            </span>
+          )}
+          <div>
+            <label className="inline-block cursor-pointer rounded border border-slate-300 px-3 py-1.5 text-sm text-[#1a1f36] hover:bg-slate-50">
+              {uploadAvatar.isPending ? "Uploading…" : "Upload avatar"}
+              <input
+                data-testid="avatar-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadAvatar.mutate(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {uploadAvatar.isError && (
+              <p className="mt-1 text-xs text-red-600">
+                {(uploadAvatar.error as Error)?.message ?? "Upload failed"}
+              </p>
+            )}
+          </div>
+        </div>
+
         <label className="mb-1 block text-xs font-semibold text-slate-500">Display name</label>
         <input
           aria-label="Display name"
@@ -63,6 +115,22 @@ export default function ProfilePage() {
           placeholder="Europe/Rome"
           className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
+        <label className="mb-1 block text-xs font-semibold text-slate-500">Language</label>
+        <select
+          data-testid="profile-locale"
+          aria-label="Language"
+          value={locale}
+          onChange={(e) => setLocale(e.target.value)}
+          className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
+        >
+          <option value="">Default</option>
+          <option value="en">English</option>
+          <option value="it">Italiano</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="pt">Português</option>
+        </select>
         <button
           onClick={() => save.mutate()}
           disabled={save.isPending}
