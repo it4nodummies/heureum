@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { issues, profile, type SearchIssue, type JiraUser } from "@/lib/api";
+import {
+  issues,
+  profile,
+  type SearchIssue,
+  type JiraUser,
+  type IssueTransitionOption,
+} from "@/lib/api";
 
 const ALL_COLUMNS = [
   { key: "key", label: "Key" },
@@ -125,11 +131,11 @@ export function SearchResults({
       case "summary":
         return iss.fields.summary ?? "";
       case "status":
-        return iss.fields.status?.name ?? "";
+        return <StatusCell iss={iss} onChanged={onChanged} />;
       case "priority":
-        return iss.fields.priority?.name ?? "";
+        return <PriorityCell iss={iss} onChanged={onChanged} />;
       case "assignee":
-        return iss.fields.assignee?.displayName ?? "Unassigned";
+        return <AssigneeCell iss={iss} onChanged={onChanged} />;
       case "updated":
         return iss.fields.updated?.slice(0, 10) ?? "";
     }
@@ -267,21 +273,12 @@ export function SearchResults({
   );
 }
 
-// Lightweight person picker for bulk assignment: results may span multiple
-// projects, so it searches globally via profile.searchUsers (not the
-// project-scoped assignable search that UserPicker uses).
-function BulkAssigneePicker({
-  value,
-  onChange,
-}: {
-  value: { accountId: string; displayName: string } | null;
-  onChange: (v: { accountId: string; displayName: string } | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
+// Debounced global people search (results may span projects) shared by the
+// bulk assignee picker and the inline assignee cell.
+function usePeopleSearch(active: boolean) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [results, setResults] = useState<JiraUser[]>([]);
-  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query), 250);
@@ -290,7 +287,7 @@ function BulkAssigneePicker({
 
   useEffect(() => {
     let cancelled = false;
-    if (!open) return;
+    if (!active) return;
     profile
       .searchUsers(debounced)
       .then((r) => {
@@ -302,19 +299,41 @@ function BulkAssigneePicker({
     return () => {
       cancelled = true;
     };
-  }, [debounced, open]);
+  }, [debounced, active]);
 
+  return { query, setQuery, results };
+}
+
+// Closes the popover when the user clicks outside `ref`.
+function useOutsideClose(active: boolean, ref: React.RefObject<HTMLElement | null>, close: () => void) {
   useEffect(() => {
-    if (!open) return;
+    if (!active) return;
     function onDocClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
+  }, [active, ref, close]);
+}
+
+// Lightweight person picker for bulk assignment: results may span multiple
+// projects, so it searches globally via profile.searchUsers (not the
+// project-scoped assignable search that UserPicker uses).
+function BulkAssigneePicker({
+  value,
+  onChange,
+}: {
+  value: { accountId: string; displayName: string } | null;
+  onChange: (v: { accountId: string; displayName: string } | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { query, setQuery, results } = usePeopleSearch(open);
+
+  useOutsideClose(open, rootRef, () => {
+    setOpen(false);
+    setQuery("");
+  });
 
   const select = (v: { accountId: string; displayName: string } | null) => {
     onChange(v);
@@ -360,6 +379,223 @@ function BulkAssigneePicker({
                 type="button"
                 onClick={() => select({ accountId: u.accountId, displayName: u.displayName })}
                 className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-slate-50"
+              >
+                {u.displayName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Inline editable cells ────────────────────────────────────────────────────
+// Each cell is read-only text until clicked; clicking swaps in an editor. Edit
+// controls stopPropagation so they never trigger the row's key-link navigation.
+// A successful mutation resets the cell's own edit state in onSuccess and calls
+// onChanged() to refetch; rows are keyed by stable iss.id, so the cell re-renders
+// in place (it does NOT remount) — hence state is reset explicitly, not via a key
+// change.
+
+function PriorityCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const update = useMutation({
+    mutationFn: (id: string) => issues.update(iss.key, { priority: { id } }),
+    onSuccess: () => {
+      setEditing(false);
+      onChanged?.();
+    },
+  });
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        data-testid="cell-priority"
+        onClick={(e) => {
+          e.stopPropagation();
+          setEditing(true);
+        }}
+        className="rounded px-1 text-left text-[#1a1f36] hover:bg-slate-100"
+      >
+        {iss.fields.priority?.name ?? "—"}
+      </button>
+    );
+  }
+
+  return (
+    <select
+      autoFocus
+      aria-label={`Priority for ${iss.key}`}
+      defaultValue={iss.fields.priority?.id ?? ""}
+      disabled={update.isPending}
+      onClick={(e) => e.stopPropagation()}
+      onBlur={() => setEditing(false)}
+      onChange={(e) => {
+        if (e.target.value) update.mutate(e.target.value);
+        else setEditing(false);
+      }}
+      className="rounded border border-slate-300 px-1 py-0.5 text-sm"
+    >
+      {PRIORITIES.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function StatusCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [opts, setOpts] = useState<IssueTransitionOption[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const transition = useMutation({
+    mutationFn: (statusId: string) => issues.transition(iss.key, statusId),
+    onSuccess: () => {
+      setEditing(false);
+      // Rows are keyed by stable iss.id, so onChanged()'s refetch re-renders
+      // this same StatusCell instance (no remount). Drop the cached transitions
+      // so the next edit re-fetches the ones valid for the NEW status.
+      setOpts(null);
+      onChanged?.();
+    },
+  });
+
+  const label = iss.fields.status?.name ?? "—";
+
+  const enterEdit = async () => {
+    setEditing(true);
+    if (opts === null) {
+      setLoading(true);
+      try {
+        const r = await issues.transitions(iss.key);
+        setOpts(r.transitions);
+      } catch {
+        setOpts([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        data-testid="cell-status"
+        onClick={(e) => {
+          e.stopPropagation();
+          void enterEdit();
+        }}
+        className="rounded px-1 text-left text-[#1a1f36] hover:bg-slate-100"
+      >
+        {label}
+      </button>
+    );
+  }
+
+  // Loading transitions, or none available → stay read-only (revert on blur).
+  if (loading || opts === null || opts.length === 0) {
+    return (
+      <button
+        type="button"
+        data-testid="cell-status"
+        title={opts !== null && opts.length === 0 ? "No transitions available" : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          setEditing(false);
+        }}
+        className="rounded px-1 text-left text-slate-500 hover:bg-slate-100"
+      >
+        {loading ? "…" : label}
+      </button>
+    );
+  }
+
+  return (
+    <select
+      autoFocus
+      aria-label={`Status for ${iss.key}`}
+      defaultValue=""
+      disabled={transition.isPending}
+      onClick={(e) => e.stopPropagation()}
+      onBlur={() => setEditing(false)}
+      onChange={(e) => {
+        if (e.target.value) transition.mutate(e.target.value);
+      }}
+      className="rounded border border-slate-300 px-1 py-0.5 text-sm"
+    >
+      <option value="">{label}…</option>
+      {opts.map((t) => (
+        <option key={t.id} value={t.to.id}>
+          {t.to.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function AssigneeCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { query, setQuery, results } = usePeopleSearch(open);
+  const update = useMutation({
+    mutationFn: (accountId: string) => issues.update(iss.key, { assignee: { accountId } }),
+    onSuccess: () => {
+      setOpen(false);
+      setQuery("");
+      onChanged?.();
+    },
+  });
+
+  useOutsideClose(open, rootRef, () => {
+    setOpen(false);
+    setQuery("");
+  });
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        data-testid="cell-assignee"
+        aria-label={`Assignee for ${iss.key}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="rounded px-1 text-left text-[#1a1f36] hover:bg-slate-100"
+      >
+        {iss.fields.assignee?.displayName ?? "Unassigned"}
+      </button>
+
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute z-20 mt-1 w-56 rounded border border-slate-200 bg-white shadow-lg"
+        >
+          <input
+            autoFocus
+            aria-label={`Search people for ${iss.key}`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search people…"
+            className="w-full border-b border-slate-100 px-2 py-1.5 text-sm focus:outline-none"
+          />
+          <div className="max-h-56 overflow-y-auto py-1" role="listbox">
+            {results.length === 0 && (
+              <div className="px-2 py-1.5 text-xs text-slate-400">No matching people</div>
+            )}
+            {results.map((u) => (
+              <button
+                key={u.accountId}
+                type="button"
+                disabled={update.isPending}
+                onClick={() => update.mutate(u.accountId)}
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-slate-50 disabled:opacity-60"
               >
                 {u.displayName}
               </button>
