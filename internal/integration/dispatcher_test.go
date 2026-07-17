@@ -1,9 +1,7 @@
 package integration
 
 import (
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -19,10 +17,8 @@ func newDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	// sqlite ":memory:" gives each pooled connection its OWN empty database, so
-	// an async goroutine (the webhook delivery) that grabs a second connection
-	// sees "no such table". Pin the pool to a single connection so the whole test
-	// (migrate + async RecordDelivery + Count) shares one in-memory schema.
+	// sqlite ":memory:" gives each pooled connection its OWN empty database. Pin the
+	// pool to a single connection so migrate + enqueue + Count share one schema.
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("db handle: %v", err)
@@ -34,54 +30,48 @@ func newDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestDispatcher_DeliversToMatchingWebhook(t *testing.T) {
+func TestDispatcher_EnqueuesPendingDelivery(t *testing.T) {
 	db := newDB(t)
 	whSvc := webhook.NewService(db)
-	received := make(chan string, 1)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		received <- string(b)
-		w.WriteHeader(200)
-	}))
-	defer srv.Close()
-	whSvc.Create("proj-1", srv.URL, "s", []string{"issue_created"})
+	whSvc.Create("proj-1", "https://example.com/hook", "s", []string{"issue_created"})
 
 	d := NewDispatcher(whSvc, nil, &http.Client{Timeout: 5 * time.Second})
 	d.IssueEvent("issue_created", &issue.Issue{ID: "i1", Key: "P-1", Title: "Hello", ProjectID: "proj-1"})
 
-	select {
-	case body := <-received:
-		if body == "" {
-			t.Error("payload vuoto")
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("webhook non consegnato entro il timeout")
+	// La dispatcher NON esegue HTTP: accoda una riga pending nel DB.
+	var deliveries []webhook.Delivery
+	if err := db.Find(&deliveries).Error; err != nil {
+		t.Fatalf("find: %v", err)
 	}
-	// la delivery è registrata
-	var cnt int64
-	db.Model(&webhook.Delivery{}).Count(&cnt)
-	// attende breve per la goroutine di record (se async): riprova
-	for i := 0; i < 20 && cnt == 0; i++ {
-		time.Sleep(50 * time.Millisecond)
-		db.Model(&webhook.Delivery{}).Count(&cnt)
+	if len(deliveries) != 1 {
+		t.Fatalf("attesa 1 delivery accodata, %d", len(deliveries))
 	}
-	if cnt == 0 {
-		t.Error("delivery non registrata")
+	del := deliveries[0]
+	if del.Status != "pending" {
+		t.Errorf("status = %q, atteso pending", del.Status)
+	}
+	if del.Payload == "" {
+		t.Errorf("payload deve essere valorizzato")
+	}
+	if del.EventType != "issue_created" || del.URL != "https://example.com/hook" {
+		t.Errorf("delivery errata: %+v", del)
+	}
+	if del.NextAttemptAt == nil {
+		t.Errorf("next_attempt_at deve essere valorizzato (dovuto subito)")
 	}
 }
 
 func TestDispatcher_SkipsNonMatchingEvent(t *testing.T) {
 	db := newDB(t)
 	whSvc := webhook.NewService(db)
-	hit := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hit = true; w.WriteHeader(200) }))
-	defer srv.Close()
-	whSvc.Create("proj-1", srv.URL, "", []string{"issue_updated"})
+	whSvc.Create("proj-1", "https://b", "", []string{"issue_updated"})
 
 	d := NewDispatcher(whSvc, nil, &http.Client{Timeout: 2 * time.Second})
 	d.IssueEvent("issue_created", &issue.Issue{ID: "i1", Key: "P-1", ProjectID: "proj-1"})
-	time.Sleep(300 * time.Millisecond)
-	if hit {
-		t.Error("un evento non sottoscritto non deve consegnare")
+
+	var cnt int64
+	db.Model(&webhook.Delivery{}).Count(&cnt)
+	if cnt != 0 {
+		t.Errorf("un evento non sottoscritto non deve accodare consegne, %d", cnt)
 	}
 }

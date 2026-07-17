@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -71,5 +72,85 @@ func TestDeleteAndRecordDelivery(t *testing.T) {
 	}
 	if l, _ := svc.ListByProject("proj-1"); len(l) != 0 {
 		t.Error("webhook dovrebbe essere eliminato")
+	}
+}
+
+func TestEnqueueAndListRetryable(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	h, _ := svc.Create("proj-1", "https://a", "s", []string{"issue_created"})
+
+	if err := svc.EnqueueDelivery(h.ID, "issue_created", h.URL, `{"x":1}`); err != nil {
+		t.Fatalf("EnqueueDelivery: %v", err)
+	}
+
+	now := time.Now()
+	got, err := svc.ListRetryable(now, 50)
+	if err != nil {
+		t.Fatalf("ListRetryable: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("attesa 1 delivery retryable, %d", len(got))
+	}
+	if got[0].Status != "pending" || got[0].Payload != `{"x":1}` || got[0].EventType != "issue_created" {
+		t.Errorf("delivery accodata errata: %+v", got[0])
+	}
+}
+
+func TestMarkDeliveryResultBackoffWindow(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	h, _ := svc.Create("proj-1", "https://a", "s", []string{"issue_created"})
+	svc.EnqueueDelivery(h.ID, "issue_created", h.URL, "{}")
+
+	now := time.Now()
+	del, _ := svc.ListRetryable(now, 50)
+	id := del[0].ID
+
+	// Simula un fallimento: status='failed', attempts=1, prossimo tentativo tra 30s.
+	next := now.Add(30 * time.Second)
+	if err := svc.MarkDeliveryResult(id, 500, false, "boom", "failed", 1, &next); err != nil {
+		t.Fatalf("MarkDeliveryResult: %v", err)
+	}
+
+	// Non ancora dovuto a "now".
+	if got, _ := svc.ListRetryable(now, 50); len(got) != 0 {
+		t.Errorf("delivery in backoff non deve essere retryable a now, %d", len(got))
+	}
+	// Dovuto a now+31s.
+	if got, _ := svc.ListRetryable(now.Add(31*time.Second), 50); len(got) != 1 {
+		t.Errorf("delivery deve essere retryable dopo la finestra, %d", len(got))
+	}
+}
+
+func TestMarkDeliveryDeadNeverReturned(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	h, _ := svc.Create("proj-1", "https://a", "s", []string{"issue_created"})
+	svc.EnqueueDelivery(h.ID, "issue_created", h.URL, "{}")
+
+	now := time.Now()
+	del, _ := svc.ListRetryable(now, 50)
+	id := del[0].ID
+
+	// Raggiunto maxAttempts → 'dead' (nessun prossimo tentativo).
+	if err := svc.MarkDeliveryResult(id, 500, false, "boom", "dead", 5, nil); err != nil {
+		t.Fatalf("MarkDeliveryResult: %v", err)
+	}
+	if got, _ := svc.ListRetryable(now.Add(24*time.Hour), 50); len(got) != 0 {
+		t.Errorf("una delivery 'dead' non deve mai essere retryable, %d", len(got))
+	}
+}
+
+func TestGetWebhook(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	h, _ := svc.Create("proj-1", "https://a", "sekret", []string{"issue_created"})
+	got, err := svc.GetWebhook(h.ID)
+	if err != nil {
+		t.Fatalf("GetWebhook: %v", err)
+	}
+	if got.URL != "https://a" || got.Secret != "sekret" {
+		t.Errorf("webhook errato: %+v", got)
 	}
 }

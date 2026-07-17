@@ -57,6 +57,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   labels / delete) backed by a new `POST /issues/bulk` endpoint; **inline edit** of priority,
   assignee, and status directly in list cells; real **cursor pagination** with a result count; and
   epic/parent **children indented** under their parent when both are on the current page.
+- **Sprint goal & dates**: create/edit sprints with a goal and start/end dates; the goal and date
+  range show on the sprint header; **Complete sprint** now opens a dialog to move incomplete issues
+  to the backlog OR another sprint (new `POST /rest/agile/1.0/sprint/{id}/complete`).
+- **Configurable board**: a Board settings editor to define columns that map a **set** of statuses,
+  choose a **swimlane** mode (none / assignee / epic), and save **quick-filter** JQL chips
+  (migration `000018` + `GET`/`PUT /rest/agile/1.0/board/{id}/config`). The board renders the
+  configured columns (bucketing by status id), swimlane bands, and quick-filter chips; unconfigured
+  boards keep the previous 1:1-status layout.
+- **Releases / Versions**: project versions with a **Releases** tab/page (create, edit, mark
+  released, released/unreleased filter, start/release dates), multi **Fix versions** on issues (view
+  + edit + create), and a **Releases lane** in the Timeline (version bars with done/total progress).
+  Backed by Jira-conformant endpoints — `GET /rest/api/3/project/{key}/versions`, `POST /version`,
+  `GET`/`PUT`/`DELETE /rest/api/3/version/{id}` — over the pre-existing `versions` table plus an
+  `issue_versions` pivot for multi fix-versions (migration `000019`).
+- **Rich text editor**: a lightweight (dependency-free) WYSIWYG editor with a minimal toolbar
+  (bold / italic / code / bullet list / heading) for issue descriptions and comments, producing valid
+  ADF — replacing the plain textareas.
+- **@mentions**: an autocomplete in the editor inserts a mention of a user; the mentioned user now
+  receives a notification (the ADF mention node's account id is wired to notifications).
+- **Notification bell** now has **Direct / Watching** tabs and groups entries by issue.
+- **Notification preferences**: you can now **add** a preference (event type + channels), not only
+  toggle existing ones.
+- **Email delivery**: the worker sends notification emails over **SMTP** (config `SMTP_*`),
+  respecting the `via_email` preference and emailing each notification at most once (migration
+  `000020` adds an `email_sent` flag); email is a no-op when SMTP is unconfigured.
+- **Profile — language, theme, avatar**: a language/locale selector on the profile; a persisted
+  **light/dark theme** toggle (in the profile and the top-bar menu) applied to the app chrome; and
+  **avatar upload** (`POST /rest/api/3/myself/avatar`, image-validated, served publicly at
+  `GET /rest/api/3/user/avatar/{userId}`), surfaced in the top bar and user pickers.
+- **Webhook delivery is now a persistent retry queue** (migration `000021`): the dispatcher enqueues
+  a delivery and the worker delivers it with exponential backoff (up to 5 attempts, then `dead`),
+  so a crash no longer loses a webhook (previously fire-and-forget in the request goroutine).
+- **Auth rate limiting**: per-IP limiting on `/auth/register` and `/auth/login` (configurable via
+  `APP_AUTH_RATELIMIT`, default 10 per 5 min; `0` disables).
 
 ### Fixed
 
@@ -127,6 +161,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   POST routes). List pagination is cursor-based (`/search/jql` has no total), so there's no numbered
   "N of M" — Prev/Next + a per-page count only. Hierarchy indentation is per-page and derived from
   `parent_id` (there is no distinct epic-link field).
+- Board config: card layout and per-column min/max constraints aren't implemented; a status can be
+  mapped to more than one column in the editor (real Jira disallows it — first-matching column wins
+  at render); quick-filter chips evaluate their JQL server-side capped at 200 results and are not yet
+  covered by an end-to-end test; the `000018` migration adds no indexes on the new tables' `board_id`.
+- Releases: JQL has no `fixVersion` field yet, so the Releases page shows version status/dates but
+  not a live per-version progress bar (the Timeline lane does show version progress via the pivot).
+  The `/version/{id}/relatedIssueCounts`, `/unresolvedIssueCount`, and `/move` endpoints and version
+  archiving UI aren't implemented; the dead single `issue.version_id` FK remains unused.
+- Editor/notifications: the rich editor supports a bounded ADF vocabulary (no tables/images/quote,
+  no slash-commands); Direct/Watching is inferred from the notification type (no stored reason
+  field); notification preferences can only be added at "All projects" scope from the UI (the
+  settings API keys on the internal project UUID, which the frontend doesn't hold); notification
+  emails are plain text (no HTML templating) and the `SMTP_*` vars remain commented in
+  `.env.example`.
+- Profile: the dark theme covers the app chrome (top bar, sidebar, page backgrounds, profile) —
+  deep per-view content (project tables, board columns, issue detail, charts, modals) still uses the
+  light palette and is a follow-up; avatars have no crop/resize and are served publicly by design.
+- The worker no longer double-processes automation rules (the dispatcher already runs them
+  event-driven); git commit links + auto-comments are de-duplicated on a repeated commit SHA
+  (unique index, migration `000022`); the stale "SMTP planned/not wired" docs are corrected (SMTP
+  email is wired since the previous round).
+- Known limits: the rate limiter is in-memory (per-instance, not shared across replicas) and trusts
+  the `X-Forwarded-For` first hop (assumes a trusted proxy sets it); the webhook queue assumes a
+  single worker instance (no row-level lease for horizontal scale).
 
 ## [1.0.2] - 2026-07-14
 

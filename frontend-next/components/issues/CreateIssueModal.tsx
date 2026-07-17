@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { issues, meta, projects as projectsApi, customFields, type CustomField } from "@/lib/api";
+import { issues, meta, projects as projectsApi, customFields, versions, type CustomField } from "@/lib/api";
 import { textToAdf } from "./adf";
 import { UserPicker } from "@/components/common/UserPicker";
 
@@ -41,6 +41,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [assigneeLabel, setAssigneeLabel] = useState<string | null>(null);
   const [parentKey, setParentKey] = useState("");
+  const [fixVersionIds, setFixVersionIds] = useState<string[]>([]);
   const [createAnother, setCreateAnother] = useState(false);
   const [justCreatedKey, setJustCreatedKey] = useState<string | null>(null);
 
@@ -61,6 +62,13 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
   const { data: customFieldDefs } = useQuery({
     queryKey: ["customFields", effectiveProjectKey],
     queryFn: () => customFields.list(effectiveProjectKey),
+    enabled: !!effectiveProjectKey,
+  });
+
+  // Fix-versions option set for the selected project.
+  const { data: projectVersions } = useQuery({
+    queryKey: ["versions", effectiveProjectKey],
+    queryFn: () => versions.list(effectiveProjectKey),
     enabled: !!effectiveProjectKey,
   });
 
@@ -115,6 +123,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
         ...(priorityId ? { priorityId } : {}),
         ...(assigneeId ? { assigneeId } : {}),
         ...(isSubtask && parentKey.trim() ? { parentKey: parentKey.trim() } : {}),
+        ...(fixVersionIds.length ? { fixVersions: fixVersionIds.map((id) => ({ id })) } : {}),
       });
       // Custom-field values require the freshly-created issue key. Failures here
       // do NOT reject — they come back as a list to surface non-blockingly.
@@ -131,6 +140,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
         setSummary("");
         setDescription("");
         setParentKey("");
+        setFixVersionIds([]);
         setCfValues({});
         setCfMulti({});
         setCfUserLabels({});
@@ -141,6 +151,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
         setSummary("");
         setDescription("");
         setParentKey("");
+        setFixVersionIds([]);
         setCfValues({});
         setCfMulti({});
         setCfUserLabels({});
@@ -293,6 +304,27 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
             />
           </>
         )}
+
+        <label
+          htmlFor="issue-fixversions"
+          className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
+        >
+          Fix versions
+        </label>
+        <select
+          id="issue-fixversions"
+          multiple
+          value={fixVersionIds}
+          onChange={(e) => setFixVersionIds(Array.from(e.target.selectedOptions, (o) => o.value))}
+          disabled={!effectiveProjectKey}
+          className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] disabled:opacity-60"
+        >
+          {(projectVersions ?? []).map((ver) => (
+            <option key={ver.id} value={ver.id}>
+              {ver.name}
+            </option>
+          ))}
+        </select>
 
         {(customFieldDefs ?? []).map((cf) => (
           <div key={cf.id} className="mb-3">

@@ -2,9 +2,7 @@ package contract
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 func TestWebhook_CRUD(t *testing.T) {
@@ -37,39 +35,36 @@ func TestWebhook_CRUD(t *testing.T) {
 	resp.Body.Close()
 }
 
-func TestWebhook_FiresOnIssueCreate(t *testing.T) {
-	srv, authSvc := newTestServer(t)
+// TestWebhook_EnqueuesOnIssueCreate verifica il nuovo modello a coda persistente:
+// creando una issue la dispatcher NON esegue HTTP nel percorso della request, ma
+// accoda una webhook_delivery in stato 'pending' (la consegna effettiva la fa il
+// worker con retry/backoff — affidabilità sulla immediatezza).
+func TestWebhook_EnqueuesOnIssueCreate(t *testing.T) {
+	srv, authSvc, db := newTestServerDB(t)
 	tok := registerAndLogin(t, authSvc)
 	createProjectViaAPI(t, srv, tok, "WH", "Webhook Proj")
 
-	received := make(chan string, 4)
-	recv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case received <- r.Header.Get("X-Heureum-Event"):
-		default:
-		}
-		w.WriteHeader(200)
-	}))
-	defer recv.Close()
-
-	// registra un webhook sull'evento issue_created verso il ricevitore locale
+	// registra un webhook sull'evento issue_created
 	resp := doJSON(t, srv, http.MethodPost, tok, "/rest/api/3/project/WH/webhooks", map[string]any{
-		"url": recv.URL, "events": []string{"issue_created"},
+		"url": "https://example.com/hook", "events": []string{"issue_created"},
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create webhook %d", resp.StatusCode)
 	}
 	resp.Body.Close()
 
-	// crea una issue → deve scatenare la consegna
+	// crea una issue → deve accodare una consegna pending
 	createIssueViaAPI(t, srv, tok, "WH", "Trigger me")
 
-	select {
-	case ev := <-received:
-		if ev != "issue_created" {
-			t.Errorf("evento header errato: %q", ev)
-		}
-	case <-time.After(4 * time.Second):
-		t.Fatal("webhook non consegnato dopo la creazione della issue")
+	var status, payload, eventType string
+	row := db.Raw(`SELECT status, payload, event_type FROM webhook_deliveries WHERE event_type = ? LIMIT 1`, "issue_created").Row()
+	if err := row.Scan(&status, &payload, &eventType); err != nil {
+		t.Fatalf("nessuna consegna accodata dopo la creazione della issue: %v", err)
+	}
+	if status != "pending" {
+		t.Errorf("status = %q, atteso pending", status)
+	}
+	if payload == "" {
+		t.Errorf("payload della consegna vuoto")
 	}
 }

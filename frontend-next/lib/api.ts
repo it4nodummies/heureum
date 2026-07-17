@@ -90,6 +90,9 @@ export interface IssueFields {
   assignee: JiraUserRef | null;
   reporter: JiraUserRef | null;
   labels: string[];
+  // Multi fix-versions (internal/api/v3/issue.go: []VersionRef). Always present
+  // (empty array when unset) in Jira-shaped responses.
+  fixVersions?: VersionRef[];
   created: string;
   updated: string;
   duedate?: string;
@@ -299,6 +302,63 @@ export const projects = {
   },
 };
 
+// ── Versions / Releases ──────────────────────────────────────────────────────
+
+// Jira-conformant Version (internal/api/v3/version.go). Dates are date-only
+// `YYYY-MM-DD` strings (omitted when unset); `projectId` is the project seq id.
+export interface Version {
+  self?: string;
+  id: string;
+  name: string;
+  description?: string;
+  released: boolean;
+  archived: boolean;
+  overdue?: boolean;
+  startDate?: string;
+  releaseDate?: string;
+  projectId: number;
+}
+
+// Compact reference used when a version is embedded in another object
+// (e.g. IssueFields.fixVersions) — internal/api/v3/version.go VersionRef.
+export interface VersionRef {
+  self?: string;
+  id: string;
+  name: string;
+}
+
+export interface VersionInput {
+  name: string;
+  description?: string;
+  startDate?: string;
+  releaseDate?: string;
+}
+
+export const versions = {
+  // GET /rest/api/3/project/{key}/versions -> Version[]
+  list: (key: string) => apiFetch<Version[]>(`/rest/api/3/project/${key}/versions`),
+
+  // POST /rest/api/3/version. The backend accepts `{project: "<key>"}` to resolve
+  // the owning project, so no extra fetch for the numeric seq id is needed.
+  create: (key: string, body: VersionInput) =>
+    apiFetch<Version>("/rest/api/3/version", {
+      method: "POST",
+      body: JSON.stringify({ ...body, project: key }),
+    }),
+
+  // PUT /rest/api/3/version/{id}. Any subset of fields (nil = unchanged).
+  update: (
+    id: string,
+    body: Partial<VersionInput> & { released?: boolean; archived?: boolean }
+  ) =>
+    apiFetch<Version>(`/rest/api/3/version/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  remove: (id: string) => apiFetch<void>(`/rest/api/3/version/${id}`, { method: "DELETE" }),
+};
+
 // ── Issues ───────────────────────────────────────────────────────────────────
 
 // v3.IssueTransition (internal/api/v3/transitions.go): one entry of the
@@ -348,6 +408,7 @@ export const issues = {
     labels?: string[];
     parentKey?: string;
     assigneeId?: string;
+    fixVersions?: { id: string }[];
   }) =>
     apiFetch<{ id: string; key: string; self: string }>("/rest/api/3/issue", {
       method: "POST",
@@ -361,6 +422,7 @@ export const issues = {
           ...(payload.labels ? { labels: payload.labels } : {}),
           ...(payload.parentKey ? { parent: { key: payload.parentKey } } : {}),
           ...(payload.assigneeId ? { assignee: { accountId: payload.assigneeId } } : {}),
+          ...(payload.fixVersions?.length ? { fixVersions: payload.fixVersions } : {}),
         },
       }),
     }),
@@ -690,6 +752,35 @@ export interface AgileIssueList {
   total: number;
 }
 
+// Config editabile della board (endpoint Heureum-custom, non conforme Jira).
+// Le colonne mappano un SET (non ordinato) di status id; swimlane e quick
+// filters vivono su questo endpoint separato dal contract-validato configuration.
+export interface BoardConfigColumn {
+  id: string;
+  name: string;
+  position: number;
+  statusIds: string[];
+}
+
+export interface BoardQuickFilter {
+  id: string;
+  name: string;
+  jql: string;
+  position: number;
+}
+
+export interface BoardFullConfig {
+  columns: BoardConfigColumn[];
+  swimlane: "none" | "assignee" | "epic";
+  quickFilters: BoardQuickFilter[];
+}
+
+export interface BoardConfigInput {
+  columns: { name: string; statusIds: string[] }[];
+  swimlane: "none" | "assignee" | "epic";
+  quickFilters: { name: string; jql: string }[];
+}
+
 export const boards = {
   list: () => apiFetch<{ values: AgileBoard[] }>("/rest/agile/1.0/board"),
   create: (name: string, projectKeyOrId: string, type = "scrum") =>
@@ -705,19 +796,48 @@ export const boards = {
     apiFetch<{ columnConfig: { columns: { name: string; statuses: { id: string }[] }[] } }>(
       `/rest/agile/1.0/board/${boardId}/configuration`,
     ),
+  config: (boardId: number) =>
+    apiFetch<BoardFullConfig>(`/rest/agile/1.0/board/${boardId}/config`),
+  saveConfig: (boardId: number, cfg: BoardConfigInput) =>
+    apiFetch<BoardFullConfig>(`/rest/agile/1.0/board/${boardId}/config`, {
+      method: "PUT",
+      body: JSON.stringify(cfg),
+    }),
 };
 
 export const sprints = {
-  create: (name: string, originBoardId: number, goal?: string) =>
+  create: (
+    name: string,
+    originBoardId: number,
+    goal?: string,
+    startDate?: string,
+    endDate?: string,
+  ) =>
     apiFetch<AgileSprint>("/rest/agile/1.0/sprint", {
       method: "POST",
-      body: JSON.stringify({ name, originBoardId, goal }),
+      body: JSON.stringify({ name, originBoardId, goal, startDate, endDate }),
     }),
   issues: (sprintId: number) => apiFetch<AgileIssueList>(`/rest/agile/1.0/sprint/${sprintId}/issue`),
   setState: (sprintId: number, state: "active" | "closed") =>
     apiFetch<AgileSprint>(`/rest/agile/1.0/sprint/${sprintId}`, {
       method: "POST",
       body: JSON.stringify({ state }),
+    }),
+  update: (
+    sprintId: number,
+    fields: { name?: string; goal?: string; startDate?: string; endDate?: string },
+  ) =>
+    apiFetch<AgileSprint>(`/rest/agile/1.0/sprint/${sprintId}`, {
+      method: "POST",
+      body: JSON.stringify(fields),
+    }),
+  complete: (
+    sprintId: number,
+    opts: { moveToSprintId?: number | null; moveOpenToBacklog?: boolean },
+  ) =>
+    apiFetch<AgileSprint>(`/rest/agile/1.0/sprint/${sprintId}/complete`, {
+      method: "POST",
+      body: JSON.stringify(opts),
     }),
   moveIssues: (sprintId: number, issues: string[]) =>
     apiFetch<void>(`/rest/agile/1.0/sprint/${sprintId}/issue`, {
@@ -1028,6 +1148,33 @@ export const profile = {
   update: (patch: { displayName?: string; timeZone?: string; locale?: string; avatarUrl?: string }) =>
     apiFetch<JiraUser>("/rest/api/3/myself", { method: "PUT", body: JSON.stringify(patch) }),
   searchUsers: (query: string) => apiFetch<JiraUser[]>(`/rest/api/3/user/search?query=${encodeURIComponent(query)}`),
+
+  // Multipart upload — deliberately does NOT go through apiFetch (which forces
+  // Content-Type: application/json). The browser must set its own multipart
+  // boundary, so we build a bare fetch with just auth + 401 handling. Field
+  // name must be "file" (see AvatarHandler.Upload's r.FormFile("file")).
+  uploadAvatar: async (file: File): Promise<JiraUser> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`${BASE_URL}/rest/api/3/myself/avatar`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: fd,
+    });
+    handleUnauthorized(res);
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = `HTTP ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json.error) msg = json.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return res.json() as Promise<JiraUser>;
+  },
 };
 
 // ── Users (assignable search, for the UserPicker) ───────────────────────────

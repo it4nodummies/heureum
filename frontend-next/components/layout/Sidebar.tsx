@@ -159,13 +159,13 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`flex flex-col bg-white border-r border-slate-100 transition-all duration-200 shrink-0 ${
+      className={`flex flex-col bg-white dark:bg-[#161b22] border-r border-slate-100 dark:border-[#2a3142] transition-all duration-200 shrink-0 ${
         collapsed ? "w-14" : "w-[240px]"
       }`}
       style={{ height: "calc(100vh - 52px)" }}
     >
       {/* Logo + collapse button */}
-      <div className="flex items-center justify-between px-3 py-3 border-b border-slate-100">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-slate-100 dark:border-[#2a3142]">
         <div
           className={`flex items-center gap-2.5 overflow-hidden ${
             collapsed ? "w-0" : "w-auto"
@@ -175,7 +175,7 @@ export default function Sidebar() {
             <JiraLogo />
           </div>
           {!collapsed && (
-            <span className="font-bold text-sm text-[#1a1f36] whitespace-nowrap">
+            <span className="font-bold text-sm text-[#1a1f36] dark:text-[#e6e8eb] whitespace-nowrap">
               Heureum
             </span>
           )}
@@ -250,8 +250,8 @@ export default function Sidebar() {
               href={item.href ?? "#"}
               className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium transition-colors group ${
                 isActive
-                  ? "bg-[#e8f0fe] text-[#0052cc]"
-                  : "text-[#42526e] hover:bg-slate-100 hover:text-[#1a1f36]"
+                  ? "bg-[#e8f0fe] dark:bg-[#1c2b46] text-[#0052cc] dark:text-[#7aa7ff]"
+                  : "text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-100 dark:hover:bg-[#232a3a] hover:text-[#1a1f36] dark:hover:text-white"
               } ${collapsed ? "justify-center" : ""}`}
               title={collapsed ? item.label : undefined}
             >
@@ -265,7 +265,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom items */}
-      <div className="border-t border-slate-100 py-2 px-2 space-y-0.5">
+      <div className="border-t border-slate-100 dark:border-[#2a3142] py-2 px-2 space-y-0.5">
         {BOTTOM_ITEMS.map((item) => {
           if (item.comingSoon) {
             return (
@@ -298,8 +298,8 @@ export default function Sidebar() {
               href={item.href ?? "#"}
               className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium transition-colors group ${
                 isActive
-                  ? "bg-[#e8f0fe] text-[#0052cc]"
-                  : "text-[#42526e] hover:bg-slate-100 hover:text-[#1a1f36]"
+                  ? "bg-[#e8f0fe] dark:bg-[#1c2b46] text-[#0052cc] dark:text-[#7aa7ff]"
+                  : "text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-100 dark:hover:bg-[#232a3a] hover:text-[#1a1f36] dark:hover:text-white"
               } ${collapsed ? "justify-center" : ""}`}
               title={collapsed ? item.label : undefined}
             >

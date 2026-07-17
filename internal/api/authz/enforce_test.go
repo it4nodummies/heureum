@@ -80,7 +80,7 @@ func setupEnforce(t *testing.T) (chk *Checker, adminID, memberID, outsiderID, pr
 		t.Fatalf("add member: %v", err)
 	}
 
-	chk = New(userSvc, projSvc, nil, nil, nil, nil, nil)
+	chk = New(userSvc, projSvc, nil, nil, nil, nil, nil, nil)
 	return
 }
 
@@ -287,7 +287,7 @@ func setupEnforceIssues(t *testing.T) (chk *Checker, memberID, outsiderID string
 		t.Fatalf("create issue: %v", err)
 	}
 
-	chk = New(userSvc, projSvc, issueSvc, nil, nil, nil, nil)
+	chk = New(userSvc, projSvc, issueSvc, nil, nil, nil, nil, nil)
 	return
 }
 

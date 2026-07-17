@@ -124,7 +124,7 @@ func (h *AgileSprintHandler) Update(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case "closed":
-			if _, err := h.sprintSvc.Complete(sp.ID, true); err != nil {
+			if _, err := h.sprintSvc.Complete(sp.ID, true, nil); err != nil {
 				v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
 				return
 			}
@@ -141,6 +141,39 @@ func (h *AgileSprintHandler) Update(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.sprintSvc.UpdateFull(sp.ID, req.Name, req.Goal, nil, start, end)
 	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to update sprint"}, nil)
+		return
+	}
+	v3.WriteJSON(w, http.StatusOK, sprintToV3(updated, h.baseURL))
+}
+
+// CompleteSprint: POST /sprint/{sprintId}/complete — chiude lo sprint (seq-keyed) e
+// sposta le issue incomplete nel backlog o in un altro sprint (moveToSprintId seq).
+func (h *AgileSprintHandler) CompleteSprint(w http.ResponseWriter, r *http.Request) {
+	sp := h.resolveSprint(r)
+	if sp == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"sprint not found"}, nil)
+		return
+	}
+	var req struct {
+		MoveToSprintID    *int64 `json:"moveToSprintId"`
+		MoveOpenToBacklog bool   `json:"moveOpenToBacklog"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
+		return
+	}
+	var target *string
+	if req.MoveToSprintID != nil {
+		ts, err := h.sprintSvc.GetBySeqID(*req.MoveToSprintID)
+		if err != nil {
+			v3.WriteError(w, http.StatusBadRequest, []string{"moveToSprintId not found"}, nil)
+			return
+		}
+		target = &ts.ID
+	}
+	updated, err := h.sprintSvc.Complete(sp.ID, req.MoveOpenToBacklog, target)
+	if err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
 		return
 	}
 	v3.WriteJSON(w, http.StatusOK, sprintToV3(updated, h.baseURL))

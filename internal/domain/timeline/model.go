@@ -30,3 +30,12 @@ type SprintIssueCount struct {
 	Total    int
 	Done     int
 }
+
+type VersionProgress struct {
+	VersionID string
+	Name      string
+	Start     *time.Time
+	Release   *time.Time
+	Total     int
+	Done      int
+}

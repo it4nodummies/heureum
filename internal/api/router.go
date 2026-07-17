@@ -28,6 +28,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/timeline"
 	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/version"
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 	"github.com/it4nodummies/heureum/internal/integration"
@@ -56,11 +57,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	autoSvc := automation.NewService(db)
 	cfSvc := customfield.NewService(db)
 	userSvc := user.NewService(db)
-	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc)
+	versionSvc := version.NewService(db)
+	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc, versionSvc)
 	userH := handlers.NewUserHandler(db, cfg.BaseURL, chk)
+	avatarH := handlers.NewAvatarHandler(db, cfg.UploadsDir, cfg.BaseURL)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
 
-	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, cfg.BaseURL)
+	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, versionSvc, cfg.BaseURL)
 	commentSvc := issue.NewCommentService(db)
 	commentH := handlers.NewCommentHandler(commentSvc, issueSvc, cfg.BaseURL)
 	worklogSvc := issue.NewWorklogService(db)
@@ -96,6 +99,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	sprintSvc.SetNotifier(notifSvc)
 
 	cfH := handlers.NewCustomFieldHandler(cfSvc, chk, projectSvc, issueSvc)
+	versionH := handlers.NewVersionHandler(versionSvc, projectSvc, chk, cfg.BaseURL)
 	autoH := handlers.NewAutomationHandler(autoSvc, projectSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
@@ -130,8 +134,21 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="6" fill="#0052CC"/><path d="M14 14h20v20H14z" fill="#fff" opacity="0.85"/></svg>`))
 	})
 
-	mux.HandleFunc("POST /rest/api/3/auth/register", authH.Register)
-	mux.HandleFunc("POST /rest/api/3/auth/login", authH.Login)
+	// Rate-limit the public (unauthenticated) auth endpoints per client IP to
+	// blunt credential brute-forcing. One shared limiter across register+login
+	// so an attacker can't double their budget by alternating routes. The limit
+	// is configurable via APP_AUTH_RATELIMIT (default 10 / 5-min window); a value
+	// of <= 0 disables limiting entirely (used by the E2E backend, whose ~74
+	// tests all log in from localhost and would otherwise trip the limiter).
+	registerH := http.Handler(http.HandlerFunc(authH.Register))
+	loginH := http.Handler(http.HandlerFunc(authH.Login))
+	if cfg.AuthRateLimit > 0 {
+		authLimiter := middleware.RateLimit(cfg.AuthRateLimit, 5*time.Minute)
+		registerH = authLimiter(registerH)
+		loginH = authLimiter(loginH)
+	}
+	mux.Handle("POST /rest/api/3/auth/register", registerH)
+	mux.Handle("POST /rest/api/3/auth/login", loginH)
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/redirect", oauthH.Redirect)
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/callback", oauthH.Callback)
 
@@ -142,6 +159,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/users/me", authMw(http.HandlerFunc(userH.GetMe)))
 	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMyself)))
 	mux.Handle("PUT /rest/api/3/myself", authMw(http.HandlerFunc(userH.UpdateMyself)))
+	mux.Handle("POST /rest/api/3/myself/avatar", authMw(http.HandlerFunc(avatarH.Upload)))
+	// PUBLIC (no authMw, come serveDefaultAvatar): gli avatar sono risorse
+	// pubbliche così <img src> funziona senza bearer token.
+	mux.HandleFunc("GET /rest/api/3/user/avatar/{userId}", avatarH.Serve)
 	mux.Handle("GET /rest/api/3/users/search", authMw(http.HandlerFunc(userH.SearchUsers)))
 	mux.Handle("GET /rest/api/3/user/search", authMw(http.HandlerFunc(userH.SearchV3)))
 	mux.Handle("GET /rest/api/3/user/assignable/search", authMw(http.HandlerFunc(userH.AssignableSearch)))
@@ -294,6 +315,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Get))))
 	mux.Handle("DELETE /rest/agile/1.0/board/{boardId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Delete))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/configuration", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Configuration))))
+	// Heureum-custom (non-Jira): full editable board config (columns + swimlane + quickFilters).
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/config", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.GetCustomConfig))))
+	mux.Handle("PUT /rest/agile/1.0/board/{boardId}/config", authMw(chk.Enforce(permission.AdministerProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.SaveCustomConfig))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/backlog", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.Backlog))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardIssues))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/sprint", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardSprints))))
@@ -308,6 +332,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/agile/1.0/sprint/{sprintId}", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.Delete))))
 	mux.Handle("GET /rest/agile/1.0/sprint/{sprintId}/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.SprintIssues))))
 	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.MoveToSprint))))
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/complete", authMw(chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.CompleteSprint))))
 
 	// PUT /issue/rank, POST /backlog/issue: project resolved from body (first
 	// issue in the list) -> enforced in-handler (AgileMiscHandler) per the
@@ -391,6 +416,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/custom-fields/options/{optionID}", authMw(http.HandlerFunc(cfH.RemoveOption)))
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/custom-values", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.GetValues))))
 	mux.Handle("PUT /rest/api/3/issue/{issueIdOrKey}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.SetValue))))
+
+	// --- Project versions / releases (Round 19) ---
+	mux.Handle("GET /rest/api/3/project/{key}/versions", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(versionH.List))))
+	// POST /version: progetto risolto dal body (projectId seq / project key) ->
+	// autorizzazione in-handler (AdministerProjects), come /issues/bulk.
+	mux.Handle("POST /rest/api/3/version", authMw(http.HandlerFunc(versionH.Create)))
+	mux.Handle("GET /rest/api/3/version/{id}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByVersion("id"), http.HandlerFunc(versionH.Get))))
+	mux.Handle("PUT /rest/api/3/version/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByVersion("id"), http.HandlerFunc(versionH.Update))))
+	mux.Handle("DELETE /rest/api/3/version/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByVersion("id"), http.HandlerFunc(versionH.Delete))))
 
 	mux.Handle("GET /rest/api/3/project/{key}/automation", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(autoH.ListRules))))
 	mux.Handle("POST /rest/api/3/project/{key}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(autoH.CreateRule))))

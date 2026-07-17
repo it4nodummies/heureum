@@ -157,15 +157,22 @@ func (s *Service) NotifyIssueCommented(issueID, commenterID, issueKey, issueTitl
 		fmt.Sprintf("%s: %s", issueTitle, body), link)
 }
 
-func (s *Service) NotifyUsersMentioned(mentionedUserIDs []string, commenterID, issueKey, issueTitle string) error {
-	if len(mentionedUserIDs) == 0 {
+// NotifyUsersMentionedByIDs notifica gli utenti citati passandone direttamente
+// gli user id (es. dai nodi ADF mention, attrs.id = user id). Deduplica gli id e
+// salta l'autore, così un utente citato più volte (o sia via @username testuale
+// sia via nodo ADF) riceve una sola notifica "mention".
+func (s *Service) NotifyUsersMentionedByIDs(userIDs []string, authorID, issueKey, issueTitle string) error {
+	if len(userIDs) == 0 {
 		return nil
 	}
-	mentioned := make([]string, 0, len(mentionedUserIDs))
-	for _, id := range mentionedUserIDs {
-		if id != commenterID {
-			mentioned = append(mentioned, id)
+	seen := map[string]bool{}
+	mentioned := make([]string, 0, len(userIDs))
+	for _, id := range userIDs {
+		if id == "" || id == authorID || seen[id] {
+			continue
 		}
+		seen[id] = true
+		mentioned = append(mentioned, id)
 	}
 	if len(mentioned) == 0 {
 		return nil

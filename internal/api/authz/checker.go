@@ -13,6 +13,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/version"
 )
 
 // ErrForbidden è restituito quando l'utente non ha il permesso richiesto.
@@ -30,13 +31,14 @@ type Checker struct {
 	sprints  *sprint.Service
 	autos    *automation.Service
 	cfs      *customfield.Service
+	versions *version.Service
 }
 
 // New costruisce un Checker con tutti i servizi necessari ai resolver di
-// autorizzazione (issues/boards/sprints/autos/cfs sono usati solo dai
+// autorizzazione (issues/boards/sprints/autos/cfs/versions sono usati solo dai
 // resolver, non dai metodi RequireProject/RequireGlobalAdmin in questo file).
-func New(users *user.Service, projects *project.Service, issues *issue.Service, boards *board.Service, sprints *sprint.Service, autos *automation.Service, cfs *customfield.Service) *Checker {
-	return &Checker{users: users, projects: projects, issues: issues, boards: boards, sprints: sprints, autos: autos, cfs: cfs}
+func New(users *user.Service, projects *project.Service, issues *issue.Service, boards *board.Service, sprints *sprint.Service, autos *automation.Service, cfs *customfield.Service, versions *version.Service) *Checker {
+	return &Checker{users: users, projects: projects, issues: issues, boards: boards, sprints: sprints, autos: autos, cfs: cfs, versions: versions}
 }
 
 // RequireProject verifica che userID abbia permKey sul progetto projectID

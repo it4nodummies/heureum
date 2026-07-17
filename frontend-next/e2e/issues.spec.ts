@@ -57,17 +57,19 @@ test("Edit mode: aggiunge una descrizione e cambia la priority", async ({ page }
 
   await page.getByRole("button", { name: "Edit" }).click();
 
-  const textarea = page.getByPlaceholder("Add a description…");
-  await expect(textarea).toBeVisible();
-  await textarea.fill("Descrizione aggiunta via E2E test.");
+  // La <textarea> è ora un contentEditable (RichTextEditor).
+  const editor = page.getByTestId("description-editor");
+  await expect(editor).toBeVisible();
+  await editor.click();
+  await editor.pressSequentially("Descrizione aggiunta via E2E test.");
 
   const prioritySelect = page.locator("select").first();
   await prioritySelect.selectOption({ label: "High" });
 
   await page.getByRole("button", { name: "Save" }).click();
 
-  // Torna in read mode: la textarea di edit sparisce e il testo compare nel renderer ADF.
-  await expect(page.getByPlaceholder("Add a description…")).not.toBeVisible();
+  // Torna in read mode: l'editor di edit sparisce e il testo compare nel renderer ADF.
+  await expect(page.getByTestId("description-editor")).not.toBeVisible();
   await expect(page.getByText("Descrizione aggiunta via E2E test.")).toBeVisible();
   await expect(page.getByText("High", { exact: false })).toBeVisible();
 });

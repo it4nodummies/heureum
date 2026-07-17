@@ -15,6 +15,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/version"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
 
@@ -23,11 +24,12 @@ type IssueHandler struct {
 	projectSvc *project.Service
 	wfSvc      *workflow.Service
 	chk        *authz.Checker
+	versionSvc *version.Service
 	baseURL    string
 }
 
-func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *workflow.Service, chk *authz.Checker, baseURL string) *IssueHandler {
-	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc, chk: chk, baseURL: baseURL}
+func NewIssueHandler(svc *issue.Service, projectSvc *project.Service, wfSvc *workflow.Service, chk *authz.Checker, versionSvc *version.Service, baseURL string) *IssueHandler {
+	return &IssueHandler{svc: svc, projectSvc: projectSvc, wfSvc: wfSvc, chk: chk, versionSvc: versionSvc, baseURL: baseURL}
 }
 
 // resolveIssue trova un'issue per SeqID numerico (id v3) o per Key. Le issue
@@ -117,6 +119,18 @@ func (h *IssueHandler) buildIssueInput(iss *issue.Issue) v3.IssueInput {
 	}
 	labels, _ := h.svc.GetLabels(iss.ID)
 	in.Labels = labels
+	if h.versionSvc != nil {
+		fvs, _ := h.versionSvc.GetFixVersions(iss.ID)
+		refs := make([]v3.VersionRef, 0, len(fvs))
+		for _, fv := range fvs {
+			refs = append(refs, v3.VersionRef{
+				Self: h.baseURL + "/rest/api/3/version/" + fv.ID,
+				ID:   fv.ID,
+				Name: fv.Name,
+			})
+		}
+		in.FixVersions = refs
+	}
 	return in
 }
 
@@ -178,7 +192,10 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Parent struct {
 				Key string `json:"key"`
 			} `json:"parent"`
-			Labels   []string `json:"labels"`
+			Labels      []string `json:"labels"`
+			FixVersions []struct {
+				ID string `json:"id"`
+			} `json:"fixVersions"`
 			Assignee *struct {
 				AccountID string `json:"accountId"`
 			} `json:"assignee"`
@@ -278,6 +295,15 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	for _, name := range req.Fields.Labels {
 		_, _ = h.svc.AddLabel(iss.ID, proj.ID, name, "")
 	}
+	if len(req.Fields.FixVersions) > 0 && h.versionSvc != nil {
+		ids := make([]string, 0, len(req.Fields.FixVersions))
+		for _, fv := range req.Fields.FixVersions {
+			if fv.ID != "" {
+				ids = append(ids, fv.ID)
+			}
+		}
+		_ = h.versionSvc.SetFixVersions(iss.ID, ids)
+	}
 
 	v3.WriteJSON(w, http.StatusCreated, map[string]any{
 		"id":   itoaInt64(iss.SeqID),
@@ -314,7 +340,10 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 			Summary     *string  `json:"summary"`
 			Description any      `json:"description"`
 			Labels      []string `json:"labels"`
-			Assignee    *struct {
+			FixVersions *[]struct {
+				ID string `json:"id"`
+			} `json:"fixVersions"`
+			Assignee *struct {
 				AccountID string `json:"accountId"`
 			} `json:"assignee"`
 			Priority *struct {
@@ -365,6 +394,19 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Fields.TimeTracking != nil {
 		if _, err := h.svc.SetTimeTracking(iss.Key, req.Fields.TimeTracking.OriginalEstimateSeconds, req.Fields.TimeTracking.RemainingEstimateSeconds); err != nil {
 			v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update time tracking."}, nil)
+			return
+		}
+	}
+	// fixVersions è un pointer slice: nil = campo assente (invariato), []{} = azzera.
+	if req.Fields.FixVersions != nil && h.versionSvc != nil {
+		ids := make([]string, 0, len(*req.Fields.FixVersions))
+		for _, fv := range *req.Fields.FixVersions {
+			if fv.ID != "" {
+				ids = append(ids, fv.ID)
+			}
+		}
+		if err := h.versionSvc.SetFixVersions(iss.ID, ids); err != nil {
+			v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to update fix versions."}, nil)
 			return
 		}
 	}

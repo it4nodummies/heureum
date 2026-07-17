@@ -53,13 +53,11 @@ function AdfBlock({ node }: { node: ADFNode }) {
     );
   }
   if (node.type === "heading") {
-    return (
-      <h3 className="font-semibold">
-        {node.content?.map((c, i) => (
-          <AdfInline key={i} node={c} />
-        ))}
-      </h3>
-    );
+    const level = Number(node.attrs?.level ?? 3);
+    const inner = node.content?.map((c, i) => <AdfInline key={i} node={c} />);
+    if (level === 1) return <h1 className="text-xl font-bold">{inner}</h1>;
+    if (level === 2) return <h2 className="text-lg font-semibold">{inner}</h2>;
+    return <h3 className="font-semibold">{inner}</h3>;
   }
   return (
     <>
@@ -77,14 +75,17 @@ function AdfBlock({ node }: { node: ADFNode }) {
 
 export function adfToText(doc: ADFNode | null): string {
   if (!doc || !doc.content) return "";
+  const inlineText = (nodes: ADFNode[] | undefined): string =>
+    (nodes ?? [])
+      .map((c) => {
+        if (c.type === "text") return c.text ?? "";
+        if (c.type === "mention") return String(c.attrs?.text ?? "");
+        return inlineText(c.content);
+      })
+      .join("");
   return doc.content
     .filter((n) => n.type === "paragraph")
-    .map((n) =>
-      (n.content ?? [])
-        .filter((c) => c.type === "text")
-        .map((c) => c.text ?? "")
-        .join("")
-    )
+    .map((n) => inlineText(n.content))
     .join("\n");
 }
 
@@ -101,6 +102,17 @@ export function textToAdf(text: string): ADFNode {
 }
 
 function AdfInline({ node }: { node: ADFNode }) {
+  if (node.type === "mention") {
+    const label = String(node.attrs?.text ?? "");
+    return (
+      <span
+        data-mention
+        className="rounded bg-[#0052cc]/10 px-1 py-0.5 font-medium text-[#0052cc]"
+      >
+        {label.startsWith("@") ? label : `@${label}`}
+      </span>
+    );
+  }
   if (node.type !== "text") return null;
   let el: React.ReactNode = node.text;
   for (const m of node.marks ?? []) {

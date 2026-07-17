@@ -15,7 +15,7 @@ type CommentService struct {
 
 type CommentNotifier interface {
 	NotifyIssueCommented(issueID, commenterID, issueKey, issueTitle, commentPreview string) error
-	NotifyUsersMentioned(mentionedUserIDs []string, commenterID, issueKey, issueTitle string) error
+	NotifyUsersMentionedByIDs(mentionedUserIDs []string, commenterID, issueKey, issueTitle string) error
 	ResolveUserIDsByUsernames(usernames []string) ([]string, error)
 }
 
@@ -27,7 +27,11 @@ func (s *CommentService) SetNotifier(n CommentNotifier) {
 	s.notifier = n
 }
 
-func (s *CommentService) AddComment(issueID, authorID, bodyJSON string) (*Comment, error) {
+// AddComment crea un commento. adfMentionUserIDs sono gli user id estratti dai
+// nodi ADF mention (attrs.id) dal chiamante (comment_handler); vengono uniti
+// alle mention testuali @username e notificati una sola volta (dedupe lato
+// notifier).
+func (s *CommentService) AddComment(issueID, authorID, bodyJSON string, adfMentionUserIDs ...string) (*Comment, error) {
 	c := &Comment{
 		ID:       uuid.New().String(),
 		IssueID:  issueID,
@@ -57,10 +61,15 @@ func (s *CommentService) AddComment(issueID, authorID, bodyJSON string) (*Commen
 		issueTitle := result.Title
 		if issueKey != "" {
 			s.notifier.NotifyIssueCommented(issueID, authorID, issueKey, issueTitle, bodyJSON)
-			mentions := ParseMentions(bodyJSON)
-			if len(mentions) > 0 {
-				userIDs, _ := s.notifier.ResolveUserIDsByUsernames(mentions)
-				s.notifier.NotifyUsersMentioned(userIDs, authorID, issueKey, issueTitle)
+			var mentionUserIDs []string
+			if mentions := ParseMentions(bodyJSON); len(mentions) > 0 {
+				if userIDs, err := s.notifier.ResolveUserIDsByUsernames(mentions); err == nil {
+					mentionUserIDs = append(mentionUserIDs, userIDs...)
+				}
+			}
+			mentionUserIDs = append(mentionUserIDs, adfMentionUserIDs...)
+			if len(mentionUserIDs) > 0 {
+				s.notifier.NotifyUsersMentionedByIDs(mentionUserIDs, authorID, issueKey, issueTitle)
 			}
 		}
 	}

@@ -11,5 +11,8 @@ type Board struct {
 	Type      string    `gorm:"type:text;not null;default:'scrum'" json:"type"`
 	ProjectID string    `gorm:"type:text;not null;index" json:"project_id"`
 	FilterID  *string   `gorm:"type:text" json:"filter_id,omitempty"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	// SwimlaneMode è la modalità di raggruppamento della board (none/assignee/epic).
+	// Persistito su boards.swimlane_mode (migrazione 000018).
+	SwimlaneMode string    `gorm:"column:swimlane_mode;type:text;not null;default:'none'" json:"swimlane_mode"`
+	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
 }

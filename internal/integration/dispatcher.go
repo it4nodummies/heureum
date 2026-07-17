@@ -5,7 +5,6 @@ package integration
 import (
 	"encoding/json"
 	"net/http"
-	"sync"
 
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
@@ -22,21 +21,22 @@ type Dispatcher struct {
 	webhookSvc *webhook.Service
 	auto       AutomationRunner
 	client     *http.Client
-	wg         sync.WaitGroup // per attendere le consegne nei test se serve
 }
 
 func NewDispatcher(webhookSvc *webhook.Service, auto AutomationRunner, client *http.Client) *Dispatcher {
 	return &Dispatcher{webhookSvc: webhookSvc, auto: auto, client: client}
 }
 
-// IssueEvent consegna l'evento ai webhook sottoscritti (async) e alle regole di
-// automation (sincrono: solo DB, veloce).
+// IssueEvent processa le regole di automation (sincrono: solo DB, veloce) e
+// accoda una consegna webhook persistente per ogni hook sottoscritto. Nessun
+// HTTP nel percorso della request: il worker consegna dalla coda con retry, così
+// la consegna sopravvive a un crash (lo stato è nel DB, non in una goroutine).
 func (d *Dispatcher) IssueEvent(eventType string, iss *issue.Issue) {
 	// automation (sincrono)
 	if d.auto != nil {
 		d.auto.ProcessRules(eventType, iss.ID)
 	}
-	// webhook (async fire-and-forget)
+	// webhook: enqueue persistente
 	hooks, err := d.webhookSvc.ListActiveForEvent(iss.ProjectID, eventType)
 	if err != nil || len(hooks) == 0 {
 		return
@@ -46,15 +46,6 @@ func (d *Dispatcher) IssueEvent(eventType string, iss *issue.Issue) {
 		"issue": map[string]any{"id": iss.ID, "key": iss.Key, "summary": iss.Title, "projectId": iss.ProjectID},
 	})
 	for _, h := range hooks {
-		hook := h
-		d.wg.Add(1)
-		go func() {
-			defer d.wg.Done()
-			del := webhook.Deliver(d.client, hook, eventType, payload)
-			_ = d.webhookSvc.RecordDelivery(hook.ID, eventType, hook.URL, del.StatusCode, del.Success, del.Error)
-		}()
+		_ = d.webhookSvc.EnqueueDelivery(h.ID, eventType, h.URL, string(payload))
 	}
 }
-
-// Wait attende le consegne in volo (usato dai test).
-func (d *Dispatcher) Wait() { d.wg.Wait() }
