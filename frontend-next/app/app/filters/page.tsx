@@ -14,6 +14,8 @@ export default function FiltersPage() {
   );
 }
 
+const MAX_RESULTS = 25;
+
 function FiltersPageInner() {
   const qc = useQueryClient();
   const params = useSearchParams();
@@ -21,6 +23,14 @@ function FiltersPageInner() {
   const [results, setResults] = useState<SearchIssue[]>([]);
   const [ran, setRan] = useState(false);
   const [lastJql, setLastJql] = useState("");
+
+  // Cursor pagination: /search/jql has no total, only nextPageToken + isLast.
+  // pageTokens is the stack of tokens used to reach each loaded page;
+  // pageTokens[0] is undefined (page 1). The top of the stack is the token of
+  // the page currently shown. nextToken/isLast come from the last response.
+  const [pageTokens, setPageTokens] = useState<(string | undefined)[]>([undefined]);
+  const [nextToken, setNextToken] = useState<string | undefined>(undefined);
+  const [isLast, setIsLast] = useState(true);
 
   const [name, setName] = useState("");
   const [isShared, setIsShared] = useState(false);
@@ -30,13 +40,43 @@ function FiltersPageInner() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["filters", "my"] });
 
   const run = useMutation({
-    mutationFn: (q: string) => search.jql(q, { fields: LIST_FIELDS }),
-    onSuccess: (data, q) => {
+    mutationFn: ({ q, token }: { q: string; token?: string }) =>
+      search.jql(q, { fields: LIST_FIELDS, maxResults: MAX_RESULTS, nextPageToken: token }),
+    onSuccess: (data, { q }) => {
       setResults(data.issues);
+      setNextToken(data.nextPageToken);
+      setIsLast(data.isLast);
       setRan(true);
       setLastJql(q);
     },
   });
+
+  // Fresh search: reset to page 1.
+  const runFresh = (q: string) => {
+    setPageTokens([undefined]);
+    run.mutate({ q, token: undefined });
+  };
+
+  const goNext = () => {
+    if (isLast || nextToken === undefined) return;
+    const token = nextToken;
+    setPageTokens((s) => [...s, token]);
+    run.mutate({ q: lastJql, token });
+  };
+
+  const goPrev = () => {
+    if (pageTokens.length <= 1) return;
+    const newStack = pageTokens.slice(0, -1);
+    const token = newStack[newStack.length - 1];
+    setPageTokens(newStack);
+    run.mutate({ q: lastJql, token });
+  };
+
+  // Re-run the CURRENT page (same token) after bulk/inline edits — never reset
+  // to page 1.
+  const refetchCurrentPage = () => {
+    if (lastJql) run.mutate({ q: lastJql, token: pageTokens[pageTokens.length - 1] });
+  };
 
   const save = useMutation({
     mutationFn: () => filters.create(name.trim(), jql, { is_shared: isShared }),
@@ -51,7 +91,7 @@ function FiltersPageInner() {
     const initial = params.get("jql");
     if (initial) {
       setJql(initial);
-      run.mutate(initial);
+      runFresh(initial);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -69,7 +109,7 @@ function FiltersPageInner() {
           className="flex-1 rounded border border-slate-300 px-3 py-2 font-mono text-sm"
         />
         <button
-          onClick={() => run.mutate(jql)}
+          onClick={() => runFresh(jql)}
           disabled={!jql.trim() || run.isPending}
           className="rounded bg-[#0052cc] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
@@ -122,7 +162,7 @@ function FiltersPageInner() {
                 filter={f}
                 onRun={() => {
                   setJql(f.jql);
-                  run.mutate(f.jql);
+                  runFresh(f.jql);
                 }}
                 onChanged={invalidate}
               />
@@ -132,12 +172,32 @@ function FiltersPageInner() {
         </aside>
         <section>
           {ran && (
-            <SearchResults
-              issues={results}
-              onChanged={() => {
-                if (lastJql) run.mutate(lastJql);
-              }}
-            />
+            <>
+              <div className="mb-2 flex items-center gap-3 text-sm text-slate-600">
+                <span data-testid="list-count">
+                  {results.length} {results.length === 1 ? "result" : "results"}
+                </span>
+                <div className="ml-auto flex gap-2">
+                  <button
+                    data-testid="page-prev"
+                    onClick={goPrev}
+                    disabled={pageTokens.length <= 1 || run.isPending}
+                    className="rounded border border-slate-300 px-3 py-1 text-sm disabled:opacity-50"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    data-testid="page-next"
+                    onClick={goNext}
+                    disabled={isLast || run.isPending}
+                    className="rounded border border-slate-300 px-3 py-1 text-sm disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              <SearchResults issues={results} onChanged={refetchCurrentPage} />
+            </>
           )}
         </section>
       </div>

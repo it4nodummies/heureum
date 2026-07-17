@@ -33,6 +33,25 @@ test("column toggle hides a column", async ({ page }) => {
   await expect(page.getByRole("columnheader", { name: "Priority" })).toHaveCount(0);
 });
 
+test("cursor pagination: count label renders, Prev/Next disabled on a single page", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/app/filters");
+  await page.getByLabel("JQL").fill("project = DEMO");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  // Il conteggio risultati compare dopo la ricerca (pagina corrente, no total).
+  const count = page.getByTestId("list-count");
+  await expect(count).toBeVisible();
+  await expect(count).toHaveText(/^\d+ results?$/);
+
+  // Prev sempre disabilitato in pagina 1. maxResults=25 e il seed DEMO ha < 25
+  // issue → un'unica pagina (isLast) → Next disabilitato.
+  await expect(page.getByTestId("page-prev")).toBeDisabled();
+  await expect(page.getByTestId("page-next")).toBeDisabled();
+});
+
 test("save filter then run it from the sidebar", async ({ page }) => {
   await login(page);
   await page.goto("/app/filters");
