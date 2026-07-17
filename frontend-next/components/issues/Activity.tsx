@@ -29,7 +29,7 @@ function TabButton({
 // tab bar. "Comments" stays the default tab so the existing comment
 // add/list flow (Comments.tsx) isn't hidden behind an extra click; "History"
 // renders the per-issue changelog (see History.tsx).
-export function Activity({ issueKey }: { issueKey: string }) {
+export function Activity({ issueKey, projectKey }: { issueKey: string; projectKey?: string }) {
   const [tab, setTab] = useState<ActivityTab>("comments");
 
   return (
@@ -43,7 +43,7 @@ export function Activity({ issueKey }: { issueKey: string }) {
         </TabButton>
       </div>
 
-      {tab === "comments" ? <Comments issueKey={issueKey} /> : <History issueKey={issueKey} />}
+      {tab === "comments" ? <Comments issueKey={issueKey} projectKey={projectKey} /> : <History issueKey={issueKey} />}
     </section>
   );
 }

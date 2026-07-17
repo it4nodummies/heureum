@@ -12,10 +12,12 @@ import {
   formatSeconds,
   customFields,
   versions,
+  type ADFNode,
   type CustomField,
   type IssueCustomValue,
 } from "@/lib/api";
-import { AdfRenderer, adfToText, textToAdf } from "./adf";
+import { AdfRenderer } from "./adf";
+import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { Activity } from "./Activity";
 import { Attachments } from "./Attachments";
 import { DevelopmentPanel } from "./DevelopmentPanel";
@@ -40,7 +42,10 @@ export function IssueView({ issueKey }: Props) {
   // labels — they're saved together via one PUT /rest/api/3/issue/{key}.
   const [editMode, setEditMode] = useState(false);
   const [draftSummary, setDraftSummary] = useState("");
-  const [draftDescription, setDraftDescription] = useState("");
+  const [draftDescriptionAdf, setDraftDescriptionAdf] = useState<ADFNode | null>(null);
+  // Bumped on each entry into edit mode so the (uncontrolled) RichTextEditor
+  // remounts and re-hydrates from the current description.
+  const [editSession, setEditSession] = useState(0);
   const [draftPriorityId, setDraftPriorityId] = useState("");
   const [draftAssigneeId, setDraftAssigneeId] = useState<string | null>(null);
   const [draftAssigneeLabel, setDraftAssigneeLabel] = useState<string | null>(null);
@@ -128,7 +133,7 @@ export function IssueView({ issueKey }: Props) {
     mutationFn: async () => {
       await issues.update(issueKey, {
         summary: draftSummary,
-        description: textToAdf(draftDescription),
+        description: draftDescriptionAdf ?? { type: "doc", version: 1, content: [] },
         ...(draftPriorityId ? { priority: { id: draftPriorityId } } : {}),
         // Always sent (not conditional on truthy) so picking "Unassigned"
         // (draftAssigneeId === null) actually clears the assignee rather than
@@ -224,7 +229,8 @@ export function IssueView({ issueKey }: Props) {
 
   function startEdit() {
     setDraftSummary(f.summary);
-    setDraftDescription(adfToText(f.description));
+    setDraftDescriptionAdf(f.description);
+    setEditSession((n) => n + 1);
     setDraftPriorityId(f.priority?.id ?? "");
     setDraftAssigneeId(f.assignee?.accountId ?? null);
     setDraftAssigneeLabel(f.assignee?.displayName ?? null);
@@ -296,12 +302,14 @@ export function IssueView({ issueKey }: Props) {
             Description
           </h2>
           {editMode ? (
-            <textarea
-              rows={8}
-              value={draftDescription}
-              onChange={(e) => setDraftDescription(e.target.value)}
+            <RichTextEditor
+              key={editSession}
+              valueAdf={draftDescriptionAdf}
+              onChangeAdf={setDraftDescriptionAdf}
               placeholder="Add a description…"
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
+              projectKey={projectKey}
+              ariaLabel="Description"
+              testId="description-editor"
             />
           ) : (
             <AdfRenderer doc={f.description} />
@@ -523,7 +531,7 @@ export function IssueView({ issueKey }: Props) {
 
       <TimeTracking issueKey={issue.key} />
 
-      <Activity issueKey={issue.key} />
+      <Activity issueKey={issue.key} projectKey={projectKey} />
     </div>
   );
 }
