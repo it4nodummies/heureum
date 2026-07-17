@@ -1,6 +1,6 @@
 # Stato del progetto — punto di ripresa
 
-> Aggiornato: 2026-07-17 (dopo Round 22 — hardening post-1.0). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
+> Aggiornato: 2026-07-17 (dopo Round 22 — hardening post-1.0; **R13→R22 ora TUTTI in `main`**). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
 >
 > **Il progetto è stato rinominato in `Heureum`** (owner GitHub `it4nodummies`, module path `github.com/it4nodummies/heureum`). UI servita sotto `/app`. Le superfici API `/rest/api/3` + `/rest/agile/1.0` + JQL restano compat Jira Cloud v3 (intoccabili).
 
@@ -66,8 +66,8 @@ Gap report attuale: **114 endpoint path-match conformi** + **87 estensioni** su 
 
 ## Prossimo: hardening residuo / release
 
-La coda di round pianificata dai requirements v2 (R13→R21) è **completa**, e **R22** ne ha aggiunto l'hardening (affidabilità+sicurezza+ops). Tutto R13-R22 è su `feat/frontend-next` (PR #17 verso `main`), NON ancora rilasciato (ultimo tag pubblico v1.0.2). Prossimi passi possibili (nessuno obbligato):
-1. **Rilascio** di questo grande blocco (candidato **v1.1.0** — issue view completa, viste progetto, configurabilità, amministrazione, list produttiva, board&sprint, releases, editor&notifiche, profilo, hardening). Richiede: merge PR #17 → `main` + tag `v1.1.0` (fa partire `release.yml` → GHCR) — **da fare all'utente / con approvazione esplicita** (vedi `docs/RELEASE.md`).
+**STATO MERGE (2026-07-17):** `main` contiene ora l'INTERA parity **R13→R22**. Storia dei merge: PR #17 (`feat/frontend-next`→`main`) mergiata quando il branch era a **R17** (merge-commit `c5eb516`) → main ebbe R13-R17; poi R18-R22 sono proseguiti sul branch e sono stati mergiati con **PR #18** (merge-commit `e9f68f2`, 2026-07-17T15:32Z) → main ora ha R13-R22. `feat/frontend-next` è a **0 commit avanti** di `main` (completamente integrato). Migrazioni su main: fino a **000022**. CI di #18 tutta verde (backend/gap-report/frontend/e2e). **Ultimo tag pubblico: ancora `v1.0.2`** — `main` è avanti rispetto al tag (candidato prossima release **v1.1.0**, non ancora taggato). Prossimi passi possibili (nessuno obbligato):
+1. **Rilascio v1.1.0**: tag `v1.1.0` su `main` (fa partire `release.yml` → immagini GHCR) — **da fare all'utente / con approvazione esplicita** (vedi `docs/RELEASE.md`). Il codice è già in `main`, serve solo il tag.
 2. **Hardening residuo** (non ancora fatto): object storage S3 allegati/avatar; rate-limit distribuito via Redis (config presente ma non cablata) + modalità trusted-proxy per XFF; webhook dead-letter surfacing in UI + lease per worker multi-istanza; permission scheme granulari; performance/load test. (FATTO in R22: retry/backoff webhook, rate-limit auth, dedup git, SMTP docs, dedup polling worker.)
 3. **Follow-up per-round** accumulati in questo file (dark polish per-vista, JQL `fixVersion`, bulk status, ecc.).
 Le restanti feature Jira sono in **FASE D (fuori scopo)** del requirements v2 (Advanced Roadmaps, Goals/OKR, Teams, SSO/LDAP, Confluence, ecc.).
