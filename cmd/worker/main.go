@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"log/slog"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/config"
 	"github.com/it4nodummies/heureum/internal/domain/automation"
 	applog "github.com/it4nodummies/heureum/internal/log"
+	"github.com/it4nodummies/heureum/internal/mailer"
 	"github.com/it4nodummies/heureum/internal/store"
 	"gorm.io/gorm"
 )
@@ -37,11 +39,12 @@ func main() {
 	defer ticker.Stop()
 
 	autoSvc := automation.NewService(s.DB)
+	mail := mailer.NewFromConfig(*cfg)
 
 	for {
 		select {
 		case <-ticker.C:
-			processNotificationQueue(logger, s.DB)
+			processNotificationQueue(logger, s.DB, mail)
 			processWebhookDeliveries(logger, s.DB)
 			processAutomationRules(logger, autoSvc)
 		case <-quit:
@@ -51,7 +54,7 @@ func main() {
 	}
 }
 
-func processNotificationQueue(logger *slog.Logger, db *gorm.DB) {
+func processNotificationQueue(logger *slog.Logger, db *gorm.DB, mail mailer.Mailer) {
 	var pending []struct {
 		ID     string
 		UserID string
@@ -62,15 +65,27 @@ func processNotificationQueue(logger *slog.Logger, db *gorm.DB) {
 		SELECT n.id, n.user_id, n.title, n.body
 		FROM notifications n
 		JOIN notification_settings ns ON ns.user_id = n.user_id AND ns.event_type = n.type
-		WHERE ns.via_email = true AND n.is_read = false
+		WHERE ns.via_email = true AND n.is_read = false AND n.email_sent = false
 		LIMIT 50
 	`).Scan(&pending)
 
 	for _, p := range pending {
 		var userEmail string
 		db.Table("users").Where("id = ?", p.UserID).Pluck("email", &userEmail)
+		if userEmail == "" {
+			continue
+		}
 
-		logger.Info("email notification", "to", userEmail, "title", p.Title)
+		if err := mail.Send(userEmail, p.Title, p.Body); err != nil {
+			// Mailer disabled: nothing was sent, so leave email_sent=false
+			// (no error log) — the backlog flushes once SMTP is configured.
+			if errors.Is(err, mailer.ErrMailerDisabled) {
+				continue
+			}
+			logger.Error("failed to send email notification", "to", userEmail, "title", p.Title, "error", err)
+			continue
+		}
+		db.Exec("UPDATE notifications SET email_sent = true WHERE id = ?", p.ID)
 	}
 }
 

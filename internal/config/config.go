@@ -25,12 +25,22 @@ type Config struct {
 	SignupOpen bool
 	DB         DBConfig
 	Redis      RedisConfig
+	SMTPHost   string
+	SMTPPort   int
+	SMTPUser   string
+	SMTPPass   string
+	SMTPFrom   string
 }
 
 func Load() (*Config, error) {
 	port, err := strconv.Atoi(getEnv("APP_PORT", "8080"))
 	if err != nil || port == 0 {
 		port = 8080
+	}
+
+	smtpPort, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
+	if err != nil || smtpPort == 0 {
+		smtpPort = 587
 	}
 
 	cfg := &Config{
@@ -47,6 +57,11 @@ func Load() (*Config, error) {
 		Redis: RedisConfig{
 			URL: getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		},
+		SMTPHost: os.Getenv("SMTP_HOST"),
+		SMTPPort: smtpPort,
+		SMTPUser: os.Getenv("SMTP_USER"),
+		SMTPPass: os.Getenv("SMTP_PASS"),
+		SMTPFrom: os.Getenv("SMTP_FROM"),
 	}
 
 	if cfg.Secret == "" {

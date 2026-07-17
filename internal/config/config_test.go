@@ -85,6 +85,52 @@ func TestLoadConfigUploadsDirAndSignupFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadConfigSMTPFromEnv(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("SMTP_HOST", "smtp.example.com")
+	t.Setenv("SMTP_PORT", "2525")
+	t.Setenv("SMTP_USER", "mailer")
+	t.Setenv("SMTP_PASS", "secret")
+	t.Setenv("SMTP_FROM", "noreply@example.com")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.SMTPHost != "smtp.example.com" {
+		t.Errorf("SMTPHost = %s, want smtp.example.com", cfg.SMTPHost)
+	}
+	if cfg.SMTPPort != 2525 {
+		t.Errorf("SMTPPort = %d, want 2525", cfg.SMTPPort)
+	}
+	if cfg.SMTPUser != "mailer" {
+		t.Errorf("SMTPUser = %s, want mailer", cfg.SMTPUser)
+	}
+	if cfg.SMTPPass != "secret" {
+		t.Errorf("SMTPPass = %s, want secret", cfg.SMTPPass)
+	}
+	if cfg.SMTPFrom != "noreply@example.com" {
+		t.Errorf("SMTPFrom = %s, want noreply@example.com", cfg.SMTPFrom)
+	}
+}
+
+func TestLoadConfigSMTPPortDefault(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.SMTPHost != "" {
+		t.Errorf("default SMTPHost = %q, want empty", cfg.SMTPHost)
+	}
+	if cfg.SMTPPort != 587 {
+		t.Errorf("default SMTPPort = %d, want 587", cfg.SMTPPort)
+	}
+}
+
 func TestLoadConfigMissingSecret(t *testing.T) {
 	_, err := Load()
 	if err == nil {
