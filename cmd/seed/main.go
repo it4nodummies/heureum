@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -22,6 +23,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/search"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/version"
 	webhook "github.com/it4nodummies/heureum/internal/domain/webhook"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 	"github.com/it4nodummies/heureum/internal/store"
@@ -357,6 +359,43 @@ func main() {
 		fmt.Println("created demo sprint")
 	} else if err != nil {
 		log.Fatalf("check demo sprint: %v", err)
+	}
+
+	// Versione demo "v1.0" (idempotente) sul progetto DEMO, con fix-version su
+	// DEMO-1: senza questo la pagina Releases e la lane Timeline restano vuote.
+	versionSvc := version.NewService(s.DB)
+	existingVersions, err := versionSvc.ListByProject(demo.ID)
+	if err != nil {
+		log.Fatalf("list DEMO versions: %v", err)
+	}
+	var demoVersion *version.Version
+	for i := range existingVersions {
+		if existingVersions[i].Name == "v1.0" {
+			demoVersion = &existingVersions[i]
+			break
+		}
+	}
+	if demoVersion == nil {
+		start := time.Now().AddDate(0, 0, -30)
+		release := time.Now().AddDate(0, 0, 14)
+		demoVersion, err = versionSvc.Create(demo.ID, "v1.0", "First public release", &start, &release)
+		if err != nil {
+			log.Fatalf("seed version: %v", err)
+		}
+		fmt.Println("created demo version v1.0")
+	}
+	// Assegna v1.0 come fix version su DEMO-1 (idempotente: SetFixVersions
+	// riconcilia il set, quindi è sicuro rieseguirlo).
+	var versionIssue issue.Issue
+	switch err := s.DB.Where("key = ?", "DEMO-1").First(&versionIssue).Error; {
+	case err == nil:
+		if err := versionSvc.SetFixVersions(versionIssue.ID, []string{demoVersion.ID}); err != nil {
+			log.Fatalf("set DEMO-1 fix version: %v", err)
+		}
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		// DEMO-1 non esiste: skip senza errori.
+	default:
+		log.Fatalf("check DEMO-1 for fix version: %v", err)
 	}
 
 	// Dashboard demo (idempotente), con widget "assigned_to_me"
