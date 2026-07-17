@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **119**
 - Nel contratto ma mancanti: **602**
-- Implementati ma fuori contratto (estensioni): **91**
+- Implementati ma fuori contratto (estensioni): **93**
 
 ## Mancanti (dal contratto)
 
@@ -664,6 +664,7 @@
 - `GET /rest/api/3/project/{}/webhooks`
 - `GET /rest/api/3/project/{}/workflow`
 - `GET /rest/api/3/project/{}/workflow/transitions`
+- `GET /rest/api/3/user/avatar/{}`
 - `GET /rest/api/3/users/me`
 - `GET /static/default-avatar.svg`
 - `GET /static/default-project-avatar.svg`
@@ -687,6 +688,7 @@
 - `POST /rest/api/3/issue/{}/labels`
 - `POST /rest/api/3/issues/bulk`
 - `POST /rest/api/3/issues/rank`
+- `POST /rest/api/3/myself/avatar`
 - `POST /rest/api/3/project/{}/automation`
 - `POST /rest/api/3/project/{}/custom-fields`
 - `POST /rest/api/3/project/{}/git/providers`

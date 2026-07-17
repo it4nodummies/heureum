@@ -60,6 +60,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	versionSvc := version.NewService(db)
 	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc, versionSvc)
 	userH := handlers.NewUserHandler(db, cfg.BaseURL, chk)
+	avatarH := handlers.NewAvatarHandler(db, cfg.UploadsDir, cfg.BaseURL)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
 
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, versionSvc, cfg.BaseURL)
@@ -145,6 +146,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/users/me", authMw(http.HandlerFunc(userH.GetMe)))
 	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMyself)))
 	mux.Handle("PUT /rest/api/3/myself", authMw(http.HandlerFunc(userH.UpdateMyself)))
+	mux.Handle("POST /rest/api/3/myself/avatar", authMw(http.HandlerFunc(avatarH.Upload)))
+	// PUBLIC (no authMw, come serveDefaultAvatar): gli avatar sono risorse
+	// pubbliche così <img src> funziona senza bearer token.
+	mux.HandleFunc("GET /rest/api/3/user/avatar/{userId}", avatarH.Serve)
 	mux.Handle("GET /rest/api/3/users/search", authMw(http.HandlerFunc(userH.SearchUsers)))
 	mux.Handle("GET /rest/api/3/user/search", authMw(http.HandlerFunc(userH.SearchV3)))
 	mux.Handle("GET /rest/api/3/user/assignable/search", authMw(http.HandlerFunc(userH.AssignableSearch)))
