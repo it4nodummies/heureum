@@ -71,6 +71,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Backed by Jira-conformant endpoints — `GET /rest/api/3/project/{key}/versions`, `POST /version`,
   `GET`/`PUT`/`DELETE /rest/api/3/version/{id}` — over the pre-existing `versions` table plus an
   `issue_versions` pivot for multi fix-versions (migration `000019`).
+- **Rich text editor**: a lightweight (dependency-free) WYSIWYG editor with a minimal toolbar
+  (bold / italic / code / bullet list / heading) for issue descriptions and comments, producing valid
+  ADF — replacing the plain textareas.
+- **@mentions**: an autocomplete in the editor inserts a mention of a user; the mentioned user now
+  receives a notification (the ADF mention node's account id is wired to notifications).
+- **Notification bell** now has **Direct / Watching** tabs and groups entries by issue.
+- **Notification preferences**: you can now **add** a preference (event type + channels), not only
+  toggle existing ones.
+- **Email delivery**: the worker sends notification emails over **SMTP** (config `SMTP_*`),
+  respecting the `via_email` preference and emailing each notification at most once (migration
+  `000020` adds an `email_sent` flag); email is a no-op when SMTP is unconfigured.
 
 ### Fixed
 
@@ -149,6 +160,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not a live per-version progress bar (the Timeline lane does show version progress via the pivot).
   The `/version/{id}/relatedIssueCounts`, `/unresolvedIssueCount`, and `/move` endpoints and version
   archiving UI aren't implemented; the dead single `issue.version_id` FK remains unused.
+- Editor/notifications: the rich editor supports a bounded ADF vocabulary (no tables/images/quote,
+  no slash-commands); Direct/Watching is inferred from the notification type (no stored reason
+  field); notification preferences can only be added at "All projects" scope from the UI (the
+  settings API keys on the internal project UUID, which the frontend doesn't hold); notification
+  emails are plain text (no HTML templating) and the `SMTP_*` vars remain commented in
+  `.env.example`.
 
 ## [1.0.2] - 2026-07-14
 
