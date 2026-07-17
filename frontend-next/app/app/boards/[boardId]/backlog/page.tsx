@@ -14,7 +14,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { boards, sprints, agileIssues, type SearchIssue } from "@/lib/api";
+import { boards, sprints, agileIssues, type SearchIssue, type AgileSprint } from "@/lib/api";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
 import { DroppableList } from "@/components/backlog/DroppableList";
 
@@ -31,6 +31,17 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   const id = Number(boardId);
   const qc = useQueryClient();
   const [newSprint, setNewSprint] = useState("");
+  const [newGoal, setNewGoal] = useState("");
+  const [newStart, setNewStart] = useState("");
+  const [newEnd, setNewEnd] = useState("");
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editGoal, setEditGoal] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [completing, setCompleting] = useState<number | null>(null);
+  const [moveMode, setMoveMode] = useState<"backlog" | "sprint">("backlog");
+  const [moveTarget, setMoveTarget] = useState<number | "">("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<Record<string, string[]>>({});
@@ -73,9 +84,33 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   });
 
   const createSprint = useMutation({
-    mutationFn: (name: string) => sprints.create(name, id),
+    mutationFn: () =>
+      sprints.create(newSprint, id, newGoal || undefined, newStart || undefined, newEnd || undefined),
     onSuccess: () => {
       setNewSprint("");
+      setNewGoal("");
+      setNewStart("");
+      setNewEnd("");
+      invalidate();
+    },
+  });
+  const updateSprint = useMutation({
+    mutationFn: (vars: {
+      sprintId: number;
+      fields: { name?: string; goal?: string; startDate?: string; endDate?: string };
+    }) => sprints.update(vars.sprintId, vars.fields),
+    onSuccess: () => {
+      setEditing(null);
+      invalidate();
+    },
+  });
+  const completeSprint = useMutation({
+    mutationFn: (vars: {
+      sprintId: number;
+      opts: { moveToSprintId?: number | null; moveOpenToBacklog?: boolean };
+    }) => sprints.complete(vars.sprintId, vars.opts),
+    onSuccess: () => {
+      setCompleting(null);
       invalidate();
     },
   });
@@ -84,6 +119,21 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
       sprints.setState(sprintId, state),
     onSuccess: invalidate,
   });
+
+  const openEdit = (sp: AgileSprint) => {
+    setCompleting(null);
+    setEditing(sp.id);
+    setEditName(sp.name);
+    setEditGoal(sp.goal ?? "");
+    setEditStart(sp.startDate ? sp.startDate.slice(0, 10) : "");
+    setEditEnd(sp.endDate ? sp.endDate.slice(0, 10) : "");
+  };
+  const openComplete = (sprintId: number) => {
+    setEditing(null);
+    setCompleting(sprintId);
+    setMoveMode("backlog");
+    setMoveTarget("");
+  };
   const moveAndRank = useMutation({
     mutationFn: async (vars: {
       sourceContainer: string;
@@ -308,7 +358,7 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          {sprintValues.map((sp) => (
+          {sprintValues.map((sp, idx) => (
             <DroppableList
               key={sp.id}
               containerId={sprintContainerId(sp.id)}
@@ -319,48 +369,232 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
               emptyLabel="No issues in this sprint"
               testId={sprintContainerId(sp.id)}
               header={
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-[#1a1f36]">
-                    {sp.name} <span className="text-xs font-normal text-slate-400">({sp.state})</span>
-                  </span>
-                  <span className="flex gap-2">
-                    {sp.state === "future" && (
+                <div className="mb-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-[#1a1f36]">
+                      {sp.name} <span className="text-xs font-normal text-slate-400">({sp.state})</span>
+                    </span>
+                    <span className="flex gap-2">
                       <button
-                        onClick={() => setState.mutate({ sprintId: sp.id, state: "active" })}
+                        onClick={() => openEdit(sp)}
                         className="rounded border border-slate-300 px-2 py-0.5 text-xs"
                       >
-                        Start sprint
+                        Edit sprint
                       </button>
-                    )}
-                    {sp.state === "active" && (
-                      <button
-                        onClick={() => setState.mutate({ sprintId: sp.id, state: "closed" })}
-                        className="rounded border border-slate-300 px-2 py-0.5 text-xs"
-                      >
-                        Complete sprint
-                      </button>
-                    )}
-                  </span>
+                      {sp.state === "future" && (
+                        <button
+                          onClick={() => setState.mutate({ sprintId: sp.id, state: "active" })}
+                          className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                        >
+                          Start sprint
+                        </button>
+                      )}
+                      {sp.state === "active" && (
+                        <button
+                          onClick={() => openComplete(sp.id)}
+                          className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                        >
+                          Complete sprint
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {(sp.goal || sp.startDate || sp.endDate) && (
+                    <div data-testid="sprint-goal" className="mt-0.5 text-xs text-slate-500">
+                      {sp.goal && <span>{sp.goal}</span>}
+                      {(sp.startDate || sp.endDate) && (
+                        <span className="ml-2 text-slate-400">
+                          {sp.startDate ? sp.startDate.slice(0, 10) : "…"} → {sp.endDate ? sp.endDate.slice(0, 10) : "…"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {editing === sp.id && (
+                    <div
+                      data-testid="edit-sprint-form"
+                      className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50 p-2"
+                    >
+                      <input
+                        aria-label="Edit sprint name"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Sprint name"
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                      />
+                      <input
+                        aria-label="Edit sprint goal"
+                        value={editGoal}
+                        onChange={(e) => setEditGoal(e.target.value)}
+                        placeholder="Sprint goal"
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          aria-label="Edit start date"
+                          value={editStart}
+                          onChange={(e) => setEditStart(e.target.value)}
+                          className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                        />
+                        <input
+                          type="date"
+                          aria-label="Edit end date"
+                          value={editEnd}
+                          onChange={(e) => setEditEnd(e.target.value)}
+                          className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() =>
+                            updateSprint.mutate({
+                              sprintId: sp.id,
+                              fields: {
+                                name: editName,
+                                goal: editGoal,
+                                startDate: editStart || undefined,
+                                endDate: editEnd || undefined,
+                              },
+                            })
+                          }
+                          disabled={updateSprint.isPending}
+                          className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditing(null)}
+                          className="rounded border border-slate-300 px-3 py-1 text-xs"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {completing === sp.id &&
+                    (() => {
+                      const spIssues = sprintIssuesQueries[idx]?.data?.issues ?? [];
+                      const incomplete = spIssues.filter(
+                        (i) => i.fields.status?.statusCategory?.key !== "done",
+                      );
+                      const otherSprints = sprintValues.filter(
+                        (o) => o.id !== sp.id && o.state !== "closed",
+                      );
+                      return (
+                        <div
+                          role="dialog"
+                          aria-label="Complete sprint"
+                          data-testid="complete-sprint-dialog"
+                          className="mt-2 space-y-2 rounded border border-slate-200 bg-white p-3 shadow"
+                        >
+                          <div className="text-sm font-semibold text-[#1a1f36]">Complete {sp.name}</div>
+                          <div data-testid="incomplete-count" className="text-xs text-slate-500">
+                            {incomplete.length} incomplete issue{incomplete.length === 1 ? "" : "s"} will be moved.
+                          </div>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              name={`move-${sp.id}`}
+                              checked={moveMode === "backlog"}
+                              onChange={() => setMoveMode("backlog")}
+                            />
+                            Move to Backlog
+                          </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              name={`move-${sp.id}`}
+                              checked={moveMode === "sprint"}
+                              onChange={() => setMoveMode("sprint")}
+                              disabled={otherSprints.length === 0}
+                            />
+                            Move to sprint
+                            <select
+                              aria-label="Target sprint"
+                              value={moveTarget}
+                              onChange={(e) => setMoveTarget(e.target.value ? Number(e.target.value) : "")}
+                              disabled={moveMode !== "sprint" || otherSprints.length === 0}
+                              className="rounded border border-slate-300 px-2 py-0.5 text-sm"
+                            >
+                              <option value="">Select sprint…</option>
+                              {otherSprints.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() =>
+                                completeSprint.mutate({
+                                  sprintId: sp.id,
+                                  opts:
+                                    moveMode === "sprint" && moveTarget
+                                      ? { moveToSprintId: Number(moveTarget) }
+                                      : { moveOpenToBacklog: true },
+                                })
+                              }
+                              disabled={completeSprint.isPending || (moveMode === "sprint" && !moveTarget)}
+                              className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
+                            >
+                              Complete sprint
+                            </button>
+                            <button
+                              onClick={() => setCompleting(null)}
+                              className="rounded border border-slate-300 px-3 py-1 text-xs"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                 </div>
               }
             />
           ))}
 
-          <div className="my-3 flex gap-2">
+          <div className="my-3 space-y-2 rounded border border-slate-200 p-2">
+            <div className="flex gap-2">
+              <input
+                aria-label="New sprint name"
+                value={newSprint}
+                onChange={(e) => setNewSprint(e.target.value)}
+                placeholder="Sprint name"
+                className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              />
+              <button
+                onClick={() => newSprint && createSprint.mutate()}
+                className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
+                disabled={createSprint.isPending}
+              >
+                Create sprint
+              </button>
+            </div>
             <input
-              aria-label="New sprint name"
-              value={newSprint}
-              onChange={(e) => setNewSprint(e.target.value)}
-              placeholder="Sprint name"
-              className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              aria-label="Sprint goal"
+              value={newGoal}
+              onChange={(e) => setNewGoal(e.target.value)}
+              placeholder="Sprint goal (optional)"
+              className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
             />
-            <button
-              onClick={() => newSprint && createSprint.mutate(newSprint)}
-              className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
-              disabled={createSprint.isPending}
-            >
-              Create sprint
-            </button>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                aria-label="Start date"
+                value={newStart}
+                onChange={(e) => setNewStart(e.target.value)}
+                className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              />
+              <input
+                type="date"
+                aria-label="End date"
+                value={newEnd}
+                onChange={(e) => setNewEnd(e.target.value)}
+                className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              />
+            </div>
           </div>
 
           <DroppableList

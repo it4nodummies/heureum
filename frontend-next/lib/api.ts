@@ -708,16 +708,38 @@ export const boards = {
 };
 
 export const sprints = {
-  create: (name: string, originBoardId: number, goal?: string) =>
+  create: (
+    name: string,
+    originBoardId: number,
+    goal?: string,
+    startDate?: string,
+    endDate?: string,
+  ) =>
     apiFetch<AgileSprint>("/rest/agile/1.0/sprint", {
       method: "POST",
-      body: JSON.stringify({ name, originBoardId, goal }),
+      body: JSON.stringify({ name, originBoardId, goal, startDate, endDate }),
     }),
   issues: (sprintId: number) => apiFetch<AgileIssueList>(`/rest/agile/1.0/sprint/${sprintId}/issue`),
   setState: (sprintId: number, state: "active" | "closed") =>
     apiFetch<AgileSprint>(`/rest/agile/1.0/sprint/${sprintId}`, {
       method: "POST",
       body: JSON.stringify({ state }),
+    }),
+  update: (
+    sprintId: number,
+    fields: { name?: string; goal?: string; startDate?: string; endDate?: string },
+  ) =>
+    apiFetch<AgileSprint>(`/rest/agile/1.0/sprint/${sprintId}`, {
+      method: "POST",
+      body: JSON.stringify(fields),
+    }),
+  complete: (
+    sprintId: number,
+    opts: { moveToSprintId?: number | null; moveOpenToBacklog?: boolean },
+  ) =>
+    apiFetch<AgileSprint>(`/rest/agile/1.0/sprint/${sprintId}/complete`, {
+      method: "POST",
+      body: JSON.stringify(opts),
     }),
   moveIssues: (sprintId: number, issues: string[]) =>
     apiFetch<void>(`/rest/agile/1.0/sprint/${sprintId}/issue`, {
