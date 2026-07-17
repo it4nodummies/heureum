@@ -70,3 +70,34 @@ jobs:
         run: npm run e2e
         env:
           APP_SECRET: ci-secret
+
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: heureum
+          POSTGRES_PASSWORD: heureum
+          POSTGRES_DB: heureum_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U heureum"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # Seed runs golang-migrate itself (see internal/store.RunMigrations), so this
+      # applies the schema and exercises the notification insert path against a real
+      # Postgres, catching Go-model/DB-column type mismatches that SQLite hides.
+      - name: Seed demo data against Postgres
+        run: go run ./cmd/seed
+        env:
+          APP_SECRET: ci-secret
+          DB_DRIVER: postgres
+          DB_DSN: postgres://heureum:heureum@localhost:5432/heureum_test?sslmode=disable

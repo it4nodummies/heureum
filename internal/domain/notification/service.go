@@ -3,20 +3,21 @@ package notification
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type Notification struct {
-	ID        string `gorm:"primaryKey;type:text" json:"id"`
-	UserID    string `gorm:"type:text;not null;index" json:"user_id"`
-	Type      string `gorm:"type:text;not null" json:"type"`
-	Title     string `gorm:"type:text;not null" json:"title"`
-	Body      string `gorm:"type:text;default:''" json:"body"`
-	Link      string `gorm:"type:text;default:''" json:"link"`
-	IsRead    bool   `gorm:"default:false" json:"is_read"`
-	CreatedAt int64  `gorm:"autoCreateTime" json:"created_at"`
+	ID        string    `gorm:"primaryKey;type:text" json:"id"`
+	UserID    string    `gorm:"type:text;not null;index" json:"user_id"`
+	Type      string    `gorm:"type:text;not null" json:"type"`
+	Title     string    `gorm:"type:text;not null" json:"title"`
+	Body      string    `gorm:"type:text;default:''" json:"body"`
+	Link      string    `gorm:"type:text;default:''" json:"link"`
+	IsRead    bool      `gorm:"default:false" json:"is_read"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 type Service struct {
