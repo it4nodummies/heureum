@@ -301,6 +301,21 @@ export const projects = {
 
 // ── Issues ───────────────────────────────────────────────────────────────────
 
+// v3.IssueTransition (internal/api/v3/transitions.go): one entry of the
+// { transitions: [...] } response from GET /issue/{key}/transitions. `to` is the
+// target status (reuses StatusRef).
+export interface IssueTransitionOption {
+  id: string;
+  name: string;
+  to: StatusRef;
+  hasScreen: boolean;
+  isGlobal: boolean;
+  isInitial: boolean;
+  isAvailable: boolean;
+  isConditional: boolean;
+  looped: boolean;
+}
+
 export const issues = {
   get: (idOrKey: string) => apiFetch<Issue>(`/rest/api/3/issue/${idOrKey}`),
 
@@ -355,6 +370,29 @@ export const issues = {
       method: "PUT",
       body: JSON.stringify({ fields }),
     }),
+
+  // Heureum extension (not in the Jira spec): POST /rest/api/3/issues/bulk
+  // applies a partial field set to a list of issue keys with per-issue
+  // authorization and partial-failure reporting (see BulkUpdate in
+  // internal/api/handlers). `assignee: null` clears the assignee where the
+  // backend supports it; `delete: true` deletes each targeted issue. Status is
+  // NOT settable here (it goes through transitions).
+  bulk: (body: {
+    keys: string[];
+    fields?: { assignee?: { accountId: string } | null; priority?: { id: string }; labels?: string[] };
+    delete?: boolean;
+  }) =>
+    apiFetch<{ results: { key: string; ok: boolean; error?: string }[] }>("/rest/api/3/issues/bulk", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // GET /rest/api/3/issue/{key}/transitions → v3.Transitions
+  // (internal/api/v3/transitions.go), the transitions available FROM the
+  // issue's current status. Same route as availableTransitions but typed to
+  // the full v3.IssueTransition shape (used by inline status edit).
+  transitions: (key: string) =>
+    apiFetch<{ transitions: IssueTransitionOption[] }>(`/rest/api/3/issue/${key}/transitions`),
 
   // PUT /rest/api/3/issue/{key} non gestisce lo status (non è un campo "fields"
   // libero come Jira reale: richiede una transizione validata dal workflow).
@@ -541,12 +579,30 @@ export interface SearchIssue {
   self: string;
   fields: {
     summary?: string;
-    status?: { name: string; statusCategory?: { key: string; colorName: string } };
-    priority?: { name: string };
-    assignee?: { displayName: string } | null;
+    status?: { id?: string; name: string; statusCategory?: { key: string; colorName: string } };
+    priority?: { id?: string; name: string };
+    assignee?: { accountId?: string; displayName: string } | null;
     updated?: string;
+    issuetype?: { name: string; iconUrl?: string };
+    parent?: { key: string } | null;
+    customfield_10016?: number;
   };
 }
+
+// Richer default field set for the productive issue list (row inline-edit +
+// hierarchy). status/priority/assignee carry the ids the inline-edit needs; the
+// v3 search projection emits status.id/priority.id/assignee.accountId/parent
+// when these fields are requested (internal/api/v3/issue.go + fields.go).
+export const LIST_FIELDS = [
+  "summary",
+  "status",
+  "priority",
+  "assignee",
+  "updated",
+  "issuetype",
+  "parent",
+  "customfield_10016",
+];
 
 export interface SearchJqlResponse {
   issues: SearchIssue[];
