@@ -62,7 +62,7 @@ func setup(t *testing.T) (chk *Checker, globalAdminID, aliceID, bobID, p1ID stri
 		t.Fatalf("add member: %v", err)
 	}
 
-	chk = New(userSvc, projSvc, nil, nil, nil, nil, nil)
+	chk = New(userSvc, projSvc, nil, nil, nil, nil, nil, nil)
 	return
 }
 

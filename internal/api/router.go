@@ -28,6 +28,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/timeline"
 	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/domain/version"
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 	"github.com/it4nodummies/heureum/internal/integration"
@@ -56,7 +57,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	autoSvc := automation.NewService(db)
 	cfSvc := customfield.NewService(db)
 	userSvc := user.NewService(db)
-	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc)
+	versionSvc := version.NewService(db)
+	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc, versionSvc)
 	userH := handlers.NewUserHandler(db, cfg.BaseURL, chk)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
 
@@ -96,6 +98,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	sprintSvc.SetNotifier(notifSvc)
 
 	cfH := handlers.NewCustomFieldHandler(cfSvc, chk, projectSvc, issueSvc)
+	versionH := handlers.NewVersionHandler(versionSvc, projectSvc, chk, cfg.BaseURL)
 	autoH := handlers.NewAutomationHandler(autoSvc, projectSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
@@ -395,6 +398,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/custom-fields/options/{optionID}", authMw(http.HandlerFunc(cfH.RemoveOption)))
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/custom-values", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.GetValues))))
 	mux.Handle("PUT /rest/api/3/issue/{issueIdOrKey}/custom-values/{fieldID}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(cfH.SetValue))))
+
+	// --- Project versions / releases (Round 19) ---
+	mux.Handle("GET /rest/api/3/project/{key}/versions", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(versionH.List))))
+	// POST /version: progetto risolto dal body (projectId seq / project key) ->
+	// autorizzazione in-handler (AdministerProjects), come /issues/bulk.
+	mux.Handle("POST /rest/api/3/version", authMw(http.HandlerFunc(versionH.Create)))
+	mux.Handle("GET /rest/api/3/version/{id}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByVersion("id"), http.HandlerFunc(versionH.Get))))
+	mux.Handle("PUT /rest/api/3/version/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByVersion("id"), http.HandlerFunc(versionH.Update))))
+	mux.Handle("DELETE /rest/api/3/version/{id}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByVersion("id"), http.HandlerFunc(versionH.Delete))))
 
 	mux.Handle("GET /rest/api/3/project/{key}/automation", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(autoH.ListRules))))
 	mux.Handle("POST /rest/api/3/project/{key}/automation", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(autoH.CreateRule))))

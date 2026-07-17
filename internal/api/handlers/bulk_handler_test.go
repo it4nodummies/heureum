@@ -46,7 +46,7 @@ func newBulkTestHandler(t *testing.T, db *gorm.DB, adminUID string) *IssueHandle
 	issueSvc := issue.NewService(db)
 	userSvc := user.NewService(db)
 	projSvc := project.NewService(db, &user.User{ID: adminUID})
-	chk := authz.New(userSvc, projSvc, issueSvc, nil, nil, nil, nil)
+	chk := authz.New(userSvc, projSvc, issueSvc, nil, nil, nil, nil, nil)
 	return NewIssueHandler(issueSvc, projSvc, nil, chk, "http://localhost:8080")
 }
 

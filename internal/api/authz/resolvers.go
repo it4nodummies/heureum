@@ -135,6 +135,22 @@ func (c *Checker) ByCustomField(param string) Resolver {
 	}
 }
 
+// ByVersion risolve il progetto dal path param version (UUID, es. {id})
+// via version.Get -> ProjectID (mirror di ByCustomField).
+func (c *Checker) ByVersion(param string) Resolver {
+	return func(r *http.Request) (string, bool) {
+		id := r.PathValue(param)
+		if id == "" {
+			return "", false
+		}
+		v, err := c.versions.Get(id)
+		if err != nil {
+			return "", false
+		}
+		return v.ProjectID, true
+	}
+}
+
 // ByAttachment risolve il progetto a due hop dal path param allegato (UUID,
 // es. {id}): attachment -> issue (via IssueID) -> project. Il servizio
 // attachment non è montato sul Checker, quindi si interroga direttamente la

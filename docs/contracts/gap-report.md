@@ -2,8 +2,8 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **114**
-- Nel contratto ma mancanti: **607**
+- Nel contratto e implementati (path match): **119**
+- Nel contratto ma mancanti: **602**
 - Implementati ma fuori contratto (estensioni): **91**
 
 ## Mancanti (dal contratto)
@@ -69,7 +69,6 @@
 - `DELETE /rest/api/3/user` — Delete user
 - `DELETE /rest/api/3/user/columns` — Reset user default columns
 - `DELETE /rest/api/3/user/properties/{propertyKey}` — Delete user property
-- `DELETE /rest/api/3/version/{id}` — Delete version
 - `DELETE /rest/api/3/version/{versionId}/relatedwork/{relatedWorkId}` — Delete related work
 - `DELETE /rest/api/3/webhook` — Delete webhooks by ID
 - `DELETE /rest/api/3/workflow/{entityId}` — Delete inactive workflow
@@ -260,7 +259,6 @@
 - `GET /rest/api/3/project/{projectIdOrKey}/roledetails` — Get project role details
 - `GET /rest/api/3/project/{projectIdOrKey}/statuses` — Get all statuses for project
 - `GET /rest/api/3/project/{projectIdOrKey}/version` — Get project versions paginated
-- `GET /rest/api/3/project/{projectIdOrKey}/versions` — Get project versions
 - `GET /rest/api/3/project/{projectId}/email` — Get project's sender email
 - `GET /rest/api/3/project/{projectId}/hierarchy` — Get project issue type hierarchy
 - `GET /rest/api/3/project/{projectKeyOrId}/issuesecuritylevelscheme` — Get project issue security scheme
@@ -314,7 +312,6 @@
 - `GET /rest/api/3/user/search/query/key` — Find user keys by query
 - `GET /rest/api/3/user/viewissue/search` — Find users with browse permission
 - `GET /rest/api/3/users` — Get all users default
-- `GET /rest/api/3/version/{id}` — Get version
 - `GET /rest/api/3/version/{id}/relatedIssueCounts` — Get version's related issues count
 - `GET /rest/api/3/version/{id}/relatedwork` — Get related work
 - `GET /rest/api/3/version/{id}/unresolvedIssueCount` — Get version's unresolved issues count
@@ -463,7 +460,6 @@
 - `POST /rest/api/3/uiModifications` — Create UI modification
 - `POST /rest/api/3/universal_avatar/type/{type}/owner/{entityId}` — Load avatar
 - `POST /rest/api/3/user` — Create user
-- `POST /rest/api/3/version` — Create version
 - `POST /rest/api/3/version/{id}/move` — Move version
 - `POST /rest/api/3/version/{id}/relatedwork` — Create related work
 - `POST /rest/api/3/version/{id}/removeAndSwap` — Delete and replace version
@@ -596,7 +592,6 @@
 - `PUT /rest/api/3/uiModifications/{uiModificationId}` — Update UI modification
 - `PUT /rest/api/3/user/columns` — Set user default columns
 - `PUT /rest/api/3/user/properties/{propertyKey}` — Set user property
-- `PUT /rest/api/3/version/{id}` — Update version
 - `PUT /rest/api/3/version/{id}/mergeto/{moveIssuesTo}` — Merge versions
 - `PUT /rest/api/3/version/{id}/relatedwork` — Update related work
 - `PUT /rest/api/3/webhook/refresh` — Extend webhook life
