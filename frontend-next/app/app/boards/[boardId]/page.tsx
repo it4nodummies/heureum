@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { boards, issues as issuesApi, type SearchIssue } from "@/lib/api";
 import { BoardColumns } from "@/components/board/BoardColumns";
@@ -57,6 +58,15 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
     <div>
       {projectKey && <ProjectHeader projectKey={projectKey} active="board" />}
       <div className="p-4">
+        <div className="mb-3 flex justify-end">
+          <Link
+            href={`/app/boards/${id}/settings`}
+            data-testid="board-settings-link"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Board settings
+          </Link>
+        </div>
         {moveError && (
           <div
             role="alert"

@@ -690,6 +690,35 @@ export interface AgileIssueList {
   total: number;
 }
 
+// Config editabile della board (endpoint Heureum-custom, non conforme Jira).
+// Le colonne mappano un SET (non ordinato) di status id; swimlane e quick
+// filters vivono su questo endpoint separato dal contract-validato configuration.
+export interface BoardConfigColumn {
+  id: string;
+  name: string;
+  position: number;
+  statusIds: string[];
+}
+
+export interface BoardQuickFilter {
+  id: string;
+  name: string;
+  jql: string;
+  position: number;
+}
+
+export interface BoardFullConfig {
+  columns: BoardConfigColumn[];
+  swimlane: "none" | "assignee" | "epic";
+  quickFilters: BoardQuickFilter[];
+}
+
+export interface BoardConfigInput {
+  columns: { name: string; statusIds: string[] }[];
+  swimlane: "none" | "assignee" | "epic";
+  quickFilters: { name: string; jql: string }[];
+}
+
 export const boards = {
   list: () => apiFetch<{ values: AgileBoard[] }>("/rest/agile/1.0/board"),
   create: (name: string, projectKeyOrId: string, type = "scrum") =>
@@ -705,6 +734,13 @@ export const boards = {
     apiFetch<{ columnConfig: { columns: { name: string; statuses: { id: string }[] }[] } }>(
       `/rest/agile/1.0/board/${boardId}/configuration`,
     ),
+  config: (boardId: number) =>
+    apiFetch<BoardFullConfig>(`/rest/agile/1.0/board/${boardId}/config`),
+  saveConfig: (boardId: number, cfg: BoardConfigInput) =>
+    apiFetch<BoardFullConfig>(`/rest/agile/1.0/board/${boardId}/config`, {
+      method: "PUT",
+      body: JSON.stringify(cfg),
+    }),
 };
 
 export const sprints = {
