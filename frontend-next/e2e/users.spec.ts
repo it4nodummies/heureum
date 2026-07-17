@@ -15,6 +15,26 @@ test("notification bell opens dropdown", async ({ page }) => {
   await expect(page.getByTestId("notif-dropdown").getByText("Notifications")).toBeVisible();
 });
 
+test("notification bell has Direct/Watching tabs that filter the list", async ({ page }) => {
+  await login(page);
+  await page.getByRole("button", { name: "Notifications" }).click();
+  await expect(page.getByTestId("notif-dropdown")).toBeVisible();
+
+  const direct = page.getByTestId("notif-tab-direct");
+  const watching = page.getByTestId("notif-tab-watching");
+  await expect(direct).toBeVisible();
+  await expect(watching).toBeVisible();
+
+  // Direct is the default active tab.
+  await expect(direct).toHaveAttribute("aria-selected", "true");
+  await expect(watching).toHaveAttribute("aria-selected", "false");
+
+  // Clicking Watching switches the active tab (filters the list to that type set).
+  await watching.click();
+  await expect(watching).toHaveAttribute("aria-selected", "true");
+  await expect(direct).toHaveAttribute("aria-selected", "false");
+});
+
 test("profile page loads and saves display name", async ({ page }) => {
   await login(page);
   await page.goto("/app/profile");
