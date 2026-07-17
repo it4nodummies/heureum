@@ -7,6 +7,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-17
+
+Accumulates Rounds 13–22 of the Jira-parity effort: complete issue view, project views
+(Timeline/Calendar/Burnup/CSV), configurability (automation, custom fields, workflow rules),
+administration & sharing (members/roles, groups, shared filters, dashboard gadgets), a productive
+issue list (bulk + inline edit, cursor pagination, hierarchy), board & sprint pro (configurable
+columns/swimlanes/quick filters, sprint goal/dates), releases/versions, a rich editor with
+@mentions and notification email over SMTP, profile locale/theme/avatar, and post-1.0 hardening
+(persistent webhook retry queue, git auto-comment dedup, auth rate limiting). Adds migrations
+`000016`–`000022`.
+
 ### Added
 
 - **Subtasks** on the issue detail: list of child issues with a completion counter, inline
@@ -274,7 +285,8 @@ parity effort.
 - **SMTP and OAuth are not wired up.** The corresponding environment variables are
   reserved but not yet read by the server.
 
-[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/it4nodummies/heureum/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.2
 [1.0.1]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.1
 [1.0.0]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.0
