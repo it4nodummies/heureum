@@ -44,3 +44,25 @@ test("profile page loads and saves display name", async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel("Display name")).toHaveValue("Ada Lovelace");
 });
+
+test("profile page can add a notification preference", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/profile");
+  await expect(page.getByTestId("notif-prefs")).toBeVisible();
+
+  const form = page.getByTestId("add-pref-form");
+  await expect(form).toBeVisible();
+
+  // Pick an event type and channels, then add the preference.
+  await form.getByLabel("Event type").selectOption("mention");
+  await form.getByLabel("App", { exact: true }).check();
+  await form.getByLabel("Email", { exact: true }).check();
+  await form.getByRole("button", { name: "Add preference" }).click();
+
+  // The new pref row for the chosen event type appears in the list,
+  // scoped to "All projects".
+  const row = page.getByTestId("notif-prefs").locator('[data-event="mention"]');
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("mention");
+  await expect(row).toContainText("All projects");
+});

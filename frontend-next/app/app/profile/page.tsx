@@ -34,6 +34,15 @@ export default function ProfilePage() {
   const toggleEmail = (s: NotificationSetting, via_email: boolean) =>
     updateSetting.mutate({ project_id: s.project_id, event_type: s.event_type, via_app: s.via_app, via_email });
 
+  // Add-a-preference form state. Scope is fixed to "All projects" (project_id: "")
+  // because the settings API keys prefs on the internal project UUID (projects.id),
+  // which no frontend API exposes — the projects list only returns seq_id/key/name.
+  const [newEvent, setNewEvent] = useState("assignment");
+  const [newApp, setNewApp] = useState(true);
+  const [newEmail, setNewEmail] = useState(false);
+  const addPref = () =>
+    updateSetting.mutate({ project_id: "", event_type: newEvent, via_app: newApp, via_email: newEmail });
+
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="mb-4 text-xl font-semibold text-[#1a1f36]">Profile</h1>
@@ -68,10 +77,15 @@ export default function ProfilePage() {
         <h2 className="mb-2 text-sm font-semibold text-[#1a1f36]">Notification preferences</h2>
         <ul className="space-y-1 text-sm">
           {(settings.data ?? []).map((s) => (
-            <li key={`${s.project_id}:${s.event_type}`} className="flex items-center justify-between border-b border-slate-100 py-1">
+            <li
+              key={`${s.project_id}:${s.event_type}`}
+              data-testid="notif-pref-row"
+              data-event={s.event_type}
+              className="flex items-center justify-between border-b border-slate-100 py-1"
+            >
               <span className="text-[#1a1f36]">
-                {s.event_type}
-                {s.project_id ? ` · ${s.project_id}` : ""}
+                <span className="font-medium">{s.event_type}</span>
+                <span className="text-slate-400"> · {s.project_id ? "Project-scoped" : "All projects"}</span>
               </span>
               <span className="flex gap-3">
                 <label className="flex items-center gap-1 text-xs">
@@ -87,6 +101,51 @@ export default function ProfilePage() {
             <li className="py-2 text-slate-400">Default preferences (all channels on)</li>
           )}
         </ul>
+
+        <form
+          data-testid="add-pref-form"
+          className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addPref();
+          }}
+        >
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-500">Event type</label>
+            <select
+              aria-label="Event type"
+              value={newEvent}
+              onChange={(e) => setNewEvent(e.target.value)}
+              className="rounded border border-slate-300 px-2 py-1 text-sm"
+            >
+              <option value="assignment">assignment</option>
+              <option value="comment">comment</option>
+              <option value="mention">mention</option>
+              <option value="status_change">status_change</option>
+              <option value="sprint_started">sprint_started</option>
+              <option value="sprint_completed">sprint_completed</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-500">Scope</label>
+            <span className="block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm text-slate-500">
+              All projects
+            </span>
+          </div>
+          <label className="flex items-center gap-1 pb-1.5 text-xs">
+            <input type="checkbox" aria-label="App" checked={newApp} onChange={(e) => setNewApp(e.target.checked)} /> App
+          </label>
+          <label className="flex items-center gap-1 pb-1.5 text-xs">
+            <input type="checkbox" aria-label="Email" checked={newEmail} onChange={(e) => setNewEmail(e.target.checked)} /> Email
+          </label>
+          <button
+            type="submit"
+            disabled={updateSetting.isPending}
+            className="rounded bg-[#0052cc] px-3 py-1.5 text-sm text-white disabled:opacity-60"
+          >
+            Add preference
+          </button>
+        </form>
       </section>
     </div>
   );
