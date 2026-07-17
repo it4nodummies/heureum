@@ -4,14 +4,15 @@ import (
 	"errors"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/it4nodummies/heureum/internal/config"
-	"github.com/it4nodummies/heureum/internal/domain/automation"
 	applog "github.com/it4nodummies/heureum/internal/log"
+	"github.com/it4nodummies/heureum/internal/domain/webhook"
 	"github.com/it4nodummies/heureum/internal/mailer"
 	"github.com/it4nodummies/heureum/internal/store"
 	"gorm.io/gorm"
@@ -38,15 +39,15 @@ func main() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	autoSvc := automation.NewService(s.DB)
 	mail := mailer.NewFromConfig(*cfg)
+	// Client condiviso per la consegna dei webhook (timeout per non bloccare il tick).
+	whClient := &http.Client{Timeout: 10 * time.Second}
 
 	for {
 		select {
 		case <-ticker.C:
 			processNotificationQueue(logger, s.DB, mail)
-			processWebhookDeliveries(logger, s.DB)
-			processAutomationRules(logger, autoSvc)
+			processWebhookDeliveries(logger, s.DB, whClient)
 		case <-quit:
 			logger.Info("worker shutting down gracefully")
 			return
@@ -89,24 +90,56 @@ func processNotificationQueue(logger *slog.Logger, db *gorm.DB, mail mailer.Mail
 	}
 }
 
-func processWebhookDeliveries(logger *slog.Logger, db *gorm.DB) {
-	var webhooks []struct {
-		ID        string
-		URL       string
-		Secret    string
-		EventsJSON string
+// webhookMaxAttempts è il numero massimo di tentativi prima di marcare 'dead'.
+const webhookMaxAttempts = 5
+
+// webhookBackoffBase è il ritardo base del backoff esponenziale.
+const webhookBackoffBase = 30 * time.Second
+
+// webhookBackoffCap è il tetto del ritardo tra i tentativi.
+const webhookBackoffCap = time.Hour
+
+// nextDelivery calcola lo stato di retry dopo un tentativo. Puro (nessun I/O),
+// così le transizioni sono testabili senza HTTP né DB.
+//   - success            → ("success", attempts+1, nil)
+//   - fallimento < max    → ("failed",  attempts+1, now + base<<(newAttempts-1) capped)
+//   - fallimento @ max    → ("dead",    attempts+1, nil)
+func nextDelivery(attempts int, success bool, now time.Time) (status string, newAttempts int, next *time.Time) {
+	newAttempts = attempts + 1
+	if success {
+		return "success", newAttempts, nil
 	}
-	db.Raw("SELECT id, url, secret, events_json FROM webhooks WHERE is_active = true").Scan(&webhooks)
-	for _, wh := range webhooks {
-		logger.Info("webhook delivery", "url", wh.URL)
+	if newAttempts >= webhookMaxAttempts {
+		return "dead", newAttempts, nil
 	}
+	backoff := webhookBackoffBase << (newAttempts - 1)
+	if backoff > webhookBackoffCap {
+		backoff = webhookBackoffCap
+	}
+	n := now.Add(backoff)
+	return "failed", newAttempts, &n
 }
 
-func processAutomationRules(logger *slog.Logger, svc *automation.Service) {
-	var issues []string
-	db := svc.DB()
-	db.Table("issues").Where("updated_at > ?", time.Now().Add(-5*time.Minute)).Order("updated_at DESC").Limit(100).Pluck("id", &issues)
-	for _, issueID := range issues {
-		svc.ProcessRules("issue_updated", issueID)
+// processWebhookDeliveries consegna le consegne retryable dalla coda persistente
+// con backoff esponenziale. Sostituisce il vecchio stub log-only e la consegna
+// fire-and-forget della dispatcher: lo stato vive nel DB e sopravvive a un crash.
+func processWebhookDeliveries(logger *slog.Logger, db *gorm.DB, client *http.Client) {
+	svc := webhook.NewService(db)
+	deliveries, err := svc.ListRetryable(time.Now(), 50)
+	if err != nil {
+		logger.Error("list retryable webhook deliveries", "error", err)
+		return
+	}
+	for _, d := range deliveries {
+		hook, err := svc.GetWebhook(d.WebhookID)
+		if err != nil {
+			logger.Error("webhook lookup for delivery", "delivery_id", d.ID, "webhook_id", d.WebhookID, "error", err)
+			continue
+		}
+		res := webhook.Deliver(client, *hook, d.EventType, []byte(d.Payload))
+		status, attempts, next := nextDelivery(d.Attempts, res.Success, time.Now())
+		if err := svc.MarkDeliveryResult(d.ID, res.StatusCode, res.Success, res.Error, status, attempts, next); err != nil {
+			logger.Error("mark webhook delivery result", "delivery_id", d.ID, "error", err)
+		}
 	}
 }
