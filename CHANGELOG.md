@@ -53,6 +53,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `sharePermissions` field.
 - **Dashboard gadgets**: add a gadget from the supported catalog (Assigned to me, Activity stream)
   and remove gadgets on the dashboard detail page.
+- **Productive issue List**: multi-select rows with a bulk action bar (set priority / assignee /
+  labels / delete) backed by a new `POST /issues/bulk` endpoint; **inline edit** of priority,
+  assignee, and status directly in list cells; real **cursor pagination** with a result count; and
+  epic/parent **children indented** under their parent when both are on the current page.
 
 ### Fixed
 
@@ -117,6 +121,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (no self-guard yet). Project invites can be created but there is no accept-invite route.
 - Groups: there is no "list all groups" endpoint, so the admin page lists via the name picker; dashboard
   gadgets are limited to the two hydrated types and gadget layout/position isn't persisted.
+- List bulk edit: `POST /issues/bulk` supports assignee/priority/labels/delete but NOT bulk status
+  change (cross-project workflow validation) or bulk sprint move; the "Set label(s)" action replaces
+  the label set (it does not append); `POST /issues/bulk` has no request-size cap (systemic across
+  POST routes). List pagination is cursor-based (`/search/jql` has no total), so there's no numbered
+  "N of M" — Prev/Next + a per-page count only. Hierarchy indentation is per-page and derived from
+  `parent_id` (there is no distinct epic-link field).
 
 ## [1.0.2] - 2026-07-14
 
