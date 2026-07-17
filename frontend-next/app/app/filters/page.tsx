@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { search, filters, filterIsShared, type SearchIssue, type Filter } from "@/lib/api";
+import { search, filters, filterIsShared, LIST_FIELDS, type SearchIssue, type Filter } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
 
 export default function FiltersPage() {
@@ -20,6 +20,7 @@ function FiltersPageInner() {
   const [jql, setJql] = useState("");
   const [results, setResults] = useState<SearchIssue[]>([]);
   const [ran, setRan] = useState(false);
+  const [lastJql, setLastJql] = useState("");
 
   const [name, setName] = useState("");
   const [isShared, setIsShared] = useState(false);
@@ -29,10 +30,11 @@ function FiltersPageInner() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["filters", "my"] });
 
   const run = useMutation({
-    mutationFn: (q: string) => search.jql(q),
-    onSuccess: (data) => {
+    mutationFn: (q: string) => search.jql(q, { fields: LIST_FIELDS }),
+    onSuccess: (data, q) => {
       setResults(data.issues);
       setRan(true);
+      setLastJql(q);
     },
   });
 
@@ -128,7 +130,16 @@ function FiltersPageInner() {
             {myFilters.data?.length === 0 && <li className="text-slate-400">None yet</li>}
           </ul>
         </aside>
-        <section>{ran && <SearchResults issues={results} />}</section>
+        <section>
+          {ran && (
+            <SearchResults
+              issues={results}
+              onChanged={() => {
+                if (lastJql) run.mutate(lastJql);
+              }}
+            />
+          )}
+        </section>
       </div>
     </div>
   );
