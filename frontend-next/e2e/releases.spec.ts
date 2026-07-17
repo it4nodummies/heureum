@@ -39,3 +39,33 @@ test("create a release, toggle released, and filter", async ({ page }) => {
   await page.getByLabel("Status filter").selectOption("unreleased");
   await expect(page.getByRole("row", { name: new RegExp(name) })).toHaveCount(0);
 });
+
+test("assign a fix version to an issue in Edit mode and persist it", async ({ page }) => {
+  await login(page);
+
+  // Create a release for DEMO so there is a version to assign.
+  await page.goto("/app/projects/DEMO");
+  await page.getByRole("link", { name: "Releases" }).click();
+  await expect(page.getByTestId("releases-page")).toBeVisible();
+
+  const name = `FixVer ${Date.now()}`;
+  await page.getByLabel("Release name").fill(name);
+  await page.getByRole("button", { name: "Create release" }).click();
+  await expect(page.getByRole("row", { name: new RegExp(name) })).toBeVisible();
+
+  // Open a seeded issue and enter Edit mode.
+  await page.goto("/app/browse/DEMO-1");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Edit" }).click();
+
+  // Assign the fix version via the multi-select, then save.
+  await page.getByTestId("issue-fixversions-select").selectOption({ label: name });
+  await page.getByRole("button", { name: "Save" }).click();
+
+  // The view-mode row shows the assigned version.
+  await expect(page.getByTestId("issue-fixversions")).toContainText(name);
+
+  // Persisted across a reload.
+  await page.reload();
+  await expect(page.getByTestId("issue-fixversions")).toContainText(name);
+});

@@ -11,6 +11,7 @@ import {
   parseJiraDuration,
   formatSeconds,
   customFields,
+  versions,
   type CustomField,
   type IssueCustomValue,
 } from "@/lib/api";
@@ -44,6 +45,7 @@ export function IssueView({ issueKey }: Props) {
   const [draftAssigneeId, setDraftAssigneeId] = useState<string | null>(null);
   const [draftAssigneeLabel, setDraftAssigneeLabel] = useState<string | null>(null);
   const [draftLabels, setDraftLabels] = useState("");
+  const [draftFixVersionIds, setDraftFixVersionIds] = useState<string[]>([]);
   const [draftStoryPoints, setDraftStoryPoints] = useState("");
   const [draftOriginalEstimate, setDraftOriginalEstimate] = useState("");
   const [draftRemainingEstimate, setDraftRemainingEstimate] = useState("");
@@ -114,6 +116,14 @@ export function IssueView({ issueKey }: Props) {
     enabled: editMode,
   });
 
+  // Project versions used as the fix-versions option set (only fetched in edit
+  // mode). Keyed on the project prefix so it mirrors the custom-field query.
+  const { data: projectVersions } = useQuery({
+    queryKey: ["versions", cfProjectKey],
+    queryFn: () => versions.list(cfProjectKey),
+    enabled: editMode,
+  });
+
   const save = useMutation({
     mutationFn: async () => {
       await issues.update(issueKey, {
@@ -128,6 +138,10 @@ export function IssueView({ issueKey }: Props) {
           .split(",")
           .map((l) => l.trim())
           .filter(Boolean),
+        // Always sent (even when empty) so deselecting every version clears the
+        // fix-versions rather than being dropped; [] tells the PUT handler to
+        // reconcile the pivot to empty.
+        fixVersions: draftFixVersionIds.map((id) => ({ id })),
         customfield_10016: draftStoryPoints.trim() === "" ? 0 : Number(draftStoryPoints),
         timetracking: {
           originalEstimateSeconds: parseJiraDuration(draftOriginalEstimate),
@@ -215,6 +229,7 @@ export function IssueView({ issueKey }: Props) {
     setDraftAssigneeId(f.assignee?.accountId ?? null);
     setDraftAssigneeLabel(f.assignee?.displayName ?? null);
     setDraftLabels(f.labels.join(", "));
+    setDraftFixVersionIds((f.fixVersions ?? []).map((v) => v.id));
     setDraftStoryPoints(f.customfield_10016 != null ? String(f.customfield_10016) : "");
     setDraftOriginalEstimate(
       f.timetracking?.originalEstimateSeconds ? formatSeconds(f.timetracking.originalEstimateSeconds) : ""
@@ -355,6 +370,46 @@ export function IssueView({ issueKey }: Props) {
             </div>
           ) : (
             <Field label="Labels" value={f.labels.length ? f.labels.join(", ") : "None"} />
+          )}
+
+          {editMode ? (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Fix versions</div>
+              <select
+                multiple
+                data-testid="issue-fixversions-select"
+                aria-label="Fix versions"
+                value={draftFixVersionIds}
+                onChange={(e) =>
+                  setDraftFixVersionIds(Array.from(e.target.selectedOptions, (o) => o.value))
+                }
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
+              >
+                {(projectVersions ?? []).map((ver) => (
+                  <option key={ver.id} value={ver.id}>
+                    {ver.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Fix versions</div>
+              <div data-testid="issue-fixversions" className="mt-1 flex flex-wrap gap-1">
+                {(f.fixVersions ?? []).length ? (
+                  (f.fixVersions ?? []).map((ver) => (
+                    <span
+                      key={ver.id}
+                      className="rounded bg-slate-100 px-2 py-0.5 text-xs text-[#1a1f36]"
+                    >
+                      {ver.name}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-[#1a1f36]">None</span>
+                )}
+              </div>
+            </div>
           )}
 
           {editMode ? (

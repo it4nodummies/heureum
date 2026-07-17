@@ -90,6 +90,9 @@ export interface IssueFields {
   assignee: JiraUserRef | null;
   reporter: JiraUserRef | null;
   labels: string[];
+  // Multi fix-versions (internal/api/v3/issue.go: []VersionRef). Always present
+  // (empty array when unset) in Jira-shaped responses.
+  fixVersions?: VersionRef[];
   created: string;
   updated: string;
   duedate?: string;
@@ -316,6 +319,14 @@ export interface Version {
   projectId: number;
 }
 
+// Compact reference used when a version is embedded in another object
+// (e.g. IssueFields.fixVersions) — internal/api/v3/version.go VersionRef.
+export interface VersionRef {
+  self?: string;
+  id: string;
+  name: string;
+}
+
 export interface VersionInput {
   name: string;
   description?: string;
@@ -397,6 +408,7 @@ export const issues = {
     labels?: string[];
     parentKey?: string;
     assigneeId?: string;
+    fixVersions?: { id: string }[];
   }) =>
     apiFetch<{ id: string; key: string; self: string }>("/rest/api/3/issue", {
       method: "POST",
@@ -410,6 +422,7 @@ export const issues = {
           ...(payload.labels ? { labels: payload.labels } : {}),
           ...(payload.parentKey ? { parent: { key: payload.parentKey } } : {}),
           ...(payload.assigneeId ? { assignee: { accountId: payload.assigneeId } } : {}),
+          ...(payload.fixVersions?.length ? { fixVersions: payload.fixVersions } : {}),
         },
       }),
     }),
