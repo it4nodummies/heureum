@@ -136,11 +136,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	// Rate-limit the public (unauthenticated) auth endpoints per client IP to
 	// blunt credential brute-forcing. One shared limiter across register+login
-	// so an attacker can't double their budget by alternating routes. Defaults
-	// are generous enough that normal logins and the E2E suite are unaffected.
-	authLimiter := middleware.RateLimit(10, 5*time.Minute)
-	mux.Handle("POST /rest/api/3/auth/register", authLimiter(http.HandlerFunc(authH.Register)))
-	mux.Handle("POST /rest/api/3/auth/login", authLimiter(http.HandlerFunc(authH.Login)))
+	// so an attacker can't double their budget by alternating routes. The limit
+	// is configurable via APP_AUTH_RATELIMIT (default 10 / 5-min window); a value
+	// of <= 0 disables limiting entirely (used by the E2E backend, whose ~74
+	// tests all log in from localhost and would otherwise trip the limiter).
+	registerH := http.Handler(http.HandlerFunc(authH.Register))
+	loginH := http.Handler(http.HandlerFunc(authH.Login))
+	if cfg.AuthRateLimit > 0 {
+		authLimiter := middleware.RateLimit(cfg.AuthRateLimit, 5*time.Minute)
+		registerH = authLimiter(registerH)
+		loginH = authLimiter(loginH)
+	}
+	mux.Handle("POST /rest/api/3/auth/register", registerH)
+	mux.Handle("POST /rest/api/3/auth/login", loginH)
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/redirect", oauthH.Redirect)
 	mux.HandleFunc("GET /rest/api/3/auth/oauth/{provider}/callback", oauthH.Callback)
 

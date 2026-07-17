@@ -131,6 +131,47 @@ func TestLoadConfigSMTPPortDefault(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAuthRateLimit(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_AUTH_RATELIMIT", "42")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AuthRateLimit != 42 {
+		t.Errorf("AuthRateLimit = %d, want 42", cfg.AuthRateLimit)
+	}
+}
+
+func TestLoadConfigAuthRateLimitDefault(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AuthRateLimit != 10 {
+		t.Errorf("default AuthRateLimit = %d, want 10", cfg.AuthRateLimit)
+	}
+}
+
+func TestLoadConfigAuthRateLimitDisabled(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_AUTH_RATELIMIT", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AuthRateLimit != 0 {
+		t.Errorf("AuthRateLimit = %d, want 0 (disabled)", cfg.AuthRateLimit)
+	}
+}
+
 func TestLoadConfigMissingSecret(t *testing.T) {
 	_, err := Load()
 	if err == nil {
