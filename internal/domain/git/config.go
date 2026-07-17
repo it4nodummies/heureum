@@ -2,6 +2,7 @@ package git
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,9 +23,9 @@ func (GitProviderConfig) TableName() string { return "git_providers" }
 
 type IssueCommit struct {
 	ID          string     `gorm:"primaryKey;type:text" json:"id"`
-	IssueID     string     `gorm:"type:text;not null;index" json:"issue_id"`
+	IssueID     string     `gorm:"type:text;not null;index;uniqueIndex:idx_issue_commits_issue_sha" json:"issue_id"`
 	ProviderID  *string    `gorm:"type:text" json:"provider_id,omitempty"`
-	CommitSHA   string     `gorm:"type:text;not null" json:"commit_sha"`
+	CommitSHA   string     `gorm:"type:text;not null;uniqueIndex:idx_issue_commits_issue_sha" json:"commit_sha"`
 	Message     string     `gorm:"type:text;default:''" json:"message"`
 	Author      string     `gorm:"type:text;default:''" json:"author"`
 	CommittedAt *time.Time `json:"committed_at,omitempty"`
@@ -107,7 +108,21 @@ func (s *ConfigService) GetProviderByID(id string) (*GitProviderConfig, error) {
 	return &cfg, nil
 }
 
-func (s *ConfigService) LinkCommit(issueID, providerID, sha, message, author string) error {
+// LinkCommit records a commit reference for an issue, deduping on
+// (issue_id, commit_sha). It returns created=true only when a new row was
+// inserted; a repeated SHA returns (false, nil) so callers can skip
+// re-commenting. A unique-violation on insert (e.g. a concurrent race) is also
+// treated as (false, nil).
+func (s *ConfigService) LinkCommit(issueID, providerID, sha, message, author string) (created bool, err error) {
+	var existing IssueCommit
+	err = s.db.Where("issue_id = ? AND commit_sha = ?", issueID, sha).First(&existing).Error
+	if err == nil {
+		return false, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+
 	c := &IssueCommit{
 		ID:        uuid.New().String(),
 		IssueID:   issueID,
@@ -118,7 +133,27 @@ func (s *ConfigService) LinkCommit(issueID, providerID, sha, message, author str
 	if providerID != "" {
 		c.ProviderID = &providerID
 	}
-	return s.db.Create(c).Error
+	if err := s.db.Create(c).Error; err != nil {
+		// Defensive: a concurrent insert of the same (issue_id, sha) hits the
+		// unique index. Treat that as "already linked", not an error.
+		if errors.Is(err, gorm.ErrDuplicatedKey) || isUniqueViolation(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// isUniqueViolation reports whether err is a unique-constraint failure across
+// the supported drivers (checked textually to avoid driver-specific deps).
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "duplicate entry")
 }
 
 func (s *ConfigService) LinkBranch(issueID, providerID, branchName, repoURL string) error {

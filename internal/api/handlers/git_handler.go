@@ -168,7 +168,8 @@ func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.Web
 			if err != nil {
 				continue
 			}
-			if err := h.gitConfigSvc.LinkCommit(iss.ID, cfg.ID, commit.SHA, commit.Message, commit.Author); err == nil {
+			created, err := h.gitConfigSvc.LinkCommit(iss.ID, cfg.ID, commit.SHA, commit.Message, commit.Author)
+			if err == nil && created {
 				h.commentCommitReference(iss.ID, commit.SHA, commit.Message)
 			}
 		}
