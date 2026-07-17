@@ -82,6 +82,57 @@ func (s *Service) GetTimelineData(projectID, zoom string) (*TimelineData, error)
 		epicBars[i].Color = "#8B5CF6"
 	}
 
+	var versions []VersionProgress
+	s.db.Raw(`
+		SELECT v.id AS version_id, v.name, v.start_date AS start, v.release_date AS release,
+			COUNT(iv.issue_id) AS total,
+			COUNT(CASE WHEN ws.category = 'done' THEN 1 END) AS done
+		FROM versions v
+		LEFT JOIN issue_versions iv ON iv.version_id = v.id
+		LEFT JOIN issues i ON i.id = iv.issue_id
+		LEFT JOIN workflow_statuses ws ON i.status_id = ws.id
+		WHERE v.project_id = ? AND (v.start_date IS NOT NULL OR v.release_date IS NOT NULL)
+		GROUP BY v.id, v.name, v.start_date, v.release_date
+		ORDER BY v.start_date ASC
+	`, projectID).Scan(&versions)
+
+	versionBars := make([]TimelineBar, 0, len(versions))
+	for _, v := range versions {
+		start := time.Now().AddDate(0, -1, 0)
+		end := time.Now().AddDate(0, 1, 0)
+		// Fall back to the other date when one endpoint is missing.
+		switch {
+		case v.Start != nil && v.Release != nil:
+			start, end = *v.Start, *v.Release
+		case v.Start != nil:
+			start, end = *v.Start, *v.Start
+		case v.Release != nil:
+			start, end = *v.Release, *v.Release
+		}
+
+		progress := 0.0
+		if v.Total > 0 {
+			progress = float64(v.Done) / float64(v.Total) * 100
+		}
+
+		versionBars = append(versionBars, TimelineBar{
+			ID:        v.VersionID,
+			Name:      v.Name,
+			Type:      "version",
+			StartDate: &start,
+			EndDate:   &end,
+			Progress:  progress,
+			Color:     "#6554C0",
+		})
+
+		if earliest.IsZero() || start.Before(earliest) {
+			earliest = start
+		}
+		if latest.IsZero() || end.After(latest) {
+			latest = end
+		}
+	}
+
 	if earliest.IsZero() {
 		earliest = time.Now().AddDate(0, -1, 0)
 	}
@@ -95,6 +146,7 @@ func (s *Service) GetTimelineData(projectID, zoom string) (*TimelineData, error)
 	allBars := make([]TimelineBar, 0)
 	allBars = append(allBars, epicBars...)
 	allBars = append(allBars, bars...)
+	allBars = append(allBars, versionBars...)
 
 	headers := s.generateHeaders(earliest, latest, zoom)
 
