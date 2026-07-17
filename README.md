@@ -84,7 +84,10 @@ Only the environment variables actually read by the server are listed below.
 | `APP_UPLOADS_DIR` | no | `./data/uploads` | Local disk directory where issue attachments are stored |
 | `APP_SIGNUP` | no | `open` | `open` or `closed` — set `closed` to disable public registration |
 
-SMTP / OAuth / object-storage settings are planned and not yet wired.
+SMTP is wired: set `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` to have the
+worker deliver notification emails (respecting each user's `via_email` preference, once per
+notification); leaving `SMTP_HOST` empty disables email. OAuth and S3 object-storage settings
+are still planned and not yet wired.
 
 Attachments are stored on local disk under `APP_UPLOADS_DIR`; when running in Docker, mount a volume (see below) so uploads survive container restarts.
 
