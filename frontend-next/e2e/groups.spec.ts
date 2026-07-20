@@ -8,21 +8,21 @@ async function login(page: Page) {
   await page.waitForURL(/\/app\/projects/);
 }
 
-test("create a group and see it listed", async ({ page }) => {
+test("create a team and see it listed", async ({ page }) => {
   await login(page);
   await page.goto("/app/groups");
   await expect(page.getByTestId("groups-admin")).toBeVisible();
 
   const name = `qa-team-${Date.now()}`;
-  await page.getByLabel(/group name/i).fill(name);
-  await page.getByRole("button", { name: /create group/i }).click();
+  await page.getByLabel(/team name/i).fill(name);
+  await page.getByRole("button", { name: /create team/i }).click();
   await expect(page.getByText(name, { exact: true })).toBeVisible();
 });
 
-test("Groups link in the sidebar navigates to the groups page", async ({ page }) => {
+test("Teams link in the sidebar navigates to the teams page", async ({ page }) => {
   await login(page);
   await page.goto("/app/projects");
-  await page.getByRole("link", { name: "Groups" }).click();
+  await page.getByRole("link", { name: "Teams" }).click();
   await page.waitForURL(/\/app\/groups/);
   await expect(page.getByTestId("groups-admin")).toBeVisible();
 });
