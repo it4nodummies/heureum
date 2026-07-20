@@ -20,8 +20,10 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	}
 	// ProjectTeam + group tables are required because MembershipSubquery unions
 	// team-inherited membership (project_teams ⋈ group_members).
-	db.AutoMigrate(&user.User{}, &Project{}, &ProjectMember{}, &ProjectTeam{},
-		&group.Group{}, &group.GroupMember{})
+	if err := db.AutoMigrate(&user.User{}, &Project{}, &ProjectMember{}, &ProjectTeam{},
+		&group.Group{}, &group.GroupMember{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 	return db
 }
 

@@ -4,29 +4,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"github.com/it4nodummies/heureum/internal/domain/group"
 	"github.com/it4nodummies/heureum/internal/domain/user"
 )
-
-// setupTeamTestDB opens an in-memory SQLite DB migrating the project, member,
-// team and group models needed for team-association tests.
-func setupTeamTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open db: %v", err)
-	}
-	if err := db.AutoMigrate(
-		&user.User{}, &Project{}, &ProjectMember{}, &ProjectTeam{},
-		&group.Group{}, &group.GroupMember{},
-	); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return db
-}
 
 // seedProject inserts a project directly and returns it.
 func seedProject(t *testing.T, db *gorm.DB, key string) *Project {
@@ -49,7 +31,7 @@ func seedGroup(t *testing.T, db *gorm.DB, name string) *group.Group {
 }
 
 func TestAddTeamIsIdempotentAndListTeams(t *testing.T) {
-	db := setupTeamTestDB(t)
+	db := setupTestDB(t)
 	s := NewService(db, nil)
 	p := seedProject(t, db, "TEAM")
 	g := seedGroup(t, db, "developers")
@@ -82,7 +64,7 @@ func TestAddTeamIsIdempotentAndListTeams(t *testing.T) {
 }
 
 func TestEffectiveRoleMostPermissive(t *testing.T) {
-	db := setupTeamTestDB(t)
+	db := setupTestDB(t)
 	s := NewService(db, nil)
 	p := seedProject(t, db, "EFF")
 	g := seedGroup(t, db, "devs")
@@ -134,7 +116,7 @@ func containsID(ids []string, id string) bool {
 }
 
 func TestMembershipIncludesTeamProjects(t *testing.T) {
-	db := setupTeamTestDB(t)
+	db := setupTestDB(t)
 	s := NewService(db, nil)
 	p := seedProject(t, db, "VIA")
 	g := seedGroup(t, db, "teamg")
@@ -153,5 +135,47 @@ func TestMembershipIncludesTeamProjects(t *testing.T) {
 	ids := s.MemberProjectIDs(u.ID)
 	if !containsID(ids, p.ID) {
 		t.Fatalf("want project reachable via team in membership, got %v", ids)
+	}
+}
+
+// TestListWithFilters_ScopesByTeamMembership is the end-to-end analogue of
+// TestListWithFilters_ScopesByMembership: it proves that a project reachable
+// ONLY via a team (never via project_members) surfaces in ListWithFilters when
+// scoped by MemberUserID, exercising the real `id IN (?)` subquery embedding.
+func TestListWithFilters_ScopesByTeamMembership(t *testing.T) {
+	db := setupTestDB(t)
+	svc := NewService(db, nil)
+
+	// p1 reachable only via team; p2 not reachable at all.
+	p1, err := svc.CreateProject(CreateInput{Key: "TWF1", Name: "One", Type: TypeScrum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateProject(CreateInput{Key: "TWF2", Name: "Two", Type: TypeScrum}); err != nil {
+		t.Fatal(err)
+	}
+
+	g := seedGroup(t, db, "twf-team")
+	u := &user.User{ID: uuid.NewString()}
+	if err := db.Create(u).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := db.Create(&group.GroupMember{GroupID: g.ID, UserID: u.ID}).Error; err != nil {
+		t.Fatalf("seed group member: %v", err)
+	}
+	// u reaches p1 ONLY through the team association, not project_members.
+	if err := svc.AddTeam(p1.ID, g.ID, RoleMember); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, total, err := svc.ListWithFilters(ListFilter{MemberUserID: u.ID}, u.ID)
+	if err != nil {
+		t.Fatalf("ListWithFilters: %v", err)
+	}
+	if total != 1 || len(rows) != 1 {
+		t.Fatalf("expected 1 team-scoped project, got total=%d rows=%d", total, len(rows))
+	}
+	if rows[0].ID != p1.ID {
+		t.Errorf("expected project %s reachable via team, got %s", p1.ID, rows[0].ID)
 	}
 }
