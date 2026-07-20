@@ -68,6 +68,26 @@ func (h *ProjectTeamHandler) List(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusOK, teams)
 }
 
+// upsertTeam validates the role and that the group exists, then upserts the
+// association. AddTeam is an idempotent upsert, so once role and group are
+// validated the only remaining failure is infrastructure (500) — never a real
+// conflict. Shared by Add (groupId from body) and UpdateRole (groupId from path).
+func (h *ProjectTeamHandler) upsertTeam(w http.ResponseWriter, projectID, groupID string, role project.MemberRole) {
+	if !validTeamRole(role) {
+		v3.WriteError(w, http.StatusBadRequest, []string{"role must be one of admin, member, viewer"}, nil)
+		return
+	}
+	if !h.groupExists(groupID) {
+		v3.WriteError(w, http.StatusBadRequest, []string{"group not found"}, nil)
+		return
+	}
+	if err := h.svc.AddTeam(projectID, groupID, role); err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to associate team"}, nil)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Add: POST /project/{key}/teams {groupId, role} → 204. Validates the role and
 // that the group exists before upserting the association.
 func (h *ProjectTeamHandler) Add(w http.ResponseWriter, r *http.Request) {
@@ -84,19 +104,7 @@ func (h *ProjectTeamHandler) Add(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
-	if !validTeamRole(req.Role) {
-		v3.WriteError(w, http.StatusBadRequest, []string{"role must be one of admin, member, viewer"}, nil)
-		return
-	}
-	if !h.groupExists(req.GroupID) {
-		v3.WriteError(w, http.StatusBadRequest, []string{"group not found"}, nil)
-		return
-	}
-	if err := h.svc.AddTeam(p.ID, req.GroupID, req.Role); err != nil {
-		v3.WriteError(w, http.StatusConflict, []string{"failed to associate team"}, nil)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	h.upsertTeam(w, p.ID, req.GroupID, req.Role)
 }
 
 // UpdateRole: PUT /project/{key}/teams/{groupId} {role} → 204 (AddTeam upsert).
@@ -106,7 +114,6 @@ func (h *ProjectTeamHandler) UpdateRole(w http.ResponseWriter, r *http.Request) 
 		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
 		return
 	}
-	groupID := r.PathValue("groupId")
 	var req struct {
 		Role project.MemberRole `json:"role"`
 	}
@@ -114,19 +121,7 @@ func (h *ProjectTeamHandler) UpdateRole(w http.ResponseWriter, r *http.Request) 
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
-	if !validTeamRole(req.Role) {
-		v3.WriteError(w, http.StatusBadRequest, []string{"role must be one of admin, member, viewer"}, nil)
-		return
-	}
-	if !h.groupExists(groupID) {
-		v3.WriteError(w, http.StatusBadRequest, []string{"group not found"}, nil)
-		return
-	}
-	if err := h.svc.AddTeam(p.ID, groupID, req.Role); err != nil {
-		v3.WriteError(w, http.StatusConflict, []string{"failed to update team role"}, nil)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	h.upsertTeam(w, p.ID, r.PathValue("groupId"), req.Role)
 }
 
 // Remove: DELETE /project/{key}/teams/{groupId} → 204.
