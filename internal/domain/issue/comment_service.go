@@ -32,10 +32,18 @@ func (s *CommentService) SetNotifier(n CommentNotifier) {
 // alle mention testuali @username e notificati una sola volta (dedupe lato
 // notifier).
 func (s *CommentService) AddComment(issueID, authorID, bodyJSON string, adfMentionUserIDs ...string) (*Comment, error) {
+	// comments.author_id and issue_history.actor_id are nullable FKs to
+	// users.id: a blank author (e.g. system-generated git commit comments,
+	// git_handler passes "") must be stored as SQL NULL, not "", which would
+	// violate the FK on Postgres.
+	var authorPtr *string
+	if authorID != "" {
+		authorPtr = &authorID
+	}
 	c := &Comment{
 		ID:       uuid.New().String(),
 		IssueID:  issueID,
-		AuthorID: &authorID,
+		AuthorID: authorPtr,
 		BodyJSON: bodyJSON,
 	}
 	if err := s.db.Create(c).Error; err != nil {
@@ -44,7 +52,7 @@ func (s *CommentService) AddComment(issueID, authorID, bodyJSON string, adfMenti
 	h := &IssueHistory{
 		ID:        uuid.New().String(),
 		IssueID:   issueID,
-		ActorID:   &authorID,
+		ActorID:   authorPtr,
 		FieldName: "comment",
 		OldValue:  "",
 		NewValue:  c.ID,
