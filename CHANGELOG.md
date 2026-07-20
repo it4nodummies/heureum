@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Issue detail now uses a pencil icon next to the title to enter edit mode, replacing the top-right
+  "Edit" button, and shows Original estimate and Remaining estimate in view mode for field parity
+  with edit mode.
+
 ### Fixed
 
 - **Notifications failed to insert on Postgres.** The `Notification.CreatedAt` field was declared as
