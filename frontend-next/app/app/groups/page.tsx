@@ -41,15 +41,15 @@ export default function GroupsPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8" data-testid="groups-admin">
       <header className="mb-6">
-        <h1 className="text-xl font-semibold text-[#1a1f36]">Groups</h1>
+        <h1 className="text-xl font-semibold text-[#1a1f36]">Teams</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Manage global groups and their members. Requires global admin.
+          Manage teams and their members. Requires global admin.
         </p>
       </header>
 
       {/* Create group */}
       <section className="mb-6 rounded-xl border border-slate-200 p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Create group</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">Create team</h2>
         <form
           className="flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
@@ -58,10 +58,10 @@ export default function GroupsPage() {
           }}
         >
           <input
-            aria-label="Group name"
+            aria-label="Team name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Group name"
+            placeholder="Team name"
             className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
           />
           <button
@@ -69,27 +69,27 @@ export default function GroupsPage() {
             disabled={create.isPending || !newName.trim()}
             className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
           >
-            {create.isPending ? "Creating…" : "Create group"}
+            {create.isPending ? "Creating…" : "Create team"}
           </button>
         </form>
         {create.isError && (
           <p className="mt-2 text-sm text-red-600">
-            {create.error instanceof Error ? create.error.message : "Failed to create group"}
+            {create.error instanceof Error ? create.error.message : "Failed to create team"}
           </p>
         )}
       </section>
 
       {/* Group list */}
       <section>
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">All groups</h2>
-        {list.isLoading && <p className="py-2 text-sm text-slate-400">Loading groups…</p>}
+        <h2 className="mb-2 text-sm font-semibold text-slate-700">All teams</h2>
+        {list.isLoading && <p className="py-2 text-sm text-slate-400">Loading teams…</p>}
         {list.isError && (
           <p className="py-2 text-sm text-red-600">
-            {list.error instanceof Error ? list.error.message : "Failed to load groups"}
+            {list.error instanceof Error ? list.error.message : "Failed to load teams"}
           </p>
         )}
         {list.data && groupList.length === 0 && (
-          <p className="py-2 text-sm text-slate-400">No groups yet</p>
+          <p className="py-2 text-sm text-slate-400">No teams yet</p>
         )}
         <ul className="space-y-2" data-testid="groups-list">
           {groupList.map((g) => (
@@ -106,7 +106,7 @@ export default function GroupsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm(`Delete group "${g.name}"?`)) del.mutate(g.name);
+                    if (confirm(`Delete team "${g.name}"?`)) del.mutate(g.name);
                   }}
                   className="text-xs text-red-600 hover:underline"
                   aria-label={`Delete ${g.name}`}
