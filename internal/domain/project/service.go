@@ -355,6 +355,48 @@ func (s *Service) ListTeams(projectID string) ([]ProjectTeamInfo, error) {
 	return out, err
 }
 
+// roleRank ordina i ruoli per permissività (più alto = più permissivo).
+func roleRank(r MemberRole) int {
+	switch r {
+	case RoleAdmin:
+		return 3
+	case RoleMember:
+		return 2
+	case RoleViewer:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// EffectiveRole restituisce il ruolo più permissivo tra quello individuale
+// (project_members) e quelli ereditati dai team (project_teams ⋈ group_members)
+// dell'utente. ok=false se l'utente non ha alcun accesso al progetto.
+func (s *Service) EffectiveRole(userID, projectID string) (MemberRole, bool) {
+	best := MemberRole("")
+	bestRank := 0
+	// individuale
+	if r, err := s.GetRole(projectID, userID); err == nil && r != "" {
+		best, bestRank = r, roleRank(r)
+	}
+	// team
+	var teamRoles []MemberRole
+	s.db.Table("project_teams AS pt").
+		Select("pt.role").
+		Joins("JOIN group_members gm ON gm.group_id = pt.group_id").
+		Where("pt.project_id = ? AND gm.user_id = ?", projectID, userID).
+		Scan(&teamRoles)
+	for _, r := range teamRoles {
+		if roleRank(r) > bestRank {
+			best, bestRank = r, roleRank(r)
+		}
+	}
+	if bestRank == 0 {
+		return "", false
+	}
+	return best, true
+}
+
 // AddMember adds userID as a member of projectID with the given role. It is
 // idempotent: re-adding an existing member upserts (updates) their role
 // rather than erroring on the composite primary key conflict.

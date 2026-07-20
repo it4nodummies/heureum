@@ -80,3 +80,46 @@ func TestAddTeamIsIdempotentAndListTeams(t *testing.T) {
 		t.Fatalf("want 0 after remove, got %d", len(teams))
 	}
 }
+
+func TestEffectiveRoleMostPermissive(t *testing.T) {
+	db := setupTeamTestDB(t)
+	s := NewService(db, nil)
+	p := seedProject(t, db, "EFF")
+	g := seedGroup(t, db, "devs")
+	u := &user.User{ID: uuid.NewString()}
+	if err := db.Create(u).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := db.Create(&group.GroupMember{GroupID: g.ID, UserID: u.ID}).Error; err != nil {
+		t.Fatalf("seed group member: %v", err)
+	}
+
+	// solo team member -> member
+	if err := s.AddTeam(p.ID, g.ID, RoleMember); err != nil {
+		t.Fatal(err)
+	}
+	if r, ok := s.EffectiveRole(u.ID, p.ID); !ok || r != RoleMember {
+		t.Fatalf("solo team: want member, got %v ok=%v", r, ok)
+	}
+
+	// individuale viewer + team member -> member (più permissivo)
+	if err := s.AddMember(p.ID, u.ID, RoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	if r, ok := s.EffectiveRole(u.ID, p.ID); !ok || r != RoleMember {
+		t.Fatalf("viewer+team member: want member, got %v", r)
+	}
+
+	// team admin -> admin vince
+	if err := s.AddTeam(p.ID, g.ID, RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := s.EffectiveRole(u.ID, p.ID); r != RoleAdmin {
+		t.Fatalf("team admin: want admin, got %v", r)
+	}
+
+	// utente senza accesso
+	if _, ok := s.EffectiveRole("nobody", p.ID); ok {
+		t.Fatal("no access: want ok=false")
+	}
+}
