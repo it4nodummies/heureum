@@ -326,6 +326,35 @@ func (s *Service) MembershipSubquery(userID string) *gorm.DB {
 	return s.db.Model(&ProjectMember{}).Select("project_id").Where("user_id = ?", userID)
 }
 
+// AddTeam associa (o aggiorna il ruolo di) un team (gruppo) su un progetto.
+// Idempotente: ri-associare un team esistente ne aggiorna il ruolo tramite
+// upsert sulla chiave primaria composita, coerente con AddMember.
+func (s *Service) AddTeam(projectID, groupID string, role MemberRole) error {
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "project_id"}, {Name: "group_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"role"}),
+	}).Create(&ProjectTeam{ProjectID: projectID, GroupID: groupID, Role: role}).Error
+}
+
+// RemoveTeam rimuove l'associazione di un team da un progetto.
+func (s *Service) RemoveTeam(projectID, groupID string) error {
+	return s.db.Where("project_id = ? AND group_id = ?", projectID, groupID).
+		Delete(&ProjectTeam{}).Error
+}
+
+// ListTeams restituisce i team associati al progetto con il nome del gruppo
+// idratato, ordinati per nome.
+func (s *Service) ListTeams(projectID string) ([]ProjectTeamInfo, error) {
+	var out []ProjectTeamInfo
+	err := s.db.Table("project_teams AS pt").
+		Select("pt.group_id AS group_id, g.name AS group_name, pt.role AS role").
+		Joins("JOIN groups g ON g.id = pt.group_id").
+		Where("pt.project_id = ?", projectID).
+		Order("g.name ASC").
+		Scan(&out).Error
+	return out, err
+}
+
 // AddMember adds userID as a member of projectID with the given role. It is
 // idempotent: re-adding an existing member upserts (updates) their role
 // rather than erroring on the composite primary key conflict.
