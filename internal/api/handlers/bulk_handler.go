@@ -43,11 +43,12 @@ type bulkResult struct {
 // esattamente come POST /rest/api/3/issues/rank. Mirror del pattern
 // RequireProject in-handler di IssueLinkHandler.Create/Delete.
 //
-// NOTA (unassign): issue.Service.Update non può portare assignee_id a NULL —
-// un assigneeID nil significa "non toccare", e con il decode a puntatore un
-// JSON `assignee:null` è indistinguibile da un campo omesso. Perciò questo
-// endpoint supporta solo l'IMPOSTAZIONE di un accountId non vuoto; la
-// rimozione dell'assegnatario (unassign) NON è supportata qui.
+// NOTA (unassign): issue.Service.Update SA azzerare assignee_id (un accountId
+// vuoto viene scritto come NULL), ma è il decode a puntatore di QUESTO handler a
+// non poterlo esprimere: un assigneeID nil significa "non toccare" e un JSON
+// `assignee:null` è indistinguibile da un campo omesso. Perciò questo endpoint
+// supporta solo l'IMPOSTAZIONE di un accountId non vuoto; la rimozione
+// dell'assegnatario (unassign) NON è supportata qui.
 func (h *IssueHandler) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	var body bulkBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

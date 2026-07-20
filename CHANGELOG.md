@@ -15,6 +15,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Saving an unassigned issue returned HTTP 500 on Postgres.** The issue update path wrote an empty
+  string (`""`) into the nullable `issues.assignee_id` foreign key instead of SQL `NULL`, violating
+  `issues_assignee_id_fkey` (SQLSTATE 23503) whenever an issue with no assignee was edited. The same
+  empty-string-into-nullable-FK bug affected `issue_history.actor_id` and `comments.author_id`: every
+  history/changelog insert (and system-generated git commit comments) silently failed on Postgres, so
+  the History tab stayed permanently empty there. All three now coerce an empty id to `NULL`. SQLite
+  (used by all unit tests and e2e) does not enforce foreign keys, which is why this only surfaced on
+  the production-default Postgres driver. (Actor on history rows is `NULL` for now; threading the
+  authenticated user id through `issue.Service.Update` is a separate follow-up.)
 - **Notifications failed to insert on Postgres.** The `Notification.CreatedAt` field was declared as
   `int64` with `gorm:"autoCreateTime"`, which made GORM write a Unix epoch integer into the
   `created_at TIMESTAMP` column. The pgx driver rejects this (`unable to encode ... into binary

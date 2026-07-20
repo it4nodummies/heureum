@@ -135,7 +135,14 @@ func (s *Service) Update(key string, title, descriptionJSON *string, priority *P
 			old = *issue.AssigneeID
 		}
 		s.logHistory(issue.ID, "", "assignee", old, *assigneeID)
-		updates["assignee_id"] = *assigneeID
+		// assignee_id is a nullable FK to users.id: the "unassigned" value is
+		// SQL NULL, not "". Writing an empty string violates the FK on Postgres
+		// (SQLite doesn't enforce FKs, which is why this only surfaced there).
+		if *assigneeID == "" {
+			updates["assignee_id"] = nil
+		} else {
+			updates["assignee_id"] = *assigneeID
+		}
 		if *assigneeID != "" && s.notifier != nil {
 			s.notifier.NotifyIssueAssigned(issue.ID, *assigneeID, issue.Key, issue.Title)
 		}
@@ -435,7 +442,15 @@ func (s *Service) ResolutionIDByName(name string) (string, bool) {
 }
 
 func (s *Service) logHistory(issueID, actorID, field, oldVal, newVal string) {
-	h := &IssueHistory{ID: uuid.New().String(), IssueID: issueID, ActorID: &actorID, FieldName: field, OldValue: oldVal, NewValue: newVal}
+	// actor_id is a nullable FK to users.id: a blank actor must be stored as
+	// SQL NULL, not "". Every current caller passes "" (the authenticated user
+	// id isn't threaded through Update yet), so without this every issue_history
+	// insert would violate the FK on Postgres and the changelog would stay empty.
+	var actorPtr *string
+	if actorID != "" {
+		actorPtr = &actorID
+	}
+	h := &IssueHistory{ID: uuid.New().String(), IssueID: issueID, ActorID: actorPtr, FieldName: field, OldValue: oldVal, NewValue: newVal}
 	s.db.Create(h)
 }
 
