@@ -270,17 +270,7 @@ export function IssueView({ issueKey }: Props) {
         <span className="text-slate-400">{issue.key}</span>
       </nav>
 
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs font-mono text-slate-400">{issue.key}</div>
-        {!editMode && (
-          <button
-            onClick={startEdit}
-            className="rounded border border-[#0052cc] px-3 py-1.5 text-xs font-semibold text-[#0052cc] hover:bg-[#0052cc]/5"
-          >
-            Edit
-          </button>
-        )}
-      </div>
+      <div className="mb-2 text-xs font-mono text-slate-400">{issue.key}</div>
 
       {editMode ? (
         <input
@@ -293,7 +283,31 @@ export function IssueView({ issueKey }: Props) {
           className="mb-6 w-full rounded border border-[#0052cc] px-2 py-1 text-2xl font-bold text-[#1a1f36] tracking-tight"
         />
       ) : (
-        <h1 className="mb-6 text-2xl font-bold text-[#1a1f36] tracking-tight">{f.summary}</h1>
+        <div className="mb-6 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-[#1a1f36] tracking-tight">{f.summary}</h1>
+          <button
+            type="button"
+            onClick={startEdit}
+            aria-label="Edit"
+            data-testid="issue-edit-button"
+            className="rounded p-1 text-slate-400 hover:text-[#0052cc] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#0052cc]/60"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
+          </button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-8">
@@ -457,7 +471,7 @@ export function IssueView({ issueKey }: Props) {
             />
           ))}
 
-          {editMode && (
+          {editMode ? (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Original estimate
@@ -469,9 +483,14 @@ export function IssueView({ issueKey }: Props) {
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
               />
             </div>
+          ) : (
+            <Field
+              label="Original estimate"
+              value={f.timetracking?.originalEstimateSeconds ? formatSeconds(f.timetracking.originalEstimateSeconds) : undefined}
+            />
           )}
 
-          {editMode && (
+          {editMode ? (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Remaining estimate
@@ -483,6 +502,11 @@ export function IssueView({ issueKey }: Props) {
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
               />
             </div>
+          ) : (
+            <Field
+              label="Remaining estimate"
+              value={f.timetracking?.remainingEstimateSeconds ? formatSeconds(f.timetracking.remainingEstimateSeconds) : undefined}
+            />
           )}
 
           {editMode && (
