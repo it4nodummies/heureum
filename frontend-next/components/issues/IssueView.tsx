@@ -290,7 +290,7 @@ export function IssueView({ issueKey }: Props) {
             onClick={startEdit}
             aria-label="Edit"
             data-testid="issue-edit-button"
-            className="rounded p-1 text-slate-400 hover:text-[#0052cc] focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20"
+            className="rounded p-1 text-slate-400 hover:text-[#0052cc] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#0052cc]/60"
           >
             <svg
               width="16"
@@ -486,7 +486,7 @@ export function IssueView({ issueKey }: Props) {
           ) : (
             <Field
               label="Original estimate"
-              value={f.timetracking?.originalEstimateSeconds ? formatSeconds(f.timetracking.originalEstimateSeconds) : "—"}
+              value={f.timetracking?.originalEstimateSeconds ? formatSeconds(f.timetracking.originalEstimateSeconds) : undefined}
             />
           )}
 
@@ -505,7 +505,7 @@ export function IssueView({ issueKey }: Props) {
           ) : (
             <Field
               label="Remaining estimate"
-              value={f.timetracking?.remainingEstimateSeconds ? formatSeconds(f.timetracking.remainingEstimateSeconds) : "—"}
+              value={f.timetracking?.remainingEstimateSeconds ? formatSeconds(f.timetracking.remainingEstimateSeconds) : undefined}
             />
           )}
 
