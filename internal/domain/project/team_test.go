@@ -123,3 +123,35 @@ func TestEffectiveRoleMostPermissive(t *testing.T) {
 		t.Fatal("no access: want ok=false")
 	}
 }
+
+func containsID(ids []string, id string) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMembershipIncludesTeamProjects(t *testing.T) {
+	db := setupTeamTestDB(t)
+	s := NewService(db, nil)
+	p := seedProject(t, db, "VIA")
+	g := seedGroup(t, db, "teamg")
+	u := &user.User{ID: uuid.NewString()}
+	if err := db.Create(u).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := db.Create(&group.GroupMember{GroupID: g.ID, UserID: u.ID}).Error; err != nil {
+		t.Fatalf("seed group member: %v", err)
+	}
+	// u is NOT an individual member of p, but is in g which is a team of p.
+	if err := s.AddTeam(p.ID, g.ID, RoleViewer); err != nil {
+		t.Fatal(err)
+	}
+
+	ids := s.MemberProjectIDs(u.ID)
+	if !containsID(ids, p.ID) {
+		t.Fatalf("want project reachable via team in membership, got %v", ids)
+	}
+}

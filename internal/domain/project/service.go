@@ -322,8 +322,26 @@ func (s *Service) Archive(key string) error {
 // member of, usable in a caller's query as e.g.
 // db.Where("id IN (?)", svc.MembershipSubquery(userID)) to scope reads
 // (project lists, JQL search) to only the projects the user can see.
+//
+// Membership is the union of direct membership (project_members) and
+// team-inherited membership (project_teams ⋈ group_members): a user reaches a
+// project either as an individual member or via any group associated to the
+// project as a team.
 func (s *Service) MembershipSubquery(userID string) *gorm.DB {
-	return s.db.Model(&ProjectMember{}).Select("project_id").Where("user_id = ?", userID)
+	return s.db.Raw(`SELECT project_id FROM project_members WHERE user_id = ?
+	                 UNION
+	                 SELECT pt.project_id FROM project_teams pt
+	                   JOIN group_members gm ON gm.group_id = pt.group_id
+	                   WHERE gm.user_id = ?`, userID, userID)
+}
+
+// MemberProjectIDs executes MembershipSubquery and returns the list of project
+// IDs userID can reach (directly or via a team). It is the testable getter over
+// the single-source-of-truth MembershipSubquery.
+func (s *Service) MemberProjectIDs(userID string) []string {
+	var ids []string
+	s.MembershipSubquery(userID).Scan(&ids)
+	return ids
 }
 
 // AddTeam associa (o aggiorna il ruolo di) un team (gruppo) su un progetto.
