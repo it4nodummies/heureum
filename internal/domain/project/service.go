@@ -322,8 +322,97 @@ func (s *Service) Archive(key string) error {
 // member of, usable in a caller's query as e.g.
 // db.Where("id IN (?)", svc.MembershipSubquery(userID)) to scope reads
 // (project lists, JQL search) to only the projects the user can see.
+//
+// Membership is the union of direct membership (project_members) and
+// team-inherited membership (project_teams ⋈ group_members): a user reaches a
+// project either as an individual member or via any group associated to the
+// project as a team.
 func (s *Service) MembershipSubquery(userID string) *gorm.DB {
-	return s.db.Model(&ProjectMember{}).Select("project_id").Where("user_id = ?", userID)
+	return s.db.Raw(`SELECT project_id FROM project_members WHERE user_id = ?
+	                 UNION
+	                 SELECT pt.project_id FROM project_teams pt
+	                   JOIN group_members gm ON gm.group_id = pt.group_id
+	                   WHERE gm.user_id = ?`, userID, userID)
+}
+
+// MemberProjectIDs executes MembershipSubquery and returns the list of project
+// IDs userID can reach (directly or via a team). It is the testable getter over
+// the single-source-of-truth MembershipSubquery.
+func (s *Service) MemberProjectIDs(userID string) []string {
+	var ids []string
+	s.MembershipSubquery(userID).Scan(&ids)
+	return ids
+}
+
+// AddTeam associa (o aggiorna il ruolo di) un team (gruppo) su un progetto.
+// Idempotente: ri-associare un team esistente ne aggiorna il ruolo tramite
+// upsert sulla chiave primaria composita, coerente con AddMember.
+func (s *Service) AddTeam(projectID, groupID string, role MemberRole) error {
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "project_id"}, {Name: "group_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"role"}),
+	}).Create(&ProjectTeam{ProjectID: projectID, GroupID: groupID, Role: role}).Error
+}
+
+// RemoveTeam rimuove l'associazione di un team da un progetto.
+func (s *Service) RemoveTeam(projectID, groupID string) error {
+	return s.db.Where("project_id = ? AND group_id = ?", projectID, groupID).
+		Delete(&ProjectTeam{}).Error
+}
+
+// ListTeams restituisce i team associati al progetto con il nome del gruppo
+// idratato, ordinati per nome.
+func (s *Service) ListTeams(projectID string) ([]ProjectTeamInfo, error) {
+	var out []ProjectTeamInfo
+	err := s.db.Table("project_teams AS pt").
+		Select("pt.group_id AS group_id, g.name AS group_name, pt.role AS role").
+		Joins("JOIN groups g ON g.id = pt.group_id").
+		Where("pt.project_id = ?", projectID).
+		Order("g.name ASC").
+		Scan(&out).Error
+	return out, err
+}
+
+// roleRank ordina i ruoli per permissività (più alto = più permissivo).
+func roleRank(r MemberRole) int {
+	switch r {
+	case RoleAdmin:
+		return 3
+	case RoleMember:
+		return 2
+	case RoleViewer:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// EffectiveRole restituisce il ruolo più permissivo tra quello individuale
+// (project_members) e quelli ereditati dai team (project_teams ⋈ group_members)
+// dell'utente. ok=false se l'utente non ha alcun accesso al progetto.
+func (s *Service) EffectiveRole(userID, projectID string) (MemberRole, bool) {
+	best := MemberRole("")
+	bestRank := 0
+	// individuale
+	if r, err := s.GetRole(projectID, userID); err == nil && r != "" {
+		best, bestRank = r, roleRank(r)
+	}
+	// team
+	var teamRoles []MemberRole
+	s.db.Table("project_teams AS pt").
+		Select("pt.role").
+		Joins("JOIN group_members gm ON gm.group_id = pt.group_id").
+		Where("pt.project_id = ? AND gm.user_id = ?", projectID, userID).
+		Scan(&teamRoles)
+	for _, r := range teamRoles {
+		if roleRank(r) > bestRank {
+			best, bestRank = r, roleRank(r)
+		}
+	}
+	if bestRank == 0 {
+		return "", false
+	}
+	return best, true
 }
 
 // AddMember adds userID as a member of projectID with the given role. It is

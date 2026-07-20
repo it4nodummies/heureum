@@ -302,6 +302,38 @@ export const projects = {
   },
 };
 
+// A team (group) associated to a project with a per-project role. Returned by
+// GET /rest/api/3/project/{key}/teams (Heureum extension).
+export interface ProjectTeam {
+  groupId: string;
+  name: string;
+  role: ProjectRole;
+}
+
+// Project teams (group→project role association). Mirrors projects.members:
+// GET lists the hydrated shape ({groupId,name,role}); POST associates/upserts a
+// team; PUT updates the role of an already-associated team; DELETE removes by
+// groupId. Every mutation returns 204.
+export const projectTeams = {
+  list: (key: string) => apiFetch<ProjectTeam[]>(`/rest/api/3/project/${key}/teams`),
+  // add is also "change role" (upsert): POSTing an existing team's id with a new
+  // role updates it.
+  add: (key: string, groupId: string, role: ProjectRole) =>
+    apiFetch<void>(`/rest/api/3/project/${key}/teams`, {
+      method: "POST",
+      body: JSON.stringify({ groupId, role }),
+    }),
+  updateRole: (key: string, groupId: string, role: ProjectRole) =>
+    apiFetch<void>(`/rest/api/3/project/${key}/teams/${encodeURIComponent(groupId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+  remove: (key: string, groupId: string) =>
+    apiFetch<void>(`/rest/api/3/project/${key}/teams/${encodeURIComponent(groupId)}`, {
+      method: "DELETE",
+    }),
+};
+
 // ── Versions / Releases ──────────────────────────────────────────────────────
 
 // Jira-conformant Version (internal/api/v3/version.go). Dates are date-only
