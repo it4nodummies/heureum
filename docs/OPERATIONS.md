@@ -96,8 +96,16 @@ password. This `docker-compose.yml` stack does not seed any demo user/project (t
 via `cmd/seed` against SQLite, see the Quick start above), so sign up and create a project/issue
 first if you don't already have one to check against.
 
+Your real deployment is (presumably) still running its `api`/`nginx` services on the default
+`API_PORT`/`APP_PORT` (8080/80). The throwaway project must **not** try to publish those same
+host ports, or `up -d` fails before you ever reach the curl below — export distinct ports for
+this project only (don't write them into `deploy/docker/.env`, which is shared with the real
+deployment):
+
 ```bash
 export CP="docker compose -p heureum-backup-verify -f deploy/docker/docker-compose.yml"
+export API_PORT=18080   # any free port distinct from the real deployment's — required
+export APP_PORT=18000   # only needed for the optional browser check below
 
 $CP down -v   # ensure a clean slate — safe: only this throwaway project's volumes
 $CP up -d postgres
@@ -110,9 +118,9 @@ API_CID=$($CP ps -q api)
 docker run --rm --volumes-from "$API_CID" -v "$(pwd)":/backup alpine \
   tar xzf "/backup/heureum-uploads-<timestamp>.tar.gz" -C /data/uploads
 
-curl -s -u "<your-email>:<your-api-token>" "http://localhost:${API_PORT:-8080}/rest/api/3/project"
+curl -s -u "<your-email>:<your-api-token>" "http://localhost:${API_PORT}/rest/api/3/project"
 
-# then, in a browser at http://localhost:${APP_PORT:-80}/app, open a project and confirm an
+# then, in a browser at http://localhost:${APP_PORT}/app, open a project and confirm an
 # issue's attachment loads (not a 404) — or curl the attachment content endpoint directly:
 # GET /rest/api/3/attachment/content/{attachmentId}
 
