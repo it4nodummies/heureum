@@ -30,7 +30,7 @@ func newTestServerWithSignup(t *testing.T, signupOpen bool) (*httptest.Server, *
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	if err := store.RunMigrations(cfg.DB); err != nil {
+	if err := store.RunMigrations(s); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(api.NewRouter(cfg, s.DB))

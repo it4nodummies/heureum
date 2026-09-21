@@ -15,7 +15,7 @@ func New(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := store.RunMigrations(cfg.DB); err != nil {
+	if err := store.RunMigrations(s); err != nil {
 		return nil, err
 	}
 	return &App{Config: cfg, Store: s}, nil
