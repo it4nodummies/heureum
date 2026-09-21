@@ -101,6 +101,15 @@ Implementation plans for larger pieces of work live under
 change, consider writing a short plan there first so reviewers have context on the intended
 approach before diving into the diff.
 
+Architecture decisions that are hard to reverse — the public API surface, persisted schema,
+permissions model, licensing — are recorded as ADRs under [`docs/adr/`](docs/adr/), one file per
+decision, with an index in [`docs/adr/README.md`](docs/adr/README.md). Shared vocabulary used
+across plans, specs and ADRs lives in [`docs/GLOSSARIO.md`](docs/GLOSSARIO.md). These documents
+are written in Italian, like the rest of the planning material under `docs/superpowers/`.
+
+Before proposing a change that adds a route under `/rest/api/3` or `/rest/agile/1.0`, read
+[ADR 0001](docs/adr/0001-superficie-jira-compat-congelata.md): that surface is frozen.
+
 ## Reporting bugs and requesting features
 
 Please open a GitHub issue with:
