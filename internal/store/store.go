@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 
+	gomysql "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -11,6 +12,19 @@ import (
 
 	"github.com/it4nodummies/heureum/internal/config"
 )
+
+// ensureMultiStatements returns dsn with multiStatements=true set. golang-migrate's
+// MySQL driver executes each migration file as ONE statement, and our migration files
+// contain many, so a connection without it fails with Error 1064 on a fresh database
+// (see the comment above mysql.WithInstance in golang-migrate).
+func ensureMultiStatements(dsn string) (string, error) {
+	cfg, err := gomysql.ParseDSN(dsn)
+	if err != nil {
+		return "", err
+	}
+	cfg.MultiStatements = true
+	return cfg.FormatDSN(), nil
+}
 
 type Store struct {
 	DB     *gorm.DB
@@ -30,7 +44,11 @@ func New(cfg config.DBConfig, env string) (*Store, error) {
 	case "postgres":
 		dialector = postgres.Open(cfg.DSN)
 	case "mysql", "mariadb":
-		dialector = mysql.Open(cfg.DSN)
+		dsn, err := ensureMultiStatements(cfg.DSN)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse MySQL DSN: %w", err)
+		}
+		dialector = mysql.Open(dsn)
 	case "sqlite":
 		dialector = sqlite.Open(cfg.DSN)
 	default:

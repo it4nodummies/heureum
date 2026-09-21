@@ -34,6 +34,10 @@ func driverFor(driverName string, db *sql.DB) (database.Driver, string, error) {
 		d, err := postgres.WithInstance(db, &postgres.Config{})
 		return d, "postgres", err
 	case "mysql", "mariadb":
+		// mysql.WithInstance requires the *sql.DB to have been opened with
+		// multiStatements=true (it runs each migration file as one ExecContext
+		// covering many statements) — see store.ensureMultiStatements, applied
+		// to the DSN in store.New before this connection was ever opened.
 		d, err := mysql.WithInstance(db, &mysql.Config{})
 		return d, "mysql", err
 	default:
@@ -62,6 +66,17 @@ func RunMigrations(s *Store) error {
 	if err != nil {
 		return fmt.Errorf("migrate init: %w", err)
 	}
+	// Deliberately no `defer m.Close()` here, and none should ever be added: m
+	// wraps the caller-owned *sql.DB (via driverFor/WithInstance above), not a
+	// connection it opened itself. All three drivers' Close() closes that
+	// *sql.DB (sqlite3.go: `return m.db.Close()`; postgres.go and mysql.go close
+	// both their internal *sql.Conn and the *sql.DB) — calling it here would
+	// close the application's own connection pool right after a successful
+	// migration, invisible to the compiler, go vet, and every existing test.
+	// Related fact for postgres/mysql: WithInstance checks out one *sql.Conn from
+	// the pool for its own use and never returns it, permanently costing 1 of the
+	// 25 connections configured in store.New — not a regression, just something a
+	// reader of this function should know.
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("migrate up: %w", err)
 	}

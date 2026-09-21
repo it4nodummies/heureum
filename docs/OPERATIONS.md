@@ -11,17 +11,30 @@ throughout.
 
 ## What to back up
 
-Heureum's Docker stack keeps state in exactly two places:
+Heureum's Docker stack keeps state in exactly two places, plus one file that is not stack state
+but is required to bring the stack back up at all:
 
 1. **The Postgres database** (`postgres` service, database `openjira`, user `openjira`) — all
    projects, issues, comments, users, permissions, workflow state, etc.
 2. **The `uploads` named volume**, mounted at `/data/uploads` in the `api` container — issue
    attachments.
+3. **`deploy/docker/.env`**, specifically `APP_SECRET`. It is gitignored and exists only on the
+   host. `docker-compose.yml` requires it for both the `api` and `worker` services
+   (`APP_SECRET: "${APP_SECRET:?APP_SECRET is required — set it in .env}"`, lines 44 and 66) — with
+   it missing, `docker compose up` refuses to start either service. And even if you generate a
+   fresh secret instead of restoring the old one, the stack does start, but `APP_SECRET` signs
+   session tokens: a new value invalidates every session issued by the lost instance, logging out
+   every user.
 
-**Both must be backed up together.** A restore of only the database leaves the `attachments`
-rows in place but the files on disk gone, so every issue attachment 404s after restore. A
-restore of only the `uploads` volume leaves orphaned files nothing references. Always back up
-and restore the database and the `uploads` volume as one unit, from the same point in time.
+**Both database state and uploads must be backed up together.** A restore of only the database
+leaves the `attachments` rows in place but the files on disk gone, so every issue attachment
+404s after restore. A restore of only the `uploads` volume leaves orphaned files nothing
+references. Always back up and restore the database and the `uploads` volume as one unit, from
+the same point in time. In practice "the same point in time" means two sequential commands (the
+`pg_dump` below, then the tarball), not one atomic snapshot — an attachment uploaded in the
+window between them can end up recorded in the database but missing from the tarball, or present
+in the tarball but not yet referenced by any row. For a busy instance, pause the `api` container
+(or accept this narrow race) if you need a truly consistent pair.
 
 ## What is NOT backed up
 
