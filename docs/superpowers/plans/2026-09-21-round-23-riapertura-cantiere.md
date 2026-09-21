@@ -392,20 +392,31 @@ Write the document with these sections, filling the placeholders with the values
 - **Verify a backup** — restore into a throwaway stack and check that the project list and one issue's attachment both load. A backup that has never been restored is not a backup.
 - **What is NOT backed up** — nothing else holds state; the app is stateless besides those two.
 
-- [ ] **Step 3: Prove the procedure end-to-end**
+- [ ] **Step 3: Prove the procedure end-to-end, in an isolated compose project**
 
-Run the backup commands against a local Docker stack, then restore into a fresh one and confirm the demo project and an attachment survive:
+**Never run `down -v` against the default compose project.** The developer's own stack uses it, and its `pgdata` and `uploads` volumes may hold real local data; destroying them is irreversible. Every command in this step carries an explicit, throwaway project name (`-p heureum-r23-backup-test`), which gives the test stack its own volumes (`heureum-r23-backup-test_pgdata`, `heureum-r23-backup-test_uploads`) and makes the teardown safe.
+
+Docker Desktop is not running in this environment and tends to stop on its own — start it with `open -a Docker` and wait for `docker info` to answer before proceeding.
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml up -d
-# ... run the documented backup commands ...
-docker compose -f deploy/docker/docker-compose.yml down -v
-# ... run the documented restore commands ...
-docker compose -f deploy/docker/docker-compose.yml up -d
+export CP="docker compose -p heureum-r23-backup-test -f deploy/docker/docker-compose.yml"
+$CP up -d
+# seed some state, then run the documented backup commands against THIS project
+# ... backup ...
+$CP down -v          # safe: only this throwaway project's volumes
+# ... restore ...
+$CP up -d
 curl -s -u admin@example.com:admin-demo-123 http://localhost:8080/rest/api/3/project | head -c 300
+$CP down -v          # clean up the throwaway project when finished
 ```
 
-Expected: the project list comes back with the demo project. **If a documented command fails, fix the document, not the terminal history** — the point of this task is that the commands in the file are the ones that were actually run. Note in the document that Docker Desktop in this environment tends to stop on its own (`open -a Docker` to restart it).
+Expected: the project list comes back with the demo project after the restore.
+
+The **document** you write must use the plain, default-project commands a real operator would run — the `-p heureum-r23-backup-test` prefix is a safety measure for *your verification run only* and must not appear in `docs/OPERATIONS.md`. Say in your report that you verified with the prefix and which commands you translated.
+
+**If a documented command fails, fix the document, not the terminal history** — the point of this task is that the commands in the file are the ones that were actually run.
+
+If Docker cannot be started at all in this environment, do not fake the verification: write the document, mark it in your report as **UNVERIFIED**, and say exactly which commands were never executed. An unverified backup procedure is worth less than none, and the controller needs to know which one it has.
 
 - [ ] **Step 4: Link it from the README**
 
