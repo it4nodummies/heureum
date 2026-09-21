@@ -108,9 +108,15 @@ import (
 	"github.com/it4nodummies/heureum/internal/config"
 )
 
-// A plain ":memory:" DSN is the sharpest form of the bug: the old URL-based
-// RunMigrations opened its own second connection, so migrations landed in a
-// different in-memory database and the store's own connection stayed empty.
+// A plain ":memory:" DSN is the sharpest form of the bug: EVERY connection to
+// ":memory:" is its own separate database, so the old URL-based RunMigrations —
+// which opened a second sql.DB of its own — applied the migrations somewhere the
+// application never sees.
+//
+// The pool is pinned to a single connection on purpose. store.New configures 25,
+// and with ":memory:" each pooled connection would be a different database, which
+// would make this test flaky in BOTH directions. One connection makes the
+// assertion be about the defect and nothing else.
 func TestRunMigrationsAppliesToTheOpenConnection(t *testing.T) {
 	cfg := config.DBConfig{Driver: "sqlite", DSN: ":memory:"}
 	s, err := New(cfg, "test")
@@ -118,6 +124,12 @@ func TestRunMigrationsAppliesToTheOpenConnection(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	defer s.Close()
+
+	sqlDB, err := s.DB.DB()
+	if err != nil {
+		t.Fatalf("DB() error = %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
 
 	if err := RunMigrations(s); err != nil {
 		t.Fatalf("RunMigrations() error = %v", err)
@@ -137,7 +149,9 @@ func TestRunMigrationsAppliesToTheOpenConnection(t *testing.T) {
 go test ./internal/store/... -run TestRunMigrationsAppliesToTheOpenConnection -v
 ```
 
-Expected: FAIL. It will not even compile at first (`RunMigrations` still takes `config.DBConfig`); after you adjust the call it fails on the missing `projects` table, or on the malformed-URL error. Either failure is the red you want — record which one you saw.
+Expected: FAIL. It will not compile at first (`RunMigrations` still takes `config.DBConfig`); temporarily call it as `RunMigrations(cfg)` to get a compiling red, and the failure you must see is **`projects table missing`** — the migrations went to a different database.
+
+Do **not** expect the malformed-URL error here: it is toolchain-dependent. Go 1.26.0 rejects `sqlite3://file::memory:?cache=shared` with `invalid port "::memory:"` (that is what failed CI on PR #41), but Go 1.27 accepts it again — verified locally: `url.Parse` returns `host="file::memory:"` with no error. The empty-database failure is the version-independent red, and it is the one this test asserts.
 
 - [ ] **Step 3: Rewrite `internal/store/migrate.go`**
 
@@ -253,16 +267,19 @@ go test ./...
 
 Expected: the new test PASSES, `TestNewSQLiteApp` still passes, and the full suite is green.
 
-- [ ] **Step 6: Verify the fix holds under the Go directive that broke CI**
+- [ ] **Step 6: Verify the fix on the toolchain that actually broke CI**
+
+Changing only the `go` directive proves nothing: the strictness lives in the Go 1.26.0 *toolchain*, not in the directive (verified — the same test passes under a 1.26.0 directive on a Go 1.27 toolchain). Install the exact toolchain CI used:
 
 ```bash
-S=$(mktemp -d)
-sed 's/^go 1\.25\.0$/go 1.26.0/' go.mod > "$S/go126.mod"
-cp go.sum "$S/go126.sum"
-go test -modfile="$S/go126.mod" ./internal/app/... ./internal/store/...
+go install golang.org/dl/go1.26.0@latest
+$(go env GOPATH)/bin/go1.26.0 download
+$(go env GOPATH)/bin/go1.26.0 test ./internal/app/... ./internal/store/...
 ```
 
-Expected: PASS. This is the configuration in which dependabot PR #41 failed CI (`setup-go` installs exactly the version in the `go` directive, and that PR raised it to 1.26.0). Do **not** commit the modified go.mod — it is a scratch file.
+Expected: PASS after the fix. To see the red this replaces, run the same command on `git stash`-ed changes — it fails with `migrate init: failed to open database: parse "sqlite3://file::memory:?cache=shared": invalid port "::memory:" after host`, exactly as CI run 35005331442 did.
+
+If the toolchain download is unavailable in this environment, say so in your report and rely on Step 5; CI will be the oracle when the dependabot PR re-runs in Task 6. Do not silently skip this step.
 
 - [ ] **Step 7: Commit**
 
