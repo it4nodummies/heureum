@@ -6,6 +6,10 @@
 /tmp/
 .superpowers/
 
+# Local attachment/avatar storage (APP_UPLOADS_DIR default). In Docker this is
+# a named volume; locally it is real user data and must never be committed.
+/data/
+
 # macOS
 .DS_Store
 deploy/docker/.env
