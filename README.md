@@ -95,6 +95,8 @@ Attachments are stored on local disk under `APP_UPLOADS_DIR`; when running in Do
 
 ## Docker
 
+For backup, restore and day-2 operations, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 ### Prebuilt images (GHCR)
 
 Official images are published to the GitHub Container Registry on every release and are
