@@ -23,7 +23,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer s.Close()
-	if err := store.RunMigrations(cfg.DB); err != nil {
+	if err := store.RunMigrations(s); err != nil {
 		logger.Error("failed to run migrations", "error", err)
 		log.Fatal(err)
 	}
