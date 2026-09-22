@@ -39,7 +39,7 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 	defer s.Close()
-	if err := store.RunMigrations(cfg.DB); err != nil {
+	if err := store.RunMigrations(s); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
 

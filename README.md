@@ -95,6 +95,8 @@ Attachments are stored on local disk under `APP_UPLOADS_DIR`; when running in Do
 
 ## Docker
 
+For backup, restore and day-2 operations, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 ### Prebuilt images (GHCR)
 
 Official images are published to the GitHub Container Registry on every release and are
@@ -162,6 +164,25 @@ provisioned, so registration doesn't leak into a shared instance.
 Heureum's route coverage against the official Jira Cloud v3 / Agile 1.0 OpenAPI specs is
 tracked automatically. Run `go run ./cmd/gapreport` to regenerate it, or read the current
 snapshot at [`docs/contracts/gap-report.md`](docs/contracts/gap-report.md).
+
+### What is stable
+
+Heureum implements a subset of the Jira Cloud v3 surface deliberately, as a migration bridge
+rather than a full re-implementation — see
+[ADR 0001](docs/adr/0001-superficie-jira-compat-congelata.md). Within that subset, four areas are
+**stable within a major version**, because they are what a migration from Jira actually goes
+through:
+
+1. **Issues** — CRUD, fields, transitions, comments, worklogs, links, watchers
+2. **Projects** — CRUD, search, categories
+3. **Search / JQL** — `/search/jql` and the language the parser accepts
+4. **Agile** — boards, sprints, backlog (`/rest/agile/1.0/*`)
+
+An incompatible change in those four areas — removing a route, changing a response shape,
+narrowing a field — requires a major version and an announced deprecation period. Everything else
+in the surface is best-effort: consult the gap report above for what exists today, and expect it
+to change in a minor release. See
+[ADR 0003](docs/adr/0003-promessa-di-stabilita-selettiva.md) for the reasoning.
 
 ## Contributing
 
