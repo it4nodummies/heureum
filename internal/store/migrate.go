@@ -45,16 +45,58 @@ func driverFor(driverName string, db *sql.DB) (database.Driver, string, error) {
 	}
 }
 
+// driverForStore creates a golang-migrate driver from the store's connection,
+// wrapping the already-open *sql.DB.
+func driverForStore(s *Store) (database.Driver, string, error) {
+	sqlDB, err := s.DB.DB()
+	if err != nil {
+		return nil, "", fmt.Errorf("migrate init: %w", err)
+	}
+	drv, name, err := driverFor(s.Driver, sqlDB)
+	if err != nil {
+		return nil, "", fmt.Errorf("migrate init: %w", err)
+	}
+	return drv, name, nil
+}
+
+// migrateUp attempts to run migrations from each source, returning nil on the
+// first successful attempt, or the error from the last attempt if all fail.
+func migrateUp(drv database.Driver, name string, sources ...string) error {
+	var err error
+	for _, source := range sources {
+		m, migErr := migrate.NewWithDatabaseInstance(source, name, drv)
+		if migErr != nil {
+			err = fmt.Errorf("migrate init: %w", migErr)
+			continue
+		}
+		// Deliberately no `defer m.Close()` here, and none should ever be added: m
+		// wraps the caller-owned *sql.DB (via driverFor/WithInstance above), not a
+		// connection it opened itself. All three drivers' Close() closes that
+		// *sql.DB (sqlite3.go: `return m.db.Close()`; postgres.go and mysql.go close
+		// both their internal *sql.Conn and the *sql.DB) — calling it here would
+		// close the application's own connection pool right after a successful
+		// migration, invisible to the compiler, go vet, and every existing test.
+		// Related fact for postgres/mysql: WithInstance checks out one *sql.Conn from
+		// the pool for its own use and never returns it, permanently costing 1 of the
+		// 25 connections configured in store.New — not a regression, just something a
+		// reader of this function should know.
+		if upErr := m.Up(); upErr != nil && upErr != migrate.ErrNoChange {
+			err = fmt.Errorf("migrate up: %w", upErr)
+			continue
+		}
+		return nil
+	}
+	return err
+}
+
 // RunMigrations applies every pending migration to the store's own connection,
 // looking for the migration files in the standard deployment and dev locations.
 func RunMigrations(s *Store) error {
-	var err error
-	for _, path := range migrationPaths {
-		if err = RunMigrationsFrom(s, path); err == nil {
-			return nil
-		}
+	drv, name, err := driverForStore(s)
+	if err != nil {
+		return err
 	}
-	return err
+	return migrateUp(drv, name, migrationPaths...)
 }
 
 // RunMigrationsFrom applies every pending migration from an explicit source URL
@@ -62,31 +104,9 @@ func RunMigrations(s *Store) error {
 // know where the migrations are — tests in packages nested deeper than the paths
 // RunMigrations guesses — should use this directly.
 func RunMigrationsFrom(s *Store, sourceURL string) error {
-	sqlDB, err := s.DB.DB()
+	drv, name, err := driverForStore(s)
 	if err != nil {
-		return fmt.Errorf("migrate init: %w", err)
+		return err
 	}
-	drv, name, err := driverFor(s.Driver, sqlDB)
-	if err != nil {
-		return fmt.Errorf("migrate init: %w", err)
-	}
-	m, err := migrate.NewWithDatabaseInstance(sourceURL, name, drv)
-	if err != nil {
-		return fmt.Errorf("migrate init: %w", err)
-	}
-	// Deliberately no `defer m.Close()` here, and none should ever be added: m
-	// wraps the caller-owned *sql.DB (via driverFor/WithInstance above), not a
-	// connection it opened itself. All three drivers' Close() closes that
-	// *sql.DB (sqlite3.go: `return m.db.Close()`; postgres.go and mysql.go close
-	// both their internal *sql.Conn and the *sql.DB) — calling it here would
-	// close the application's own connection pool right after a successful
-	// migration, invisible to the compiler, go vet, and every existing test.
-	// Related fact for postgres/mysql: WithInstance checks out one *sql.Conn from
-	// the pool for its own use and never returns it, permanently costing 1 of the
-	// 25 connections configured in store.New — not a regression, just something a
-	// reader of this function should know.
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("migrate up: %w", err)
-	}
-	return nil
+	return migrateUp(drv, name, sourceURL)
 }
