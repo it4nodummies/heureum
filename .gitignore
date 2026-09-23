@@ -10,6 +10,11 @@
 # a named volume; locally it is real user data and must never be committed.
 /data/
 
+# Local AI-assistant instructions. Deliberately untracked: this is a public
+# repository, and what guidance a maintainer gives their tooling is a personal
+# working choice, not project configuration.
+/CLAUDE.md
+
 # macOS
 .DS_Store
 deploy/docker/.env
