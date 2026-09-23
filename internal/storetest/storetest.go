@@ -9,9 +9,10 @@
 //
 // What this actually guarantees, per driver:
 //
-//   - Real column types and NOT NULL/UNIQUE constraints, on every driver
-//     (New's DSN for SQLite carries "?_foreign_keys=on" — see sqliteDSN — so the
-//     type mismatch above is impossible here regardless of driver).
+//   - Real column types and NOT NULL/UNIQUE constraints, on every driver, simply
+//     because the schema comes from the real migrations rather than AutoMigrate —
+//     this alone is what makes the int64-into-TIMESTAMP defect above impossible
+//     here, on every driver, with or without any pragma.
 //   - Referential integrity (foreign keys), on Postgres and MySQL always, and on
 //     SQLite ONLY because of that pragma: SQLite defaults PRAGMA foreign_keys to
 //     OFF, and neither store.New nor gorm.io/driver/sqlite ever turns it on, so

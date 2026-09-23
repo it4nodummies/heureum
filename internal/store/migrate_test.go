@@ -71,11 +71,22 @@ func TestRunMigrationsFromExplicitSource(t *testing.T) {
 // production-reachable defect this round fixed: migrateUp used to keep looping
 // over candidate sources even after one of them had OPENED and then failed
 // Up() with a genuine SQL error, so a later candidate's open-error (e.g. "no
-// such file or directory" for the Docker image's missing file:///migrations)
-// clobbered the real failure. Since the Dockerfile's first candidate path
-// always fails to open and the second always opens, this is exactly the
-// production shape: candidate 1 open-fails, candidate 2 opens and its Up()
-// hits a real SQL error — the caller must see THAT error, not candidate 1's.
+// such file or directory" for a missing migrations path) clobbered the real
+// failure. This is exactly the production shape: three candidates
+// (file:///migrations, file://migrations, file://../../migrations), where the
+// Dockerfile's layout makes candidate 1 fail to open, candidate 2 open and
+// run, and candidate 3 fail to open — and it was candidate 3's open-error
+// that masked a real SQL failure from candidate 2 in the operator's log.
+//
+// Deliberately THREE sources, not two: with only two (an open-failure
+// followed by the Up()-failing source, which is also the last source), the
+// pre-fix and post-fix code return the IDENTICAL error, because there is no
+// later source left to overwrite it — the test would pass against either
+// implementation and prove nothing. A trailing third source that also fails
+// to open is what makes the two control flows diverge: the pre-fix code
+// `continue`s past the Up() failure and returns candidate 3's open-error
+// instead; the fixed code returns candidate 2's Up() error immediately and
+// never even looks at candidate 3.
 func TestMigrateUpSurfacesTheSecondSourcesUpError(t *testing.T) {
 	cfg := config.DBConfig{Driver: "sqlite", DSN: ":memory:"}
 	s, err := New(cfg, "test")
@@ -107,15 +118,16 @@ func TestMigrateUpSurfacesTheSecondSourcesUpError(t *testing.T) {
 	err = migrateUp(drv, name,
 		"file:///definitely-not-a-real-path-xyz", // candidate 1: fails to OPEN
 		"file://"+filepath.ToSlash(badDir),       // candidate 2: opens, Up() fails
+		"file:///definitely-not-a-real-path-abc", // candidate 3: fails to OPEN — must never be reached
 	)
 	if err == nil {
 		t.Fatal("migrateUp() error = nil, want the second source's Up() error")
 	}
 	if !strings.Contains(err.Error(), "migrate up") {
-		t.Errorf("migrateUp() error = %q, want it to be a \"migrate up\" (SQL) error, not a source-open error", err.Error())
+		t.Errorf("migrateUp() error = %q, want it to be a \"migrate up\" (SQL) error from candidate 2, not a source-open error from candidate 1 or 3", err.Error())
 	}
-	if strings.Contains(err.Error(), "definitely-not-a-real-path-xyz") {
-		t.Errorf("migrateUp() error = %q, want the SECOND source's error, not the first (open-failed) candidate's path leaking through", err.Error())
+	if strings.Contains(err.Error(), "definitely-not-a-real-path-xyz") || strings.Contains(err.Error(), "definitely-not-a-real-path-abc") {
+		t.Errorf("migrateUp() error = %q, want candidate 2's Up() error, not a trailing/leading candidate's open-error path leaking through", err.Error())
 	}
 }
 
