@@ -109,11 +109,78 @@ Gap report attuale: **114 endpoint path-match conformi** + **87 estensioni** su 
   verificare il fix MySQL contro un server MySQL/MariaDB reale, non solo l'unit test puro — nessun
   ambiente CI lo esercita ancora end-to-end.
 
+- **Round 24 — Gate reale** ✅ (piano: `docs/superpowers/plans/2026-09-23-round-24-gate-reale.md`;
+  branch `feat/round-24-gate-reale`; scope ridotto con l'utente il 2026-09-23: DB isolato per
+  worker Playwright **FUORI scopo**, resta il resto). Cinque task: **(T1)** `internal/store/migrate.go`
+  — ripristinato l'invariante "un solo `driverFor` per chiamata pubblica" (`driverForStore` +
+  `migrateUp(drv, name, sources...)`) che una bozza del piano stesso avrebbe rotto, così il commento
+  anti-regressione su `m.Close()` ("costa 1 delle 25 connessioni") resta vero. **(T2)** nuovo
+  `internal/storetest`: helper condiviso che applica le **migrazioni reali** (golang-migrate) invece
+  di `AutoMigrate` + stub, un database isolato per test (CREATE/DROP per Postgres e MySQL, file
+  temporaneo per SQLite) selezionabile via `TEST_DB_DRIVER`; corretti in review un bug di
+  parsing (`net/url.Parse` mangla silenziosamente una DSN libpq keyword/value) e una finestra di leak
+  del DB di test tra `CREATE DATABASE` e la prima `t.Fatalf` successiva. **(T3)** dominio `issue`
+  convertito allo schema reale (9 file, 23 test) — ogni file aveva bisogno di righe padre che gli
+  stub non richiedevano mai, cioè gli stub nascondevano l'integrità referenziale ovunque, non solo
+  sul caso noto. **(T4)** dominio `notification` — **prima non aveva alcun test** (0.0% copertura) —
+  7 nuovi test. **(T5)** matrice CI `backend` su **SQLite e Postgres** (`fail-fast: false`, job
+  `postgres-smoke` esistente lasciato invariato). **Due difetti di produzione scoperti dal round
+  stesso, nessuno cercato apposta:** (1) **MySQL non ha mai funzionato** — `migrations/000001` riga 5
+  `settings_json TEXT DEFAULT '{}'` fa scattare l'errore MySQL 1101, pattern che ricorre 69 volte su
+  14 file; dato che la migrazione 000001 non è mai passata su MySQL, **non può esistere alcun
+  deployment MySQL di Heureum** — nessuna base installata da rompere; verificato su container reali
+  che `TEXT DEFAULT ('{}')` (parentesi) è accettato invariato da MySQL 8, Postgres 16 e SQLite,
+  quindi una sola sintassi servirebbe tutti e tre; decisione di prodotto (fix/drop/documenta) escalata
+  all'utente e rimasta aperta per tutto il round (vedi follow-up `[APERTO]` sotto). (2) **le colonne
+  `TIMESTAMP` senza timezone sfasano dell'offset UTC dell'host** — il codec timestamp di pgx
+  (`discardTimeZone`, `pgtype/timestamp.go`) rietichetta le cifre wall-clock come UTC senza convertire
+  l'istante; misurato **1h59m59.997511s** su un host CEST; latente sotto Docker (nessun `TZ` impostato
+  in nessun Dockerfile/compose) ma live per chiunque esegua il binario su un host non-UTC (setup
+  normale di self-hosting). A causa della decisione MySQL rimasta aperta, la matrice CI dell'ultimo
+  task (T5) è stata scritta **esattamente come da design originale** (solo SQLite+Postgres, mai
+  MySQL) invece di aspettare la risposta. Gate finale del round: `go build ./... && go vet ./... &&
+  go test ./...` verde su entrambe le gambe della matrice; Playwright e `cmd/gapreport` non
+  rieseguiti (nessuna rotta v3 toccata).
+  **Fix wave post-review (stesso giorno, 2026-09-23, dopo una review dell'intero branch):** 4
+  Important + 2 cheap: (a) `migrateUp` (`internal/store/migrate.go`) faceva ripartire il tentativo
+  successivo anche dopo che una sorgente si era aperta e il suo `Up()` aveva fallito con un vero
+  errore SQL — nel Docker di produzione (`WORKDIR /app`, migrazioni in `/app/migrations`) il primo
+  path candidato fallisce SEMPRE l'apertura e il secondo si apre sempre, quindi un fallimento SQL
+  reale veniva **mascherato** dall'errore di apertura del terzo candidato, e l'operatore vedeva "no
+  such file or directory" invece del vero errore su un database che golang-migrate aveva appena
+  marcato dirty — fix: una sorgente aperta è LA sorgente, il suo errore va ritornato subito; aggiunto
+  anche il guardrail "zero sorgenti → errore, non `nil`" e il test di regressione
+  `TestMigrateUpSurfacesTheSecondSourcesUpError`. (b) nessun test rilevava se `TEST_DB_DRIVER` veniva
+  onorato davvero — aggiunto `TestNewHonoursTheSelectedDriver` (`internal/storetest`) che confronta
+  `Dialector.Name()` col driver richiesto. (c) il commento del package `storetest` dichiarava i tre
+  difetti di luglio "impossibili da scrivere qui", ma su SQLite (il driver di default in locale)
+  `PRAGMA foreign_keys` è OFF di default e né `store.New` né `gorm.io/driver/sqlite` lo accendono mai
+  — verificato empiricamente (insert su FK inesistente: passa a `0`, fallisce a `1`) — fix: DSN
+  SQLite ora porta `?_foreign_keys=on`; **rieseguita l'intera suite su SQLite dopo il fix: tutta
+  verde, nessuna fixture si è rotta**; commento di package riscritto per dire cosa l'helper garantisce
+  davvero per ciascun driver. (d) `docs/superpowers/STATE.md` (questo file) non registrava i due
+  difetti sopra né la decisione MySQL aperta (vivevano solo in `.superpowers/`, gitignored) e
+  dichiarava per il Round 24 cose mai spedite (matrice a tre driver, DB per-worker Playwright) — sezione
+  "Prossimo" corretta, voce R13 riaperta (sotto), tre nuove voci `[APERTO]` aggiunte. (e) cheap:
+  `notification/service_test.go` ricalcolava il default di `TEST_DB_DRIVER` in proprio — estratta
+  `storetest.Driver()` come unica fonte di verità. (f) cheap: CI setta `TZ: Europe/Rome` sulla gamba
+  Postgres della matrice (i runner GitHub sono UTC, che avrebbe silenziosamente azzerato lo skew che
+  il test da (notification) misura) + commento che segnala che il fix definitivo dello skew farà
+  fallire quell'assert di proposito.
+
 ## Prossimo: direzione decisa (2026-09-21) — R23 → R24 → R25
 
 **STATO MERGE (2026-07-17):** `main` contiene ora l'INTERA parity **R13→R22**. Storia dei merge: PR #17 (`feat/frontend-next`→`main`) mergiata quando il branch era a **R17** (merge-commit `c5eb516`) → main ebbe R13-R17; poi R18-R22 sono proseguiti sul branch e sono stati mergiati con **PR #18** (merge-commit `e9f68f2`, 2026-07-17T15:32Z) → main ora ha R13-R22. `feat/frontend-next` è a **0 commit avanti** di `main` (completamente integrato). Migrazioni su main: fino a **000022**. CI di #18 tutta verde (backend/gap-report/frontend/e2e). **Ultimo tag pubblico: ancora `v1.0.2`** — `main` è avanti rispetto al tag (candidato prossima release **v1.1.0**, non ancora taggato). Da qui in avanti la sequenza è quella decisa il 2026-09-21 (design document sopra):
 1. **R23 (resto, a carico dell'utente)**: il Round 23 vero e proprio è ✅ (vedi la sua entrata sopra) — resta solo ciò che è deliberatamente gated sull'approvazione dell'utente e non ancora accaduto: merge di **PR #24** (teams↔progetti, aperta dal 2026-07-20 col solo job `e2e` rosso, 3 fallimenti su 3, diagnosi già fatta in R23 — il rossore era write-contention Playwright, non codice della PR); 11 PR dependabot in lotti, **`@dnd-kit/sortable` 8→10 per ultimo**; tag **v1.1.1** (push a carico dell'utente — `[Unreleased]` contiene i tre fix Postgres user-facing).
-2. **R24 — Gate reale**: helper di test condiviso che applica le **migrazioni reali** invece di `AutoMigrate` + stub (oggi lo schema dei test non ha alcun vincolo FK, ed è per questo che i tre bug Postgres sono sfuggiti); applicato ai 4 domini che scrivono FK nullable (`issue`, `comment`, `notification`, `issue_history`); matrice CI **SQLite, Postgres e MySQL** — MySQL è il driver che il Round 23 ha dimostrato essere strutturalmente non verificato (il fix `multiStatements` ha solo un test unitario puro, nessun ambiente CI esercita ancora una migrazione reale contro un server MySQL); DB isolato per worker Playwright.
+2. **R24 — Gate reale**: il Round 24 vero e proprio è ✅ (vedi la sua entrata sopra, dopo il
+   Round 23) — **corretto rispetto a questo paragrafo pianificato**: la matrice CI è finita a
+   **SQLite e Postgres**, NON "e MySQL" come scritto qui — la gamba MySQL resta sospesa alla
+   decisione di prodotto ancora aperta (vedi i follow-up `[APERTO]` su MySQL più sotto), e
+   aggiungerla dopo sarà un diff di tre righe una volta arrivata la risposta. **"DB isolato per
+   worker Playwright" non è stato fatto**: è stato de-scopato dal proprietario del repository
+   durante il round (decisione presa con l'utente il 2026-09-23: per-worker Playwright DB FUORI
+   scopo) — `frontend-next/playwright.config.ts` resta `workers: 1` (vedi il follow-up R13
+   riaperto più sotto).
 3. **R25 — Zero-config**: `POST /project` crea anche board, issue type di default e resolution; i tre template generano configurazioni davvero diverse (oggi mappano solo `project.Type`); il fallimento di `CreateDefaultWorkflow` smette di essere silenzioso; E2E di accettazione «crea progetto → trascina una issue sulla board **senza mai aprire Settings**». R24 precede R25 perché R25 scrive proprio nelle tabelle dove sono esplose le regressioni Postgres.
 Le restanti feature Jira sono in **FASE D (fuori scopo)** del requirements v2 (Advanced Roadmaps, Goals/OKR, Teams, SSO/LDAP, Confluence, ecc.).
 
@@ -129,10 +196,15 @@ Tag 1.0 già pubblicato (v1.0.2 rilasciata, `docs/RELEASE.md`); i round successi
 
 ## Follow-up aperti (non bloccanti)
 
-> Verificato integralmente il 2026-09-21 (Round 23): 28 aperti (di cui 1 non verificabile), 7
-> chiusi, 2 archiviati su 37 voci (la 37esima aggiunta il 2026-09-23: la release a metà automatizzata) (la voce R9 è stata divisa in un CHIUSO e un APERTO durante la
-> fix wave del Round 23, che ha corretto un timbro "verificato" non guadagnato — vedi entrata
-> Round 23 più sotto).
+> Verificato integralmente il 2026-09-21 (Round 23): aggiornato dopo la fix wave del Round 24
+> (2026-09-23) a **32 aperti (di cui 1 non verificabile), 6 chiusi, 2 archiviati su 40 voci** (la
+> 37esima, release a metà automatizzata, era già stata aggiunta il 2026-09-23; le voci 38-40 sono
+> state aggiunte nella stessa data dalla fix wave del Round 24: MySQL mai stato funzionante, skew
+> `TIMESTAMP`-senza-timezone, 27 file di test ancora su `AutoMigrate` invece di `storetest.New`).
+> La voce R9 è stata divisa in un CHIUSO e un APERTO durante la fix wave del Round 23, che ha
+> corretto un timbro "verificato" non guadagnato — vedi entrata Round 23 più sotto. La voce R13 è
+> stata riaperta durante la fix wave del Round 24 — un verdetto CHIUSO che si è rivelato falso, vedi
+> quella voce più sotto.
 > Una voce senza verdetto è una voce mai verificata: aggiungerne di nuove con il prefisso [APERTO].
 
 - **[APERTO — verificato 2026-09-23]** **La procedura di rilascio è metà automatizzata e metà
@@ -192,7 +264,46 @@ Tag 1.0 già pubblicato (v1.0.2 rilasciata, `docs/RELEASE.md`); i round successi
 - **[APERTO — verificato 2026-09-21]** **(R13)** `WorklogService.Delete` non decrementa `Issue.TimeSpent` (il fix R13 ha collegato solo `Add`) — un worklog cancellato lascia il tempo speso gonfiato finché non si aggiunge un decremento simmetrico.
 - **[APERTO — verificato 2026-09-21]** **(R13)** `IssueHandler.Update` loggano una entry di history per **ogni** campo del payload PUT ad ogni save, anche quelli invariati — da diffare contro il valore precedente prima di scrivere su `issue_history` (oggi la tab History si riempie di rumore su edit ripetuti dello stesso campo).
 - **[APERTO — verificato 2026-09-21]** **(R13)** Attribuzione autore nello storico: il changelog logga sempre `ActorID=""` (la History mostra "System"). Serve threadare l'uid dell'utente autenticato da `issue.Service.Create`/`Update`/transizioni fino a `logHistory` — invasivo (tocca molte firme/chiamanti), dichiarato non-goal del Round 13.
-- **[CHIUSO — verificato 2026-09-21: `frontend-next/playwright.config.ts` fissa `workers: 1`; il Round 24 è ciò che riguadagna il parallelismo]** ~~**(R13)** La suite Playwright completa ha flakiness da write-contention SQLite quando lanciata con più di un worker in parallelo — `--workers=1` è richiesto per un run pulito; valutare un DB per-worker o `DB_DRIVER=postgres` in CI per recuperare il parallelismo.~~
+- **[APERTO — verificato 2026-09-23]** **(R13)** La suite Playwright completa ha flakiness da write-contention SQLite quando lanciata con più di un worker in parallelo — `--workers=1` è richiesto per un run pulito; valutare un DB per-worker o `DB_DRIVER=postgres` in CI per recuperare il parallelismo. Questa voce era stata marcata **CHIUSO il 2026-09-21** con la motivazione "il Round 24 è ciò che riguadagna il parallelismo" — falso: `frontend-next/playwright.config.ts` fissa tuttora `workers: 1`. Il Round 24 ha convertito i domini `issue`/`notification` allo schema reale e la matrice CI backend a SQLite+Postgres, ma il DB isolato per worker Playwright che avrebbe riguadagnato il parallelismo è stato **de-scopato dal proprietario del repository** durante il round (decisione presa con l'utente il 2026-09-23) — riaperta durante la fix wave di Round 24 dopo che la review dell'intero branch ha verificato il file di config contro l'affermazione.
+- **[APERTO — verificato 2026-09-23]** **(R24)** **MySQL non ha mai funzionato: nessun deployment
+  MySQL di Heureum può esistere.** `migrations/000001_init_schema.up.sql` riga 5
+  `settings_json TEXT DEFAULT '{}'` fa scattare l'errore MySQL 1101 ("BLOB/TEXT column can't have a
+  default value"); il pattern ricorre **69 volte su 14 file di migrazione**. `README.md:33`
+  pubblicizza "PostgreSQL or MySQL/MariaDB in production" — falso oggi. Dato che la migrazione
+  000001 non ha mai superato un server MySQL reale, non esiste (e non può esistere) alcuna
+  installazione MySQL di Heureum da preservare, e golang-migrate non fa il checksum dei file di
+  migrazione, quindi cambiarli ora non romperebbe nessuno storico reale. Verificato su container
+  reali (MySQL 8, Postgres 16, SQLite): `TEXT DEFAULT ('{}')` (con parentesi) è **accettato
+  invariato da tutti e tre** con lo stesso default risultante, quindi una singola sintassi
+  parentesizzata servirebbe tutti e tre i driver in un colpo solo. Decisione di prodotto aperta con
+  l'utente (fix / drop / documenta come non supportato) — sollevata quattro volte durante il Round
+  24 e ancora senza risposta; è il motivo per cui la matrice CI del Round 24 copre solo
+  SQLite+Postgres. Non toccare `README.md` né alcun file di migrazione finché la decisione non
+  arriva (vietato esplicitamente durante la fix wave che ha aggiunto questa voce).
+- **[APERTO — verificato 2026-09-23]** **(R24)** **Le colonne `TIMESTAMP` senza timezone sfasano
+  dell'offset UTC dell'host.** Il codec timestamp di pgx (`pgtype.Timestamp`, `discardTimeZone` in
+  `pgtype/timestamp.go` — "Time zone will be ignored when encoding") scrive le cifre wall-clock di
+  `time.Now()` nel fuso *locale* del processo, e Postgres le ritorna tali quali etichettate UTC:
+  su un host non-UTC il valore riletto è sfasato dall'istante reale esattamente dell'offset UTC
+  locale dell'host. Misurato **1h59m59.997511s** su un host CEST (+0200) — non ipotizzato, osservato
+  davvero. Nessun Dockerfile/compose imposta `TZ`, quindi è **latente sotto lo stack Docker
+  standard** ma **live** per chiunque esegua il binario direttamente su un host non-UTC (setup
+  normale di self-hosting). Riguarda ogni colonna `TIMESTAMP` dello schema via `internal/store`, non
+  solo `notifications.created_at` (dove il Round 24 l'ha misurato per primo). Fix possibili: migrare
+  le colonne a `TIMESTAMPTZ` (tocca le migrazioni) oppure impostare `NowFunc` di GORM su UTC in
+  `internal/store` (non tocca le migrazioni) — nessuno dei due fatto in questa fix wave, che si è
+  limitata a pinnare l'assert di regressione al meccanismo (`internal/domain/notification/service_test.go`)
+  e a farla eseguire davvero in CI (`TZ: Europe/Rome` sulla gamba Postgres).
+- **[APERTO — verificato 2026-09-23]** **(R24)** **27 file di test costruiscono ancora lo schema con
+  `AutoMigrate`** invece di `storetest.New` (il Round 24 ne ha convertiti solo 2: `issue` e
+  `notification`, i quattro domini con FK nullable meno `comment`/`issue_history` che vivono nello
+  stesso pacchetto `issue`). Migrarli il resto è opportunistico, non un round dedicato — ma **non
+  scala ingenuamente**: `storetest.New` fa una `CREATE DATABASE` + 23 migrazioni per test su
+  Postgres, e applicarlo a tutti e 27 senza ottimizzare renderebbe la gamba Postgres della matrice
+  molto più lenta. Un'ottimizzazione a **database template** (creare una volta uno schema migrato,
+  poi clonarlo per test via `CREATE DATABASE ... TEMPLATE ...` su Postgres) starebbe dietro
+  all'API esistente di `storetest.New` senza toccare i chiamanti — candidato naturale per chi
+  converte il prossimo blocco di file.
 
 ## Come far ripartire il lavoro
 

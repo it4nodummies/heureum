@@ -1,7 +1,6 @@
 package notification
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -66,10 +65,14 @@ func TestCreateStoresCreatedAtAsATimestamp(t *testing.T) {
 	// additionally fails if the skew is ever something other than the
 	// documented quirk — e.g. an unrelated multi-hour timestamp bug under
 	// the old 24h band would have slipped through undetected.
-	driver := os.Getenv("TEST_DB_DRIVER")
-	if driver == "" {
-		driver = "sqlite"
-	}
+	//
+	// NOTE for whoever eventually fixes the underlying quirk (migrating these
+	// columns to TIMESTAMPTZ, or setting GORM's NowFunc to UTC in
+	// internal/store, see docs/superpowers/STATE.md): that fix will make
+	// wantSkew wrong on Postgres and this assertion will start failing BY
+	// DESIGN. That failure is the fix working, not a regression — update
+	// wantSkew (it should become ~0 on both drivers) rather than reverting it.
+	driver := storetest.Driver()
 	var wantSkew time.Duration
 	if driver == "postgres" {
 		_, offsetSeconds := time.Now().Zone()

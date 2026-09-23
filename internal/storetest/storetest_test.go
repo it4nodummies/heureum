@@ -1,6 +1,30 @@
 package storetest
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+// TestNewHonoursTheSelectedDriver guards against the CI matrix silently
+// running SQLite twice: if TEST_DB_DRIVER is set but a typo, a future refactor
+// of dsnFor's switch, or a service container that fails to bind ever made New
+// fall back to (or stay on) a different driver than the one requested, every
+// other test in this package would still pass identically on either driver —
+// nothing else would notice. GORM's Dialector.Name() returns exactly "sqlite",
+// "postgres" or "mysql" for our three drivers (gorm.io/driver/sqlite@v1.6.0
+// sqlite.go, gorm.io/driver/postgres@v1.6.3 postgres.go,
+// gorm.io/driver/mysql@v1.6.0 mysql.go), which matches the TEST_DB_DRIVER
+// values this repo actually sets ("sqlite"/"postgres") one-for-one — verified
+// by reading each driver's Name() directly rather than assumed.
+func TestNewHonoursTheSelectedDriver(t *testing.T) {
+	want := os.Getenv("TEST_DB_DRIVER")
+	if want == "" {
+		t.Skip("no driver selected; the default path is covered by the other tests")
+	}
+	if got := New(t).Dialector.Name(); got != want {
+		t.Fatalf("TEST_DB_DRIVER=%q but the helper opened %q — the matrix is not testing what it claims", want, got)
+	}
+}
 
 func TestNewAppliesTheRealSchema(t *testing.T) {
 	db := New(t)

@@ -3,9 +3,23 @@
 // of a handful of models plus hand-written CREATE TABLE stubs.
 //
 // That distinction is the reason this package exists. The stubs carry no foreign
-// keys and no real column types, so three production-only defects passed every
-// gate in July 2026: an empty string written into a nullable FK, and an int64
-// written into a TIMESTAMP column. Both are impossible to write here.
+// keys and no real column types, so production-only defects passed every gate in
+// July 2026: an empty string written into a nullable FK, and an int64 written
+// into a TIMESTAMP column.
+//
+// What this actually guarantees, per driver:
+//
+//   - Real column types and NOT NULL/UNIQUE constraints, on every driver
+//     (New's DSN for SQLite carries "?_foreign_keys=on" — see sqliteDSN — so the
+//     type mismatch above is impossible here regardless of driver).
+//   - Referential integrity (foreign keys), on Postgres and MySQL always, and on
+//     SQLite ONLY because of that pragma: SQLite defaults PRAGMA foreign_keys to
+//     OFF, and neither store.New nor gorm.io/driver/sqlite ever turns it on, so
+//     without the pragma an insert referencing a nonexistent parent row would
+//     silently succeed here — exactly the class of bug the empty-string-FK
+//     defect above was. Verified directly: with the pragma off, that read is 0
+//     and such an insert succeeds; with it on (what New actually uses), the read
+//     is 1 and the same insert fails with "FOREIGN KEY constraint failed".
 //
 // This package is imported only by _test.go files. Never import it from
 // production code.
@@ -29,15 +43,26 @@ import (
 	"github.com/it4nodummies/heureum/internal/store"
 )
 
+// Driver returns the driver name this package's New will open — the value of
+// TEST_DB_DRIVER, or "sqlite" when it is unset. It is the single source of
+// truth for that default: tests that need to branch on the driver in effect
+// (e.g. to compute an expected value that only differs on one of them) should
+// call this instead of re-reading TEST_DB_DRIVER and re-deriving the "sqlite"
+// default themselves.
+func Driver() string {
+	driver := os.Getenv("TEST_DB_DRIVER")
+	if driver == "" {
+		driver = "sqlite"
+	}
+	return driver
+}
+
 // New returns a migrated, isolated database for this test, on the driver named by
 // TEST_DB_DRIVER ("sqlite" when unset). It registers its own cleanup.
 func New(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	driver := os.Getenv("TEST_DB_DRIVER")
-	if driver == "" {
-		driver = "sqlite"
-	}
+	driver := Driver()
 
 	dsn := dsnFor(t, driver)
 
@@ -140,9 +165,23 @@ func dsnFor(t *testing.T, driver string) string {
 // separate, independent database, which would make the schema invisible to
 // all but the first connection to grab it. t.TempDir() cleans itself up, so
 // there is nothing for this to register.
+//
+// "?_foreign_keys=on" is load-bearing, not decoration: neither store.New nor
+// gorm.io/driver/sqlite ever sets PRAGMA foreign_keys, and SQLite defaults it
+// OFF. Verified directly against this DSN: without the pragma,
+// "PRAGMA foreign_keys" reads 0 and an insert referencing a nonexistent
+// parent row SUCCEEDS; with it, the same read is 1 and the same insert fails
+// with "FOREIGN KEY constraint failed" — exactly the constraint class the
+// empty-string-FK defect (see the package doc) violated. Without this, the
+// helper would deliver real column types/NOT NULL/UNIQUE from the migrations
+// but silently skip referential integrity, on the one driver everybody runs
+// locally. mattn/go-sqlite3 opens with SQLITE_OPEN_URI, so the "file:" prefix
+// makes it parse the query string as PRAGMA-setting options rather than part
+// of the filename (see its Open() doc comment for the full "_foreign_keys"
+// option).
 func sqliteDSN(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(t.TempDir(), "test.db")
+	return "file:" + filepath.Join(t.TempDir(), "test.db") + "?_foreign_keys=on"
 }
 
 // postgresDSN creates a fresh database on the Postgres server named by

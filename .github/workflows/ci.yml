@@ -38,10 +38,17 @@ jobs:
           go-version-file: go.mod
       - run: go build ./...
       - run: go vet ./...
+      # TZ is set only on the postgres leg: GitHub runners default to UTC, which
+      # collapses the notification package's discardTimeZone skew assertion
+      # (internal/domain/notification/service_test.go) to "skew ≈ 0" — the same
+      # value it would have on a genuine bug, so that leg would never exercise
+      # the non-UTC branch the finding is actually about. sqlite has no such
+      # skew (no pgx codec involved), so it doesn't need this.
       - run: go test ./... -count=1
         env:
           TEST_DB_DRIVER: ${{ matrix.driver }}
           TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+          TZ: ${{ matrix.driver == 'postgres' && 'Europe/Rome' || '' }}
 
   gap-report:
     runs-on: ubuntu-latest

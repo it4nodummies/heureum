@@ -62,6 +62,9 @@ func driverForStore(s *Store) (database.Driver, string, error) {
 // migrateUp attempts to run migrations from each source, returning nil on the
 // first successful attempt, or the error from the last attempt if all fail.
 func migrateUp(drv database.Driver, name string, sources ...string) error {
+	if len(sources) == 0 {
+		return fmt.Errorf("migrate up: no sources supplied")
+	}
 	var err error
 	for _, source := range sources {
 		m, migErr := migrate.NewWithDatabaseInstance(source, name, drv)
@@ -80,9 +83,14 @@ func migrateUp(drv database.Driver, name string, sources ...string) error {
 		// the pool for its own use and never returns it, permanently costing 1 of the
 		// 25 connections configured in store.New — not a regression, just something a
 		// reader of this function should know.
+		//
+		// Once a source has opened, it is THE source: a SQL failure from m.Up() is a
+		// real error against a database golang-migrate has just marked dirty, and it
+		// must be returned as-is, never swallowed by falling through to the next
+		// candidate path (whose own open-error would overwrite it and hide the real
+		// failure from whoever reads the log).
 		if upErr := m.Up(); upErr != nil && upErr != migrate.ErrNoChange {
-			err = fmt.Errorf("migrate up: %w", upErr)
-			continue
+			return fmt.Errorf("migrate up: %w", upErr)
 		}
 		return nil
 	}
