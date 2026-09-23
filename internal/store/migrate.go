@@ -45,8 +45,23 @@ func driverFor(driverName string, db *sql.DB) (database.Driver, string, error) {
 	}
 }
 
-// RunMigrations applies every pending migration to the store's own connection.
+// RunMigrations applies every pending migration to the store's own connection,
+// looking for the migration files in the standard deployment and dev locations.
 func RunMigrations(s *Store) error {
+	var err error
+	for _, path := range migrationPaths {
+		if err = RunMigrationsFrom(s, path); err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
+// RunMigrationsFrom applies every pending migration from an explicit source URL
+// (e.g. "file:///abs/path/migrations") to the store's own connection. Callers that
+// know where the migrations are — tests in packages nested deeper than the paths
+// RunMigrations guesses — should use this directly.
+func RunMigrationsFrom(s *Store, sourceURL string) error {
 	sqlDB, err := s.DB.DB()
 	if err != nil {
 		return fmt.Errorf("migrate init: %w", err)
@@ -55,14 +70,7 @@ func RunMigrations(s *Store) error {
 	if err != nil {
 		return fmt.Errorf("migrate init: %w", err)
 	}
-
-	var m *migrate.Migrate
-	for _, path := range migrationPaths {
-		m, err = migrate.NewWithDatabaseInstance(path, name, drv)
-		if err == nil {
-			break
-		}
-	}
+	m, err := migrate.NewWithDatabaseInstance(sourceURL, name, drv)
 	if err != nil {
 		return fmt.Errorf("migrate init: %w", err)
 	}

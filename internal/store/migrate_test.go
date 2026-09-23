@@ -39,3 +39,40 @@ func TestRunMigrationsAppliesToTheOpenConnection(t *testing.T) {
 		t.Error("projects table missing: migrations did not apply to the store's own connection")
 	}
 }
+
+// RunMigrationsFrom lets a caller that knows where the migrations live say so,
+// instead of relying on the relative-path guesses that only work two levels deep.
+func TestRunMigrationsFromExplicitSource(t *testing.T) {
+	cfg := config.DBConfig{Driver: "sqlite", DSN: ":memory:"}
+	s, err := New(cfg, "test")
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer s.Close()
+	sqlDB, err := s.DB.DB()
+	if err != nil {
+		t.Fatalf("DB() error = %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+
+	// internal/store is two levels below the repository root.
+	if err := RunMigrationsFrom(s, "file://../../migrations"); err != nil {
+		t.Fatalf("RunMigrationsFrom() error = %v", err)
+	}
+	if !s.DB.Migrator().HasTable("projects") {
+		t.Error("projects table missing: migrations did not apply")
+	}
+}
+
+func TestRunMigrationsFromRejectsMissingSource(t *testing.T) {
+	cfg := config.DBConfig{Driver: "sqlite", DSN: ":memory:"}
+	s, err := New(cfg, "test")
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer s.Close()
+
+	if err := RunMigrationsFrom(s, "file://./definitely-not-a-migrations-dir"); err == nil {
+		t.Error("expected an error for a source directory that does not exist, got nil")
+	}
+}
