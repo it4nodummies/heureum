@@ -1,6 +1,7 @@
 package notification
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -43,22 +44,38 @@ func TestCreateStoresCreatedAtAsATimestamp(t *testing.T) {
 	createTestUser(t, db, "u-created-at", "created-at-user")
 	svc := NewService(db)
 
-	// Window is generous (well beyond any real UTC offset, +-14h) rather than
-	// tight, because notifications.created_at is TIMESTAMP WITHOUT TIME ZONE:
-	// GORM/pgx write the wall-clock digits of time.Now() (in the process's
-	// local zone) and Postgres round-trips those same digits back tagged as
-	// UTC, so on a non-UTC test host the read-back value is offset from the
-	// true instant by exactly the host's UTC offset. That is a real,
-	// systemic driver-level quirk (verified independently of this test) but
-	// it is store/pgx behavior affecting every TIMESTAMP column in the
-	// schema, not something local to this package, and production containers
-	// default to TZ=UTC where it does not manifest — so it is reported, not
-	// fixed, here. This window is wide enough to absorb that offset while
-	// still failing hard on the actual regression class this test guards:
-	// CreatedAt landing at the Unix epoch (an int64 written as seconds) or as
-	// the zero value.
-	before := time.Now().Add(-24 * time.Hour)
-	after := time.Now().Add(24 * time.Hour)
+	// notifications.created_at is TIMESTAMP WITHOUT TIME ZONE. pgx's timestamp
+	// codec (pgtype.Timestamp — see discardTimeZone in pgtype/timestamp.go)
+	// writes the wall-clock digits of time.Now() in the process's *local*
+	// zone, and Postgres round-trips those same digits back tagged as UTC.
+	// So on a non-UTC host the read-back value is offset from the true
+	// instant by exactly the host's local UTC offset: ~0 on SQLite (no such
+	// codec involved), ~= the host offset on Postgres. This is a real,
+	// systemic driver-level quirk (independently confirmed against pgx's own
+	// source, see the follow-up recommendation in task-4-report.md) — it
+	// affects every TIMESTAMP column in the schema via internal/store, not
+	// something local to this package, and it is reported rather than fixed
+	// here since a fix needs either a migration change or a store-level
+	// NowFunc change, both outside this task's scope.
+	//
+	// Assert the skew directly against that mechanism instead of tolerating
+	// a generic wide window: pinning the expectation to "zero on SQLite (no
+	// such codec involved), the host's own UTC offset on Postgres (the
+	// discardTimeZone round-trip), give or take a few seconds of test
+	// execution time" still passes everywhere a wide window would, but
+	// additionally fails if the skew is ever something other than the
+	// documented quirk — e.g. an unrelated multi-hour timestamp bug under
+	// the old 24h band would have slipped through undetected.
+	driver := os.Getenv("TEST_DB_DRIVER")
+	if driver == "" {
+		driver = "sqlite"
+	}
+	var wantSkew time.Duration
+	if driver == "postgres" {
+		_, offsetSeconds := time.Now().Zone()
+		wantSkew = time.Duration(offsetSeconds) * time.Second
+	}
+	const skewSlack = 5 * time.Second
 
 	if err := svc.Create("u-created-at", "welcome", "Welcome", "Welcome aboard", "/home"); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -87,8 +104,10 @@ func TestCreateStoresCreatedAtAsATimestamp(t *testing.T) {
 	if got.CreatedAt.IsZero() {
 		t.Fatalf("CreatedAt is zero, want a real timestamp")
 	}
-	if got.CreatedAt.Before(before) || got.CreatedAt.After(after) {
-		t.Errorf("CreatedAt = %v, want a timestamp within 24h of now (%v)", got.CreatedAt, time.Now())
+	skew := got.CreatedAt.Sub(time.Now())
+	if diff := skew - wantSkew; diff < -skewSlack || diff > skewSlack {
+		t.Errorf("CreatedAt skew from now = %v, want %v +/- %v (the host's own UTC offset, tolerated only because of the pgx discardTimeZone round-trip quirk on TIMESTAMP-without-timezone columns — a skew of any other size means something else is wrong); got.CreatedAt=%v now=%v",
+			skew, wantSkew, skewSlack, got.CreatedAt, time.Now())
 	}
 	if got.CreatedAt.Year() < 2000 {
 		t.Errorf("CreatedAt = %v, looks like an epoch/garbage value (e.g. an int64 written as Unix seconds), not a real timestamp", got.CreatedAt)
