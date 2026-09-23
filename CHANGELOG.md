@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-23
+
+Round 23 ("riapertura cantiere"): teams on projects (migration `000023`), a set of infrastructure
+fixes uncovered while raising the `go` directive to 1.26.0, an operations runbook, and a public
+statement of which parts of the Jira-compatible surface are stable.
+
 ### Added
 
 - **Teams associated to projects.** A team (a user group) can now be associated to a project with a
@@ -18,15 +24,46 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and a new **Teams** section in a project's Settings → Access tab. Backed by the new `project_teams`
   table (migration `000023`) and the Heureum-extension endpoints `GET/POST /project/{key}/teams` and
   `PUT/DELETE /project/{key}/teams/{groupId}`, gated by `ADMINISTER_PROJECTS`.
+- **`docs/OPERATIONS.md`**: a backup and restore procedure for the Docker stack, covering the
+  Postgres database, the `uploads` volume, and `deploy/docker/.env`.
 
 ### Changed
 
 - Issue detail now uses a pencil icon next to the title to enter edit mode, replacing the top-right
   "Edit" button, and shows Original estimate and Remaining estimate in view mode for field parity
   with edit mode.
+- The README now states which parts of the Jira-compatible surface are considered **stable**
+  (issues, projects, search/JQL, agile) versus best-effort — consult the gap report for what
+  exists today, and expect the rest to keep changing.
+- The project's architecture decisions are now recorded as ADRs under `docs/adr/`, starting with
+  the Jira-compat surface being frozen as a migration bridge (not grown further as a product
+  surface in its own right), no application-level multi-tenancy, and a selective stability promise
+  for the areas above.
 
 ### Fixed
 
+- **The e2e suite ran in an unsupported configuration.** `playwright.config.ts` set no `workers`,
+  so CI used Playwright's default (half the CPU count) — two workers against the single shared
+  SQLite backend that `scripts/e2e-backend.sh` starts. This is the write-contention flakiness the
+  project had documented since Round 13 and worked around manually with `--workers=1`. Adding one
+  spec file was enough to turn it into a hard failure; `workers` is now pinned to `1` in the config
+  itself.
+- **Migrations ran against a second, unrelated database connection.** `store.RunMigrations` built a
+  URL by concatenating `"sqlite3://"` with the DSN, which opened its own connection instead of
+  reusing the one the application had already opened; with a plain `:memory:` DSN the migrations
+  applied to a database the application never saw. The malformed URL
+  (`sqlite3://file::memory:?cache=shared`, where `:memory:` parses as a port) was also rejected
+  outright by Go 1.26.0, which blocked every dependency update that raised the `go` directive.
+  Migrations now run against the already-open `*sql.DB` through each driver's `WithInstance`.
+- **MySQL migrations would have failed on a fresh database.** golang-migrate's URL-based MySQL
+  driver forced `multiStatements=true` on the connection it opened; `WithInstance` uses the
+  application's own pool, where it defaults to `false`. Since each migration file is executed as a
+  single statement and `000001_init_schema.up.sql` contains 36, a fresh MySQL or MariaDB install
+  would have failed at startup with Error 1064. The DSN is now normalized to require
+  `multiStatements=true` when the connection is opened. No automated test exercises MySQL yet, so
+  treat this as reviewed rather than proven.
+- **Local attachments could be committed by accident.** `data/uploads/` (the default
+  `APP_UPLOADS_DIR`) was untracked but not ignored; `/data/` is now in `.gitignore`.
 - **Saving an unassigned issue returned HTTP 500 on Postgres.** The issue update path wrote an empty
   string (`""`) into the nullable `issues.assignee_id` foreign key instead of SQL `NULL`, violating
   `issues_assignee_id_fkey` (SQLSTATE 23503) whenever an issue with no assignee was edited. The same
@@ -47,6 +84,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added a Postgres-backed `postgres-smoke` CI job that runs `cmd/seed` against a real Postgres
   service container, exercising the notification insert path so this class of Go-model/DB-column
   type mismatch can no longer ship undetected.
+
+### Dependencies
+
+- **The `go` directive is now `1.26.0`** (was `1.25.0`) — building from source requires that
+  toolchain or newer.
+- **`@dnd-kit/sortable` 8.0.0 → 10.0.0**, crossing two major versions. It powers board and backlog
+  drag & drop; the full e2e suite passes on it, but review its changelog before relying on any
+  removed API.
+- CI: `actions/setup-go` 5 → 7, `docker/setup-buildx-action` 3 → 4.
+- Go: `golang.org/x/crypto` 0.54.0 → 0.57.0, `golang.org/x/oauth2` 0.36.0 → 0.37.0,
+  `github.com/getkin/kin-openapi` 0.142.0 → 0.149.0, `gorm.io/driver/postgres` 1.6.0 → 1.6.3.
+- Frontend: `react`/`@types/react` and `react-dom`/`@types/react-dom` → 19.3.0, `tailwindcss`
+  4.3.2 → 4.3.3, `@tailwindcss/postcss` 4.3.0 → 4.3.3.
 
 ## [1.1.0] - 2026-07-17
 
@@ -326,7 +376,8 @@ parity effort.
 - **SMTP and OAuth are not wired up.** The corresponding environment variables are
   reserved but not yet read by the server.
 
-[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/it4nodummies/heureum/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/it4nodummies/heureum/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/it4nodummies/heureum/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.2
 [1.0.1]: https://github.com/it4nodummies/heureum/releases/tag/v1.0.1
