@@ -39,8 +39,7 @@ func New(t *testing.T) *gorm.DB {
 		driver = "sqlite"
 	}
 
-	dsn, cleanup := dsnFor(t, driver)
-	t.Cleanup(cleanup)
+	dsn := dsnFor(t, driver)
 
 	s, err := store.New(config.DBConfig{Driver: driver, DSN: dsn}, "test")
 	if err != nil {
@@ -107,10 +106,20 @@ func uniqueDBName(t *testing.T) string {
 }
 
 // dsnFor returns a DSN pointing at a fresh, isolated database for this test on
-// the given driver, plus a cleanup function to remove it. Tests run in parallel
-// within a package and share nothing, so every call must produce a database no
-// other test can see.
-func dsnFor(t *testing.T, driver string) (string, func()) {
+// the given driver, and registers its own removal via t.Cleanup before
+// returning. Tests run in parallel within a package and share nothing, so
+// every call must produce a database no other test can see.
+//
+// Each driver's helper registers its drop-cleanup itself, immediately after
+// the CREATE DATABASE that makes it necessary succeeds — not by returning a
+// closure for the caller to register later. Anything that can still fail
+// between then and this function returning (DSN rewriting, DSN parsing for
+// the caller's own connection, ...) must not be able to leak the database by
+// t.Fatalf-ing (which calls runtime.Goexit) before a cleanup was ever
+// registered. New() then registers the application connection's Close() after
+// this returns, so Go's LIFO cleanup order still closes that connection
+// before dropping the database out from under it.
+func dsnFor(t *testing.T, driver string) string {
 	t.Helper()
 
 	switch driver {
@@ -122,25 +131,24 @@ func dsnFor(t *testing.T, driver string) (string, func()) {
 		return mysqlDSN(t)
 	default:
 		t.Fatalf("storetest: unsupported TEST_DB_DRIVER %q", driver)
-		return "", func() {}
+		return ""
 	}
 }
 
 // sqliteDSN returns a path inside t.TempDir(), never ":memory:" — store.New
 // configures a 25-connection pool, and every connection to ":memory:" is a
 // separate, independent database, which would make the schema invisible to
-// all but the first connection to grab it.
-func sqliteDSN(t *testing.T) (string, func()) {
+// all but the first connection to grab it. t.TempDir() cleans itself up, so
+// there is nothing for this to register.
+func sqliteDSN(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	// t.TempDir() cleans itself up; nothing else to do.
-	return path, func() {}
+	return filepath.Join(t.TempDir(), "test.db")
 }
 
 // postgresDSN creates a fresh database on the Postgres server named by
 // TEST_POSTGRES_DSN (an admin/superuser DSN, defaulting to a local dev
-// Postgres) and returns a DSN pointing at it plus a cleanup that drops it.
-func postgresDSN(t *testing.T) (string, func()) {
+// Postgres), registers its removal, and returns a DSN pointing at it.
+func postgresDSN(t *testing.T) string {
 	t.Helper()
 
 	adminDSN := os.Getenv("TEST_POSTGRES_DSN")
@@ -164,14 +172,10 @@ func postgresDSN(t *testing.T) (string, func()) {
 	}
 	_ = admin.Close()
 
-	u, err := url.Parse(adminDSN)
-	if err != nil {
-		t.Fatalf("storetest: parse TEST_POSTGRES_DSN %q as URL: %v", adminDSN, err)
-	}
-	u.Path = "/" + name
-	testDSN := u.String()
-
-	cleanup := func() {
+	// Register the drop *now*, before anything else in this function can fail:
+	// the database above already exists, so from this point on only a
+	// t.Cleanup registered before any subsequent t.Fatalf can prevent a leak.
+	t.Cleanup(func() {
 		admin, err := sql.Open("pgx", adminDSN)
 		if err != nil {
 			return
@@ -184,8 +188,102 @@ func postgresDSN(t *testing.T) (string, func()) {
 			name,
 		)
 		_, _ = admin.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgQuoteIdent(name)))
+	})
+
+	testDSN, err := postgresDSNWithDatabase(adminDSN, name)
+	if err != nil {
+		t.Fatalf("storetest: build postgres test DSN from TEST_POSTGRES_DSN %q: %v", adminDSN, err)
 	}
-	return testDSN, cleanup
+	return testDSN
+}
+
+// postgresDSNWithDatabase rewrites dsn to point at database name, accepting
+// either form Postgres/pgx accept: a URL ("postgres://user:pass@host:port/db
+// ?opts", "postgresql://...") or libpq keyword/value pairs ("host=... dbname=
+// ... ..."). net/url.Parse "succeeds" on a keyword/value string too — it just
+// silently produces a URL with only a Path (host, port and credentials
+// dropped) — so the two forms must be told apart before doing any rewriting,
+// not just fed to url.Parse and hoped for.
+func postgresDSNWithDatabase(dsn, name string) (string, error) {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return "", fmt.Errorf("parse %q as a postgres URL: %w", dsn, err)
+		}
+		u.Path = "/" + name
+		return u.String(), nil
+	}
+	return replacePostgresKeywordValueDBName(dsn, name), nil
+}
+
+// replacePostgresKeywordValueDBName replaces the dbname= token in a libpq
+// keyword/value DSN with name, appending one if the DSN doesn't already have
+// one. Tokens are whitespace-separated, but a value may be single-quoted to
+// contain whitespace (with \' and \\ as its only escapes) — see
+// https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+// — so this can't just strings.Fields the input.
+func replacePostgresKeywordValueDBName(dsn, name string) string {
+	tokens := splitKeywordValue(dsn)
+	replaced := false
+	for i, tok := range tokens {
+		if key, _, ok := strings.Cut(tok, "="); ok && key == "dbname" {
+			tokens[i] = "dbname=" + quoteKeywordValue(name)
+			replaced = true
+		}
+	}
+	if !replaced {
+		tokens = append(tokens, "dbname="+quoteKeywordValue(name))
+	}
+	return strings.Join(tokens, " ")
+}
+
+// splitKeywordValue splits a libpq keyword/value DSN into its "key=value"
+// tokens, treating whitespace inside a single-quoted value as part of the
+// token rather than a separator.
+func splitKeywordValue(dsn string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inQuotes := false
+	escaped := false
+	for _, r := range dsn {
+		switch {
+		case escaped:
+			cur.WriteRune(r)
+			escaped = false
+		case inQuotes && r == '\\':
+			cur.WriteRune(r)
+			escaped = true
+		case r == '\'':
+			inQuotes = !inQuotes
+			cur.WriteRune(r)
+		case !inQuotes && (r == ' ' || r == '\t' || r == '\n'):
+			if cur.Len() > 0 {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	if cur.Len() > 0 {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens
+}
+
+// quoteKeywordValue quotes v for use as a libpq keyword/value token if it
+// contains characters that would otherwise be misread (whitespace, quotes,
+// backslashes, or emptiness); otherwise it is returned unquoted.
+func quoteKeywordValue(v string) string {
+	if v == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(v, " \t\n'\\") {
+		return v
+	}
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `'`, `\'`)
+	return "'" + v + "'"
 }
 
 // pgQuoteIdent quotes a Postgres identifier, doubling any embedded quotes.
@@ -194,12 +292,12 @@ func pgQuoteIdent(name string) string {
 }
 
 // mysqlDSN creates a fresh database on the MySQL/MariaDB server named by
-// TEST_MYSQL_DSN (an admin DSN, defaulting to a local dev server) and returns a
-// DSN pointing at it plus a cleanup that drops it. The returned DSN keeps
+// TEST_MYSQL_DSN (an admin DSN, defaulting to a local dev server), registers
+// its removal, and returns a DSN pointing at it. The returned DSN keeps
 // whatever multiStatements setting the admin DSN had (store.New normalises it
 // to true via ensureMultiStatements regardless, so this never needs to set it
 // itself).
-func mysqlDSN(t *testing.T) (string, func()) {
+func mysqlDSN(t *testing.T) string {
 	t.Helper()
 
 	adminDSN := os.Getenv("TEST_MYSQL_DSN")
@@ -223,20 +321,21 @@ func mysqlDSN(t *testing.T) (string, func()) {
 	}
 	_ = admin.Close()
 
-	cfg, err := gomysql.ParseDSN(adminDSN)
-	if err != nil {
-		t.Fatalf("storetest: parse TEST_MYSQL_DSN %q: %v", adminDSN, err)
-	}
-	cfg.DBName = name
-	testDSN := cfg.FormatDSN()
-
-	cleanup := func() {
+	// Register the drop *now*, before anything else in this function can fail —
+	// same reasoning as postgresDSN above.
+	t.Cleanup(func() {
 		admin, err := sql.Open("mysql", adminDSN)
 		if err != nil {
 			return
 		}
 		defer func() { _ = admin.Close() }()
 		_, _ = admin.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", name))
+	})
+
+	cfg, err := gomysql.ParseDSN(adminDSN)
+	if err != nil {
+		t.Fatalf("storetest: parse TEST_MYSQL_DSN %q: %v", adminDSN, err)
 	}
-	return testDSN, cleanup
+	cfg.DBName = name
+	return cfg.FormatDSN()
 }
