@@ -129,11 +129,24 @@ Tag 1.0 già pubblicato (v1.0.2 rilasciata, `docs/RELEASE.md`); i round successi
 
 ## Follow-up aperti (non bloccanti)
 
-> Verificato integralmente il 2026-09-21 (Round 23): 27 aperti (di cui 1 non verificabile), 7
-> chiusi, 2 archiviati su 36 voci (la voce R9 è stata divisa in un CHIUSO e un APERTO durante la
+> Verificato integralmente il 2026-09-21 (Round 23): 28 aperti (di cui 1 non verificabile), 7
+> chiusi, 2 archiviati su 37 voci (la 37esima aggiunta il 2026-09-23: la release a metà automatizzata) (la voce R9 è stata divisa in un CHIUSO e un APERTO durante la
 > fix wave del Round 23, che ha corretto un timbro "verificato" non guadagnato — vedi entrata
 > Round 23 più sotto).
 > Una voce senza verdetto è una voce mai verificata: aggiungerne di nuove con il prefisso [APERTO].
+
+- **[APERTO — verificato 2026-09-23]** **La procedura di rilascio è metà automatizzata e metà
+  manuale, e nulla lo segnala.** Il push di un tag `v*` fa partire `release.yml`, che però ha un
+  solo job (`images`): costruisce e pubblica le tre immagini su GHCR e si ferma lì. La **release su
+  GitHub non viene creata da nessuno**: `docs/RELEASE.md:36` prescrive di crearla a mano incollando
+  la sezione del CHANGELOG, e così sono nate 1.0.0→1.1.0. Con la 1.2.0 il passo è stato dimenticato
+  ed è emerso solo perché qualcuno è andato a controllare: tag presente, immagini pubblicate,
+  pagina Releases ferma alla 1.1.0 ancora marcata `Latest`. È la stessa forma dei difetti che il
+  Round 23 ha smascherato altrove — un passo indispensabile che non fallisce, semplicemente non
+  avviene. Proposta: un job in `release.yml` con `permissions: contents: write` che estragga la
+  sezione `## [x.y.z]` da `CHANGELOG.md` e crei la release dal tag, così il rilascio è o tutto
+  verde o tutto rosso, mai a metà. Il workflow oggi dichiara `contents: read`, quindi il permesso
+  va alzato insieme al job.
 
 - **[APERTO — verificato 2026-09-21]** Reporter impostato alla creazione issue (il domain `issue.Service.Create` non ha parametro reporter).
 - **[APERTO — verificato 2026-09-21]** Harness contract: valutare `Options.IncludeResponseStatus=true` per far fallire su status non documentati.
