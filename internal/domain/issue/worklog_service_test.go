@@ -4,9 +4,8 @@ import "testing"
 
 func TestWorklogService_AddListDelete(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&Worklog{}); err != nil {
-		t.Fatal(err)
-	}
+	// issue_worklogs.issue_id is a real FK to issues(id).
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewWorklogService(db)
 
 	wl, err := svc.Add("issue-1", "user-1", `{"type":"doc","version":1,"content":[]}`, 3600)
@@ -63,9 +62,8 @@ func TestWorklogService_AddListDelete(t *testing.T) {
 // zero anche dopo aver loggato lavoro.
 func TestWorklogService_AddIncrementsIssueTimeSpent(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&Worklog{}); err != nil {
-		t.Fatal(err)
-	}
+	// issues.project_id is a real FK to projects(id).
+	createTestProject(t, db, "p1")
 	issueSvc := NewService(db)
 	iss, err := issueSvc.Create("DEMO", "p1", "Some issue", "", PriorityMedium, nil, nil)
 	if err != nil {
@@ -103,9 +101,8 @@ func TestWorklogService_AddIncrementsIssueTimeSpent(t *testing.T) {
 
 func TestWorklogService_AddDefaultsEmptyComment(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&Worklog{}); err != nil {
-		t.Fatal(err)
-	}
+	// issue_worklogs.issue_id is a real FK to issues(id).
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewWorklogService(db)
 
 	wl, err := svc.Add("issue-1", "", "", 60)

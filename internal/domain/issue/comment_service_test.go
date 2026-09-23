@@ -5,20 +5,12 @@ import (
 
 	"github.com/it4nodummies/heureum/internal/domain/notification"
 	"github.com/it4nodummies/heureum/internal/domain/user"
-	"gorm.io/driver/sqlite"
+	"github.com/it4nodummies/heureum/internal/storetest"
 	"gorm.io/gorm"
 )
 
 func newCommentTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&Issue{}, &Comment{}, &IssueHistory{}, &IssueWatcher{}, &user.User{}, &notification.Notification{}); err != nil {
-		t.Fatal(err)
-	}
-	return db
+	return storetest.New(t)
 }
 
 // TestAddCommentADFMentionNotifiesByID: un nodo ADF mention (attrs.id = user id)
@@ -32,6 +24,7 @@ func TestAddCommentADFMentionNotifiesByID(t *testing.T) {
 	userB := user.User{ID: "user-b", Email: "b@x.test", Username: "userb", DisplayName: "B", IsActive: true}
 	db.Create(&author)
 	db.Create(&userB)
+	createTestProject(t, db, "p1")
 	db.Create(&Issue{ID: "iss-1", ProjectID: "p1", Key: "DEMO-1", Title: "Test issue", SeqID: 10000})
 
 	notifSvc := notification.NewService(db)
@@ -69,6 +62,7 @@ func TestAddCommentMentionDedupe(t *testing.T) {
 	carol := user.User{ID: "carol-1", Email: "c@x.test", Username: "carol", DisplayName: "Carol", IsActive: true}
 	db.Create(&author)
 	db.Create(&carol)
+	createTestProject(t, db, "p1")
 	db.Create(&Issue{ID: "iss-1", ProjectID: "p1", Key: "DEMO-1", Title: "Test issue", SeqID: 10000})
 
 	notifSvc := notification.NewService(db)

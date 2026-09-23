@@ -4,9 +4,8 @@ import "testing"
 
 func TestRemoteLinkService_AddAndList(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&RemoteLink{}); err != nil {
-		t.Fatal(err)
-	}
+	// issue_remote_links.issue_id is a real FK to issues(id).
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewRemoteLinkService(db)
 
 	rl, err := svc.Add("issue-1", "system=http://acme.com&id=1", "https://example.com/doc", "Doc", "A summary", "causes")
@@ -46,9 +45,9 @@ func TestRemoteLinkService_AddAndList(t *testing.T) {
 
 func TestRemoteLinkService_Delete(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&RemoteLink{}); err != nil {
-		t.Fatal(err)
-	}
+	// issue_remote_links.issue_id is a real FK to issues(id). issue-2 is never
+	// created: the assertion below only needs it to not match, not to exist.
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewRemoteLinkService(db)
 
 	rl, err := svc.Add("issue-1", "", "https://example.com/doc", "Doc", "", "")
@@ -92,9 +91,6 @@ func TestRemoteLinkService_Delete(t *testing.T) {
 
 func TestRemoteLinkService_ListByIssueEmpty(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&RemoteLink{}); err != nil {
-		t.Fatal(err)
-	}
 	svc := NewRemoteLinkService(db)
 
 	links, err := svc.ListByIssue("no-such-issue")

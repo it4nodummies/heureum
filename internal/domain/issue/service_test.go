@@ -1,26 +1,82 @@
 package issue
 
 import (
+	"sync/atomic"
 	"testing"
 
-	"gorm.io/driver/sqlite"
+	"github.com/it4nodummies/heureum/internal/storetest"
 	"gorm.io/gorm"
 )
 
 func newIssueTestDB(t *testing.T) *gorm.DB {
+	return storetest.New(t)
+}
+
+// testSeqIDCounter hands out unique issues.seq_id values for helpers in this
+// package's tests that insert Issue rows directly (bypassing Service.Create,
+// which already guarantees uniqueness via nextSeqID) — issues.seq_id carries a
+// real unique index in the migrated schema.
+var testSeqIDCounter int64
+
+func nextTestSeqID() int64 {
+	return atomic.AddInt64(&testSeqIDCounter, 1) + 50000
+}
+
+// createTestProject inserts a minimal, valid projects row. The real schema
+// (unlike the AutoMigrate stubs these tests used to run against) has
+// issues.project_id, issue_types.project_id and labels.project_id as NOT NULL
+// foreign keys to projects(id) — tests that create those rows directly must
+// first create the project they claim to belong to. Idempotent, so callers
+// that share a project id across several setup calls don't need to track
+// whether it already exists.
+func createTestProject(t *testing.T, db *gorm.DB, id string) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
+	if err := db.Exec(
+		`INSERT INTO projects (id, name, key) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+		id, id, id,
+	).Error; err != nil {
+		t.Fatalf("createTestProject(%q): %v", id, err)
 	}
-	if err := db.AutoMigrate(&Issue{}, &IssueType{}, &Label{}, &IssueLabel{}, &IssueHistory{}); err != nil {
-		t.Fatal(err)
+}
+
+// createTestUser inserts a minimal, valid users row. Several nullable FKs
+// (assignee_id, actor_id, uploader_id, author_id, ...) reference users(id):
+// a test that assigns one of those columns to a literal id directly (rather
+// than through a service call that only ever writes ids of rows it created)
+// must first create that user.
+func createTestUser(t *testing.T, db *gorm.DB, id string) {
+	t.Helper()
+	if err := db.Exec(
+		`INSERT INTO users (id, email, username) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+		id, id+"@example.test", id,
+	).Error; err != nil {
+		t.Fatalf("createTestUser(%q): %v", id, err)
 	}
-	return db
+}
+
+// createTestIssue creates the project it belongs to (if not already present)
+// and a minimal, valid issues row with the given id. Several tests in this
+// package (worklogs, votes, remote links, attachments) reference a hardcoded
+// issue id like "issue-1" directly instead of going through Service.Create;
+// issues.project_id is a NOT NULL FK in the real schema, so that issue row
+// must actually exist.
+func createTestIssue(t *testing.T, db *gorm.DB, issueID, projectID string) {
+	t.Helper()
+	createTestProject(t, db, projectID)
+	if err := db.Create(&Issue{
+		ID:        issueID,
+		ProjectID: projectID,
+		Key:       issueID,
+		Title:     "test issue",
+		SeqID:     nextTestSeqID(),
+	}).Error; err != nil {
+		t.Fatalf("createTestIssue(%q): %v", issueID, err)
+	}
 }
 
 func TestCreateAssignsSeqID(t *testing.T) {
 	db := newIssueTestDB(t)
+	createTestProject(t, db, "p1")
 	svc := NewService(db)
 	i1, err := svc.Create("DEMO", "p1", "First", "", PriorityMedium, nil, nil)
 	if err != nil {
@@ -45,6 +101,10 @@ func TestCreateAssignsSeqID(t *testing.T) {
 // accepted on SQLite but violates the FK on Postgres (SQLSTATE 23503).
 func TestUpdateEmptyAssigneeStoresNull(t *testing.T) {
 	db := newIssueTestDB(t)
+	createTestProject(t, db, "p1")
+	// assignee_id is a real FK to users(id): assigning a literal id (rather than
+	// one Update itself generated) requires that user to actually exist.
+	createTestUser(t, db, "user-123")
 	svc := NewService(db)
 	iss, err := svc.Create("DEMO", "p1", "First", "", PriorityMedium, nil, nil)
 	if err != nil {
@@ -80,6 +140,7 @@ func TestUpdateEmptyAssigneeStoresNull(t *testing.T) {
 // FK on Postgres, which is why the changelog stayed empty there.
 func TestLogHistoryEmptyActorStoresNull(t *testing.T) {
 	db := newIssueTestDB(t)
+	createTestProject(t, db, "p1")
 	svc := NewService(db)
 	iss, err := svc.Create("DEMO", "p1", "First", "", PriorityMedium, nil, nil)
 	if err != nil {
