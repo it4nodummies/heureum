@@ -7,6 +7,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Teams associated to projects.** A team (a user group) can now be associated to a project with a
+  role (`admin`/`member`/`viewer`); every member of the team inherits that role on the project. A
+  user's effective role is the most permissive of their individual project role and any role
+  inherited through a team, and `authz.RequireProject` (plus read-scoping) resolves permissions from
+  that effective role — so team members can view and work the project's issues without an individual
+  membership row. Managed from the renamed **Teams** page (`/app/groups`, sidebar entry activated)
+  and a new **Teams** section in a project's Settings → Access tab. Backed by the new `project_teams`
+  table (migration `000023`) and the Heureum-extension endpoints `GET/POST /project/{key}/teams` and
+  `PUT/DELETE /project/{key}/teams/{groupId}`, gated by `ADMINISTER_PROJECTS`.
+
 ### Changed
 
 - Issue detail now uses a pencil icon next to the title to enter edit mode, replacing the top-right

@@ -8,6 +8,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/it4nodummies/heureum/internal/domain/group"
 	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
@@ -17,7 +18,12 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open db: %v", err)
 	}
-	db.AutoMigrate(&user.User{}, &Project{}, &ProjectMember{})
+	// ProjectTeam + group tables are required because MembershipSubquery unions
+	// team-inherited membership (project_teams ⋈ group_members).
+	if err := db.AutoMigrate(&user.User{}, &Project{}, &ProjectMember{}, &ProjectTeam{},
+		&group.Group{}, &group.GroupMember{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 	return db
 }
 

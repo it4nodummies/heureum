@@ -10,9 +10,12 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   projects as projectsApi,
+  projectTeams as projectTeamsApi,
+  groups as groupsApi,
   profile,
   type ProjectMember,
   type ProjectRole,
+  type ProjectTeam,
   type JiraUser,
 } from "@/lib/api";
 
@@ -66,6 +69,50 @@ export function AccessTab({ projectKey }: { projectKey: string }) {
       setDebouncedQuery("");
       setNewRole("member");
       invalidate();
+    },
+  });
+
+  // ── Teams (group→project role) ─────────────────────────────────────────────
+  const teams = useQuery({
+    queryKey: ["projectTeams", projectKey],
+    queryFn: () => projectTeamsApi.list(projectKey),
+  });
+  const invalidateTeams = () =>
+    qc.invalidateQueries({ queryKey: ["projectTeams", projectKey] });
+
+  const changeTeamRole = useMutation({
+    mutationFn: ({ groupId, role }: { groupId: string; role: ProjectRole }) =>
+      projectTeamsApi.updateRole(projectKey, groupId, role),
+    onSuccess: invalidateTeams,
+  });
+
+  const removeTeam = useMutation({
+    mutationFn: (groupId: string) => projectTeamsApi.remove(projectKey, groupId),
+    onSuccess: invalidateTeams,
+  });
+
+  // All teams (groups) available to associate, minus the already-associated ones.
+  const groupPicker = useQuery({
+    queryKey: ["groupPicker", ""],
+    queryFn: () => groupsApi.picker(""),
+  });
+
+  const [newTeamId, setNewTeamId] = useState("");
+  const [newTeamRole, setNewTeamRole] = useState<ProjectRole>("member");
+
+  const associatedGroupIds = new Set((teams.data ?? []).map((t) => t.groupId));
+  const availableTeams = (groupPicker.data?.groups ?? []).filter(
+    (g) => !associatedGroupIds.has(g.groupId)
+  );
+
+  const addTeam = useMutation({
+    mutationFn: ({ groupId, role }: { groupId: string; role: ProjectRole }) =>
+      projectTeamsApi.add(projectKey, groupId, role),
+    onSuccess: () => {
+      setNewTeamId("");
+      setNewTeamRole("member");
+      invalidateTeams();
+      qc.invalidateQueries({ queryKey: ["groupPicker", ""] });
     },
   });
 
@@ -200,6 +247,97 @@ export function AccessTab({ projectKey }: { projectKey: string }) {
         {add.isError && (
           <p className="text-sm text-red-600">
             {add.error instanceof Error ? add.error.message : "Failed to add member"}
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold text-slate-700">Teams</h3>
+        {teams.isLoading && <p className="py-2 text-sm text-slate-400">Loading teams…</p>}
+        {teams.isError && (
+          <p className="py-2 text-sm text-red-600">
+            {teams.error instanceof Error ? teams.error.message : "Failed to load teams"}
+          </p>
+        )}
+        <ul className="space-y-1" data-testid="teams-list">
+          {(teams.data ?? []).map((t: ProjectTeam) => (
+            <li
+              key={t.groupId}
+              data-testid="team-row"
+              className="flex items-center gap-3 border-b border-slate-100 py-2 text-sm"
+            >
+              <div className="min-w-0 flex-1">
+                <span className="text-[#1a1f36]">{t.name || t.groupId}</span>
+              </div>
+              <select
+                aria-label={`Role for ${t.name || t.groupId}`}
+                value={t.role}
+                onChange={(e) =>
+                  changeTeamRole.mutate({ groupId: t.groupId, role: e.target.value as ProjectRole })
+                }
+                className="rounded border border-slate-300 px-2 py-1 text-sm"
+              >
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => removeTeam.mutate(t.groupId)}
+                className="text-xs text-red-600 hover:underline"
+                aria-label={`Remove ${t.name || t.groupId}`}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+          {teams.data && teams.data.length === 0 && (
+            <li className="py-2 text-sm text-slate-400">No teams yet</li>
+          )}
+        </ul>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-700">Add team</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Team to add"
+            value={newTeamId}
+            onChange={(e) => setNewTeamId(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">Select a team…</option>
+            {availableTeams.map((g) => (
+              <option key={g.groupId} value={g.groupId}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="New team role"
+            value={newTeamRole}
+            onChange={(e) => setNewTeamRole(e.target.value as ProjectRole)}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          >
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => addTeam.mutate({ groupId: newTeamId, role: newTeamRole })}
+            disabled={!newTeamId || addTeam.isPending}
+            className="rounded bg-[#0052cc] px-4 py-1 text-sm text-white disabled:opacity-60"
+          >
+            {addTeam.isPending ? "Adding…" : "Add"}
+          </button>
+        </div>
+
+        {addTeam.isError && (
+          <p className="text-sm text-red-600">
+            {addTeam.error instanceof Error ? addTeam.error.message : "Failed to add team"}
           </p>
         )}
       </section>

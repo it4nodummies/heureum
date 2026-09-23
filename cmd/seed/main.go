@@ -417,8 +417,8 @@ func main() {
 
 	// Gruppo demo "developers" (idempotente), con l'admin come membro
 	grpSvc := group.NewService(s.DB)
-	var existingG group.Group
-	if err := s.DB.Where("name = ?", "developers").First(&existingG).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+	var devGroup group.Group
+	if err := s.DB.Where("name = ?", "developers").First(&devGroup).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 		g, cerr := grpSvc.Create("developers")
 		if cerr != nil {
 			log.Fatalf("seed group: %v", cerr)
@@ -426,9 +426,18 @@ func main() {
 		if aerr := grpSvc.AddUser(g.ID, admin.ID); aerr != nil {
 			log.Fatalf("seed group member: %v", aerr)
 		}
+		devGroup = *g
 		fmt.Println("created demo group")
 	} else if err != nil {
 		log.Fatalf("check demo group: %v", err)
+	}
+
+	// Associazione team demo (idempotente): il gruppo "developers" è team del
+	// progetto DEMO con ruolo member. Esercita il percorso di scrittura
+	// project_teams (migrazione 000023) — coperto anche dal job CI postgres-smoke.
+	// AddTeam è un upsert idempotente, sicuro da rieseguire.
+	if err := projSvc.AddTeam(demo.ID, devGroup.ID, project.RoleMember); err != nil {
+		log.Fatalf("seed project team association: %v", err)
 	}
 
 	// Notifica demo per l'admin (idempotente), così la campanella mostra qualcosa

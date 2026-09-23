@@ -62,6 +62,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	userH := handlers.NewUserHandler(db, cfg.BaseURL, chk)
 	avatarH := handlers.NewAvatarHandler(db, cfg.UploadsDir, cfg.BaseURL)
 	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
+	projectTeamH := handlers.NewProjectTeamHandler(projectSvc)
 
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, versionSvc, cfg.BaseURL)
 	commentSvc := issue.NewCommentService(db)
@@ -199,6 +200,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/api/3/project/{key}/members", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.ListMembers))))
 	mux.Handle("POST /rest/api/3/project/{key}/members", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.AddMember))))
 	mux.Handle("DELETE /rest/api/3/project/{key}/members/{userId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.RemoveMember))))
+	mux.Handle("GET /rest/api/3/project/{key}/teams", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectTeamH.List))))
+	mux.Handle("POST /rest/api/3/project/{key}/teams", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectTeamH.Add))))
+	mux.Handle("PUT /rest/api/3/project/{key}/teams/{groupId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectTeamH.UpdateRole))))
+	mux.Handle("DELETE /rest/api/3/project/{key}/teams/{groupId}", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectTeamH.Remove))))
 	mux.Handle("POST /rest/api/3/project/{key}/invites", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Invite))))
 	mux.Handle("PUT /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.StarProject))))
 	mux.Handle("DELETE /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.UnstarProject))))

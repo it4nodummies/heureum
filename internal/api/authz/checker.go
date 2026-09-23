@@ -47,8 +47,10 @@ func (c *Checker) RequireProject(userID, projectID, permKey string) error {
 	if c.isGlobalAdmin(userID) {
 		return nil
 	}
-	role, err := c.projects.GetRole(projectID, userID)
-	if err != nil {
+	// Ruolo effettivo = più permissivo tra individuale (project_members) e quelli
+	// ereditati dai team (project_teams ⋈ group_members). ok=false → nessun accesso.
+	role, ok := c.projects.EffectiveRole(userID, projectID)
+	if !ok {
 		return ErrForbidden
 	}
 	if permission.ForRole(string(role), false)[permKey] {
