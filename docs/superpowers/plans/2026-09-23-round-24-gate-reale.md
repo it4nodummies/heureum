@@ -526,3 +526,115 @@ Merging is the user's call. Present the CI result and stop.
 - **Spec coverage:** the spec's four R24 bullets map to Tasks 2 (shared helper on real migrations), 3 and 4 (the FK-nullable domains — note that `comment` and `issue_history` live inside `internal/domain/issue`, so Task 3 covers three of the four areas, and Task 4 covers the fourth), and 5 (the CI matrix, extended to MySQL per the Round 23 finding). The fifth bullet, per-worker Playwright databases, is explicitly out of scope by the user's decision recorded above; it must be added to the follow-up list in Task 6 Step 3 so it is not silently lost. Task 1 is an enabler discovered while planning: the existing `RunMigrations` cannot find the migrations from a package three levels deep.
 - **Measured, not assumed:** 23 migration files; a full apply on in-memory SQLite takes 10–20 ms, so per-test migration is affordable for the ~23 tests in `internal/domain/issue`; the suite has ~380 test functions in total, which is why this round converts two packages rather than all 33 files.
 - **The prediction this plan makes:** converting to the real schema will surface at least one test that was passing only because the stub had no constraints. If nothing at all turns red in Task 3, be suspicious that the helper is not actually being used, and verify before reporting success.
+
+---
+
+### Task 7: Make the migrations run on MySQL
+
+Added on 2026-09-24 after the repository owner chose to make MySQL support real rather than withdraw the claim. `README.md:33` advertises "PostgreSQL or MySQL/MariaDB in production" and MySQL has never been able to apply migration 000001. Because it has never succeeded, **no MySQL deployment of Heureum can exist**, so there is no installed base to break; golang-migrate does not checksum migration files, so editing them does not disturb SQLite or Postgres installations that have already applied them.
+
+**Files:**
+- Modify: the 14 `migrations/*.up.sql` files listed below
+- Test: none new — the proof is that the migrations apply on a real MySQL server
+
+**Interfaces:**
+- Consumes: `storetest.New(t)` with `TEST_DB_DRIVER=mysql`, which already exists and is already wired for MySQL.
+- Produces: migrations that apply on MySQL 8. Task 8 depends on this landing first.
+
+- [ ] **Step 1: Confirm the inventory before changing anything**
+
+```bash
+grep -cE '(TEXT|JSON|BLOB)[[:space:]]+(NOT NULL[[:space:]]+)?DEFAULT[[:space:]]+'"'" migrations/*.up.sql | grep -v ':0'
+grep -ohE '(TEXT|JSON|BLOB)[[:space:]]+(NOT NULL[[:space:]]+)?DEFAULT[[:space:]]+'"'"'[^'"'"']*'"'" migrations/*.up.sql | sed -E "s/'[^']*'/'X'/" | sort | uniq -c
+```
+
+Expected, and already measured: **69 occurrences across 14 files**, in exactly two syntactic forms — `TEXT DEFAULT 'X'` (49) and `TEXT NOT NULL DEFAULT 'X'` (20). Per file: `000001` 46, `000002` 3, `000005` 3, `000010` 5, `000014` 2, `000021` 2, and one each in `000004`, `000008`, `000011`, `000012`, `000013`, `000015`, `000018`, `000023`. If your counts differ, stop and report — the tree has changed under this plan.
+
+- [ ] **Step 2: Apply the transformation**
+
+Wrap the literal in parentheses: `TEXT DEFAULT '{}'` becomes `TEXT DEFAULT ('{}')`, and `TEXT NOT NULL DEFAULT ''` becomes `TEXT NOT NULL DEFAULT ('')`. Nothing else changes — not the column type, not the value, not `NOT NULL`, not the ordering.
+
+Facts already verified on real containers, so you need not re-derive them: MySQL 8 **rejects** the bare form with Error 1101 and **accepts** the parenthesised form; SQLite and Postgres 16 accept **both** and produce an identical default; and all three accept the parenthesised form inside `ALTER TABLE ... ADD COLUMN` as well as `CREATE TABLE`, with and without `NOT NULL` — which matters because 10 of the 69 are in `ADD COLUMN` statements.
+
+Leave the `.down.sql` files alone: they contain no such defaults (verified).
+
+Do not touch anything else in these files. A migration file that has shipped is not a refactoring opportunity.
+
+- [ ] **Step 3: Prove the migrations now apply on MySQL**
+
+```bash
+docker run -d --name r24-mysql -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 mysql:8
+# wait for mysqladmin ping to answer, then:
+TEST_DB_DRIVER=mysql go test ./internal/storetest/ -v -count=1
+```
+
+**Expect this to fail at least once, and treat each failure as the next discovery.** The 69 defaults are the only *known* blocker, and they are known only because they are the first statement MySQL rejects — the first table of the first migration. Fixing them may simply reveal the next incompatibility behind it. Iterate: read the error, identify which migration and which statement, verify the portable form on all three engines before adopting it, and record every additional change in your report with the same evidence. Note that `CREATE TABLE IF NOT EXISTS` (4 occurrences) is accepted by MySQL and needs nothing; `CREATE INDEX IF NOT EXISTS` is not, but R22 already removed that form.
+
+- [ ] **Step 4: Prove nothing regressed on the other two**
+
+```bash
+go test ./... -count=1
+TEST_DB_DRIVER=postgres go test ./internal/storetest/... ./internal/domain/issue/... ./internal/domain/notification/... -count=1
+```
+
+Both must be green. A behavioural change on SQLite or Postgres means the transformation was not value-preserving somewhere — find it, do not paper over it.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add migrations/
+git commit -m "fix(migrations): parenthesise text defaults so MySQL can apply the schema"
+```
+
+---
+
+### Task 8: Put MySQL behind the gate
+
+Making MySQL work is worth nothing if nothing keeps it working — that is the whole thesis of this round.
+
+**Files:**
+- Modify: `.github/workflows/ci.yml`
+- Modify: `internal/domain/issue/service_test.go`
+- Modify: `internal/storetest/storetest.go`
+- Modify: `docs/superpowers/STATE.md`
+
+**Interfaces:**
+- Consumes: Task 7's migrations.
+- Produces: a third green matrix leg.
+
+- [ ] **Step 1: Make the issue-domain fixtures dialect-portable**
+
+`internal/domain/issue/service_test.go`'s `createTestProject`/`createTestUser` use raw SQL with two MySQL problems in one statement: `ON CONFLICT (id) DO NOTHING` is Postgres/SQLite-only, and `key` is a MySQL reserved word that is unquoted there. This was deferred twice as blocked on the MySQL decision; the decision has landed.
+
+Replace the raw SQL with GORM's dialect-aware API — `db.Table("projects").Create(map[string]any{...})` with `clause.OnConflict{DoNothing: true}` — exactly as `internal/storetest/storetest_test.go` already does. GORM quotes identifiers per dialect and emits the right upsert syntax for each engine.
+
+- [ ] **Step 2: Close the quoting asymmetry in the helper**
+
+`internal/storetest/storetest.go` quotes Postgres identifiers through a proper helper that doubles embedded quotes, but interpolates the MySQL identifier directly into backticks. Safe today because the generated names are alphanumerics and underscores only, but asymmetric and a trap for whoever next changes the name generator. Give MySQL an equivalent quoting helper.
+
+- [ ] **Step 3: Add the MySQL matrix leg**
+
+Add `mysql` to `strategy.matrix.driver`, attach a `mysql:8` service container with a health check in the same style as the existing `postgres:16` one, and set `TEST_MYSQL_DSN` on the `go test` step alongside the existing variables. Read `internal/storetest/storetest.go` for the exact env var name and its default rather than trusting this text. Keep `fail-fast: false`.
+
+Note the detail that makes MySQL slower to start than Postgres: `mysql:8` needs a longer health-check start period before it accepts connections. Give it enough retries that the leg does not fail intermittently on a cold runner — an intermittently red leg is worse than no leg.
+
+- [ ] **Step 4: Verify all three legs locally**
+
+```bash
+go test ./... -count=1
+TEST_DB_DRIVER=postgres go test ./internal/storetest/... ./internal/domain/issue/... ./internal/domain/notification/... -count=1
+TEST_DB_DRIVER=mysql    go test ./internal/storetest/... ./internal/domain/issue/... ./internal/domain/notification/... -count=1
+```
+
+All three green. Validate the workflow parses. Remove any container you started; touch none you did not.
+
+- [ ] **Step 5: Tell the truth in STATE.md**
+
+The `[APERTO]` entry recording that MySQL has never worked is now closed. Mark it `[CHIUSO — verificato 2026-09-24: <the commit that fixed it>, matrice CI backend (mysql)]` using the file's existing convention, keep the section's count line consistent, and extend the Round 24 entry to cover Tasks 7 and 8. State plainly what is now true: MySQL applies the schema and is covered by CI. Do **not** claim more than that — no MySQL deployment has ever run this application, so "the migrations apply and the domain tests pass" is the honest scope of the claim.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add .github/workflows/ci.yml internal/domain/issue/service_test.go internal/storetest/storetest.go docs/superpowers/STATE.md
+git commit -m "ci: add the mysql matrix leg and make test fixtures dialect-portable"
+```
