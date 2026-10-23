@@ -10,10 +10,19 @@
 # a named volume; locally it is real user data and must never be committed.
 /data/
 
-# Local AI-assistant instructions. Deliberately untracked: this is a public
-# repository, and what guidance a maintainer gives their tooling is a personal
-# working choice, not project configuration.
+# AI-assistant (Claude Code) config — EXCLUDED from this PUBLIC GitHub repo.
+#
+# NOTA (2026-10-23): questo repo GitHub (it4nodummies/heureum) è PUBBLICO. La
+# config di tooling AI (CLAUDE.md, settings di progetto, hook) resta fuori dal
+# repo pubblico per scelta.
+#   • Sul futuro remote FORGEJO PRIVATO (homelab, da creare) si può committare
+#     tutto — CLAUDE.md, .claude/settings.json, .claude/hooks/ — tracciandoli lì
+#     (es. `git add -f`) perché primario e privato.
+#   • Per qualunque release/mirror OPEN-SOURCE su GitHub pubblico questi file
+#     vanno SEMPRE esclusi (lasciare queste righe in .gitignore).
 /CLAUDE.md
+/.claude/settings.json
+/.claude/hooks/
 
 # macOS
 .DS_Store
