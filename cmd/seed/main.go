@@ -171,7 +171,7 @@ func main() {
 	wfSvc := workflow.NewService(s.DB)
 	wf, err := wfSvc.GetWorkflow(demo.ID)
 	if err != nil {
-		wf, err = wfSvc.CreateDefaultWorkflow(demo.ID)
+		wf, err = wfSvc.CreateDefaultWorkflow(demo.ID, true)
 		if err != nil {
 			log.Fatalf("seed default workflow: %v", err)
 		}

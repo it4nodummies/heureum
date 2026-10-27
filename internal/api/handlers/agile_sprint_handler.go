@@ -74,6 +74,11 @@ func (h *AgileSprintHandler) Create(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{"originBoardId not found"}, nil)
 		return
 	}
+	// Gli sprint esistono solo sulle board scrum: una board kanban rifiuta la creazione.
+	if b.Type != "scrum" {
+		v3.WriteError(w, http.StatusBadRequest, []string{"Sprints are only available on scrum boards."}, nil)
+		return
+	}
 	uid := middleware.UserIDFromContext(r.Context())
 	if err := h.chk.RequireProject(uid, b.ProjectID, permission.ManageSprints); err != nil {
 		authz.WriteForbidden(w)
