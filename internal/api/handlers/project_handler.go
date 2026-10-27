@@ -130,7 +130,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// → resolution → board). This runs AFTER the projects row exists; on ANY
 	// error we roll back the half-created project and fail loudly with 500.
 	scaffold := func() error {
-		if _, err := h.wfSvc.CreateDefaultWorkflow(p.ID); err != nil {
+		if _, err := h.wfSvc.CreateDefaultWorkflow(p.ID, p.Type != project.TypeBusiness); err != nil {
 			return fmt.Errorf("create default workflow: %w", err)
 		}
 		if err := h.issueSvc.SeedStandardTypes(p.ID, typeSetFor(p.Type)); err != nil {

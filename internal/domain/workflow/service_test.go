@@ -37,7 +37,7 @@ func TestCreateDefaultWorkflowCreatesStatusesAndTransitions(t *testing.T) {
 	db := setupWorkflowTestDB(t)
 	svc := NewService(db)
 
-	wf, err := svc.CreateDefaultWorkflow("proj-2")
+	wf, err := svc.CreateDefaultWorkflow("proj-2", false)
 	if err != nil {
 		t.Fatalf("CreateDefaultWorkflow() error = %v", err)
 	}
@@ -67,6 +67,114 @@ func TestCreateDefaultWorkflowCreatesStatusesAndTransitions(t *testing.T) {
 	}
 }
 
+// transitionEdge is a (name, from-name, to-name) tuple used to assert transitions
+// independently of the generated status/transition UUIDs.
+type transitionEdge struct {
+	name string
+	from string
+	to   string
+}
+
+func collectTransitionEdges(t *testing.T, svc *Service, wf *Workflow) map[transitionEdge]bool {
+	t.Helper()
+	idToName := map[string]string{}
+	for _, s := range wf.Statuses {
+		idToName[s.ID] = s.Name
+	}
+	transitions, err := svc.GetTransitions(wf.ID)
+	if err != nil {
+		t.Fatalf("GetTransitions() error = %v", err)
+	}
+	edges := map[transitionEdge]bool{}
+	for _, tr := range transitions {
+		edges[transitionEdge{name: tr.Name, from: idToName[tr.FromStatusID], to: idToName[tr.ToStatusID]}] = true
+	}
+	return edges
+}
+
+func TestCreateDefaultWorkflow_WithReview_HasFourStatesAndTransitions(t *testing.T) {
+	db := setupWorkflowTestDB(t)
+	svc := NewService(db)
+
+	wf, err := svc.CreateDefaultWorkflow("proj-review", true)
+	if err != nil {
+		t.Fatalf("CreateDefaultWorkflow() error = %v", err)
+	}
+
+	gotNames := make([]string, 0, len(wf.Statuses))
+	for _, s := range wf.Statuses {
+		gotNames = append(gotNames, s.Name)
+	}
+	wantNames := []string{"TO DO", "IN PROGRESS", "TO BE TESTED", "DONE"}
+	if len(gotNames) != len(wantNames) {
+		t.Fatalf("status names = %v, want %v", gotNames, wantNames)
+	}
+	for i := range wantNames {
+		if gotNames[i] != wantNames[i] {
+			t.Fatalf("status order = %v, want %v", gotNames, wantNames)
+		}
+	}
+
+	for _, s := range wf.Statuses {
+		if s.Name == "TO BE TESTED" && s.Category != CategoryInProgress {
+			t.Errorf("TO BE TESTED category = %q, want %q", s.Category, CategoryInProgress)
+		}
+	}
+
+	edges := collectTransitionEdges(t, svc, wf)
+	want := []transitionEdge{
+		{"Start Progress", "TO DO", "IN PROGRESS"},
+		{"Stop Progress", "IN PROGRESS", "TO DO"},
+		{"Ready to Test", "IN PROGRESS", "TO BE TESTED"},
+		{"Back to In Progress", "TO BE TESTED", "IN PROGRESS"},
+		{"Done", "TO BE TESTED", "DONE"},
+	}
+	for _, e := range want {
+		if !edges[e] {
+			t.Errorf("missing transition %+v (have %v)", e, edges)
+		}
+	}
+}
+
+func TestCreateDefaultWorkflow_WithoutReview_IsThreeState(t *testing.T) {
+	db := setupWorkflowTestDB(t)
+	svc := NewService(db)
+
+	wf, err := svc.CreateDefaultWorkflow("proj-noreview", false)
+	if err != nil {
+		t.Fatalf("CreateDefaultWorkflow() error = %v", err)
+	}
+
+	gotNames := make([]string, 0, len(wf.Statuses))
+	for _, s := range wf.Statuses {
+		gotNames = append(gotNames, s.Name)
+	}
+	wantNames := []string{"TO DO", "IN PROGRESS", "DONE"}
+	if len(gotNames) != len(wantNames) {
+		t.Fatalf("status names = %v, want %v", gotNames, wantNames)
+	}
+	for i := range wantNames {
+		if gotNames[i] != wantNames[i] {
+			t.Fatalf("status order = %v, want %v", gotNames, wantNames)
+		}
+	}
+
+	edges := collectTransitionEdges(t, svc, wf)
+	want := []transitionEdge{
+		{"Start Progress", "TO DO", "IN PROGRESS"},
+		{"Stop Progress", "IN PROGRESS", "TO DO"},
+		{"Done", "IN PROGRESS", "DONE"},
+	}
+	if len(edges) != len(want) {
+		t.Fatalf("transition count = %d (%v), want %d", len(edges), edges, len(want))
+	}
+	for _, e := range want {
+		if !edges[e] {
+			t.Errorf("missing transition %+v (have %v)", e, edges)
+		}
+	}
+}
+
 // TestCreateDefaultWorkflowPropagatesStatusError verifies that a failure of an
 // inner AddStatus is returned instead of being silently discarded. We induce it
 // by migrating only the Workflow table (not WorkflowStatus): CreateWorkflow
@@ -83,7 +191,7 @@ func TestCreateDefaultWorkflowPropagatesStatusError(t *testing.T) {
 	}
 	svc := NewService(db)
 
-	wf, err := svc.CreateDefaultWorkflow("proj-err")
+	wf, err := svc.CreateDefaultWorkflow("proj-err", false)
 	if err == nil {
 		t.Fatalf("expected error when WorkflowStatus table is missing, got nil (wf=%v)", wf)
 	}

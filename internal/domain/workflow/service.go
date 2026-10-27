@@ -179,7 +179,12 @@ func (s *Service) GetWorkflowByProjectID(projectID string) (*Workflow, error) {
 	return s.GetWorkflow(projectID)
 }
 
-func (s *Service) CreateDefaultWorkflow(projectID string) (*Workflow, error) {
+// CreateDefaultWorkflow scaffolds the default workflow for a project. When
+// includeReview is true it adds a QA "TO BE TESTED" state (CategoryInProgress)
+// between IN PROGRESS and DONE, with Ready to Test / Back to In Progress / Done
+// transitions routed through it; when false it produces the classic three-state
+// TO DO → IN PROGRESS → DONE workflow.
+func (s *Service) CreateDefaultWorkflow(projectID string, includeReview bool) (*Workflow, error) {
 	wf, err := s.CreateWorkflow(projectID, "Default Workflow")
 	if err != nil {
 		return nil, err
@@ -193,15 +198,39 @@ func (s *Service) CreateDefaultWorkflow(projectID string) (*Workflow, error) {
 	if err != nil {
 		return nil, err
 	}
-	done, err := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
-	if err != nil {
-		return nil, err
-	}
 
 	if _, err := s.AddTransition(wf.ID, todo.ID, inProg.ID, "Start Progress", false, false); err != nil {
 		return nil, err
 	}
 	if _, err := s.AddTransition(wf.ID, inProg.ID, todo.ID, "Stop Progress", false, false); err != nil {
+		return nil, err
+	}
+
+	if includeReview {
+		toBeTested, err := s.AddStatus(wf.ID, "TO BE TESTED", CategoryInProgress, "#8B5CF6")
+		if err != nil {
+			return nil, err
+		}
+		done, err := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := s.AddTransition(wf.ID, inProg.ID, toBeTested.ID, "Ready to Test", false, false); err != nil {
+			return nil, err
+		}
+		if _, err := s.AddTransition(wf.ID, toBeTested.ID, inProg.ID, "Back to In Progress", false, false); err != nil {
+			return nil, err
+		}
+		if _, err := s.AddTransition(wf.ID, toBeTested.ID, done.ID, "Done", false, true); err != nil {
+			return nil, err
+		}
+
+		return s.GetWorkflow(projectID)
+	}
+
+	done, err := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
+	if err != nil {
 		return nil, err
 	}
 	if _, err := s.AddTransition(wf.ID, inProg.ID, done.ID, "Done", false, true); err != nil {
