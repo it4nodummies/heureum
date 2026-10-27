@@ -61,7 +61,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	chk := authz.New(userSvc, projectSvc, issueSvc, boardSvc, sprintSvc, autoSvc, cfSvc, versionSvc)
 	userH := handlers.NewUserHandler(db, cfg.BaseURL, chk)
 	avatarH := handlers.NewAvatarHandler(db, cfg.UploadsDir, cfg.BaseURL)
-	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, chk, cfg.BaseURL)
+	projectH := handlers.NewProjectHandler(projectSvc, wfSvc, boardSvc, issueSvc, chk, cfg.BaseURL)
 	projectTeamH := handlers.NewProjectTeamHandler(projectSvc)
 
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, versionSvc, cfg.BaseURL)

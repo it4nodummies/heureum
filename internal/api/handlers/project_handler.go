@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,20 +11,43 @@ import (
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
+	"github.com/it4nodummies/heureum/internal/domain/board"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/user"
 	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
 
 type ProjectHandler struct {
-	svc     *project.Service
-	wfSvc   *workflow.Service
-	chk     *authz.Checker
-	baseURL string
+	svc      *project.Service
+	wfSvc    *workflow.Service
+	boardSvc *board.Service
+	issueSvc *issue.Service
+	chk      *authz.Checker
+	baseURL  string
 }
 
-func NewProjectHandler(svc *project.Service, wfSvc *workflow.Service, chk *authz.Checker, baseURL string) *ProjectHandler {
-	return &ProjectHandler{svc: svc, wfSvc: wfSvc, chk: chk, baseURL: baseURL}
+func NewProjectHandler(svc *project.Service, wfSvc *workflow.Service, boardSvc *board.Service, issueSvc *issue.Service, chk *authz.Checker, baseURL string) *ProjectHandler {
+	return &ProjectHandler{svc: svc, wfSvc: wfSvc, boardSvc: boardSvc, issueSvc: issueSvc, chk: chk, baseURL: baseURL}
+}
+
+// typeSetFor returns the default issue-type names seeded for a project of the
+// given template type: software projects (scrum/kanban) get the full set, a
+// business project gets the lean Task/Bug/Subtask set (no Epic/Story).
+func typeSetFor(t project.Type) []string {
+	if t == project.TypeBusiness {
+		return []string{"Task", "Bug", "Subtask"}
+	}
+	return []string{"Epic", "Story", "Task", "Bug", "Subtask"}
+}
+
+// boardTypeFor maps a project template type to its default board type: scrum
+// projects get a scrum board, kanban and business projects get a kanban board.
+func boardTypeFor(t project.Type) string {
+	if t == project.TypeScrum {
+		return "scrum"
+	}
+	return "kanban"
 }
 
 // isGlobalAdmin reports whether uid is a global admin, and thus exempt from
@@ -104,8 +126,28 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{err.Error()}, nil)
 		return
 	}
-	if _, err := h.wfSvc.CreateDefaultWorkflow(p.ID); err != nil {
-		log.Printf("failed to create default workflow for project %s: %v", p.Key, err)
+	// Scaffold the project so it is immediately usable (workflow → issue types
+	// → resolution → board). This runs AFTER the projects row exists; on ANY
+	// error we roll back the half-created project and fail loudly with 500.
+	scaffold := func() error {
+		if _, err := h.wfSvc.CreateDefaultWorkflow(p.ID); err != nil {
+			return fmt.Errorf("create default workflow: %w", err)
+		}
+		if err := h.issueSvc.SeedStandardTypes(p.ID, typeSetFor(p.Type)); err != nil {
+			return fmt.Errorf("seed issue types: %w", err)
+		}
+		if _, err := h.issueSvc.EnsureResolution("Done", "Work is complete"); err != nil {
+			return fmt.Errorf("ensure resolution: %w", err)
+		}
+		if _, err := h.boardSvc.Create(p.ID, p.Name+" board", boardTypeFor(p.Type), nil); err != nil {
+			return fmt.Errorf("create board: %w", err)
+		}
+		return nil
+	}
+	if err := scaffold(); err != nil {
+		_ = h.svc.Delete(p.Key)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to initialize project: " + err.Error()}, nil)
+		return
 	}
 	v3.WriteJSON(w, http.StatusCreated, map[string]any{
 		"self": h.baseURL + "/rest/api/3/project/" + fmt.Sprint(p.SeqID),

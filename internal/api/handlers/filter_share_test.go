@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/it4nodummies/heureum/internal/api/middleware"
+	"github.com/it4nodummies/heureum/internal/domain/board"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/search"
 	"github.com/it4nodummies/heureum/internal/domain/user"
@@ -103,7 +105,7 @@ func TestListMembers_HydratesUserInfo(t *testing.T) {
 		t.Fatalf("add member: %v", err)
 	}
 
-	h := NewProjectHandler(svc, workflow.NewService(db), nil, "http://localhost:8080")
+	h := NewProjectHandler(svc, workflow.NewService(db), board.NewService(db), issue.NewService(db), nil, "http://localhost:8080")
 	req := httptest.NewRequest("GET", "/rest/api/3/project/MEM/members", nil)
 	req.SetPathValue("key", "MEM")
 	w := httptest.NewRecorder()
