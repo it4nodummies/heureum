@@ -131,6 +131,59 @@ func (s *Service) CreateProject(in CreateInput) (*Project, error) {
 	return p, nil
 }
 
+// Delete hard-deletes a project and its full object graph by key — memberships,
+// issue types, boards (with their columns and column-status join rows), and
+// workflows (with their statuses and transitions) — then the project row, all in
+// one transaction. Used to roll back a half-created project when post-create
+// scaffolding (workflow/types/board) fails, so no orphaned child rows with a
+// dangling project_id are left behind. This does NOT rely on FK ON DELETE
+// CASCADE, which is off under the SQLite driver on this branch; every child is
+// deleted explicitly so cleanup is robust on every driver. A missing project is
+// a no-op. Child tables without an in-package Go model are addressed by raw name
+// to keep this package decoupled from board/workflow/issue.
+func (s *Service) Delete(key string) error {
+	key = strings.ToUpper(key)
+	var p Project
+	if err := s.db.Where("key = ?", key).First(&p).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	pid := p.ID
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Boards: column-status join rows, then columns, then the boards.
+		if err := tx.Exec(`DELETE FROM board_column_statuses WHERE column_id IN (SELECT id FROM board_columns WHERE board_id IN (SELECT id FROM boards WHERE project_id = ?))`, pid).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`DELETE FROM board_columns WHERE board_id IN (SELECT id FROM boards WHERE project_id = ?)`, pid).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`DELETE FROM boards WHERE project_id = ?`, pid).Error; err != nil {
+			return err
+		}
+		// Workflows: statuses and transitions, then the workflows.
+		if err := tx.Exec(`DELETE FROM workflow_statuses WHERE workflow_id IN (SELECT id FROM workflows WHERE project_id = ?)`, pid).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`DELETE FROM workflow_transitions WHERE workflow_id IN (SELECT id FROM workflows WHERE project_id = ?)`, pid).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`DELETE FROM workflows WHERE project_id = ?`, pid).Error; err != nil {
+			return err
+		}
+		// Issue types.
+		if err := tx.Exec(`DELETE FROM issue_types WHERE project_id = ?`, pid).Error; err != nil {
+			return err
+		}
+		// Memberships, then the project row itself.
+		if err := tx.Where("project_id = ?", pid).Delete(&ProjectMember{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", pid).Delete(&Project{}).Error
+	})
+}
+
 // Restore un-archives a project identified by key.
 func (s *Service) Restore(key string) error {
 	return s.db.Model(&Project{}).Where("key = ?", strings.ToUpper(key)).Update("is_archived", false).Error

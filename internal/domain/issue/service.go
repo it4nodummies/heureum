@@ -431,6 +431,39 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 	return it.ID, nil
 }
 
+// SeedStandardTypes crea (idempotente) un tipo issue per ciascun nome nel
+// progetto, delegando a TypeIDByName — che fa get-or-create per nome e inferisce
+// icon/isSubtask. Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
+// errore incontrato.
+func (s *Service) SeedStandardTypes(projectID string, names []string) error {
+	for _, name := range names {
+		if _, err := s.TypeIDByName(projectID, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// EnsureResolution garantisce (idempotente) l'esistenza di una resolution GLOBALE
+// con quel nome: se esiste già ritorna il suo id, altrimenti inserisce una riga
+// (id uuid, name, description) in `resolutions` e ritorna il nuovo id. Mirror
+// dell'insert "Done" di cmd/seed. La tabella resolutions non ha un model Go: vi
+// si accede via db.Table("resolutions"), come ResolutionIDByName.
+func (s *Service) EnsureResolution(name, description string) (string, error) {
+	if id, ok := s.ResolutionIDByName(name); ok {
+		return id, nil
+	}
+	id := uuid.New().String()
+	if err := s.db.Table("resolutions").Create(map[string]any{
+		"id":          id,
+		"name":        name,
+		"description": description,
+	}).Error; err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
 // ResolutionIDByName restituisce l'id della resolution con quel nome (case-insensitive).
 func (s *Service) ResolutionIDByName(name string) (string, bool) {
 	var row struct{ ID string }

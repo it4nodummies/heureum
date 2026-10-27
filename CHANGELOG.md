@@ -7,6 +7,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Zero-config project creation.** `POST /rest/api/3/project` now makes a project immediately
+  usable: after the project row is created, the handler scaffolds a default workflow
+  (`TO DO`/`IN PROGRESS`/`DONE`), a set of standard issue types, a global `Done` resolution, and a
+  default board — in that order — so a user can create a project and drag an issue on its board
+  without ever opening Settings. The scaffold fails loudly (no silently-swallowed errors) and, on
+  any step failing, the half-created project is deleted (full-graph cleanup) and the request
+  returns 500 — no half-created projects. The scrum/kanban/business templates now produce genuinely
+  different configurations: the board type is `scrum` for scrum and `kanban` for kanban/business,
+  and the issue-type set is `Epic, Story, Task, Bug, Subtask` for software templates (scrum/kanban)
+  vs `Task, Bug, Subtask` for business. The `POST /project` request/response shape is unchanged
+  (still `{self,id,key}`); the workflow is uniform across templates for now. The project-overview
+  "Create board" prompt is kept only as a fallback for legacy board-less projects.
+
 ## [1.2.0] - 2026-09-23
 
 Round 23 ("riapertura cantiere"): teams on projects (migration `000023`), a set of infrastructure

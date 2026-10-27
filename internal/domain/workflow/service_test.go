@@ -67,6 +67,31 @@ func TestCreateDefaultWorkflowCreatesStatusesAndTransitions(t *testing.T) {
 	}
 }
 
+// TestCreateDefaultWorkflowPropagatesStatusError verifies that a failure of an
+// inner AddStatus is returned instead of being silently discarded. We induce it
+// by migrating only the Workflow table (not WorkflowStatus): CreateWorkflow
+// succeeds, then the first AddStatus Create fails. With the old `x, _ :=` code
+// the discarded nil status would be dereferenced (panic); the fixed code must
+// return the error.
+func TestCreateDefaultWorkflowPropagatesStatusError(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	if err := db.AutoMigrate(&Workflow{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	svc := NewService(db)
+
+	wf, err := svc.CreateDefaultWorkflow("proj-err")
+	if err == nil {
+		t.Fatalf("expected error when WorkflowStatus table is missing, got nil (wf=%v)", wf)
+	}
+	if wf != nil {
+		t.Errorf("expected nil workflow on error, got %v", wf)
+	}
+}
+
 func TestAddAndRemoveStatus(t *testing.T) {
 	db := setupWorkflowTestDB(t)
 	svc := NewService(db)

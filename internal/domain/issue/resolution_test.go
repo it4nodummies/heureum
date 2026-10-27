@@ -19,6 +19,57 @@ func resDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+// resolutionsTableDB returns an in-memory DB with the global `resolutions`
+// table created (there is no Go model struct for it — it's accessed via
+// db.Table("resolutions"), mirroring ResolutionIDByName and cmd/seed).
+func resolutionsTableDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.Exec(`CREATE TABLE resolutions (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT)`).Error; err != nil {
+		t.Fatalf("create resolutions: %v", err)
+	}
+	return db
+}
+
+func TestEnsureResolutionIdempotent(t *testing.T) {
+	db := resolutionsTableDB(t)
+	svc := NewService(db)
+
+	id, err := svc.EnsureResolution("Done", "Work is complete")
+	if err != nil {
+		t.Fatalf("EnsureResolution: %v", err)
+	}
+	if id == "" {
+		t.Fatal("EnsureResolution returned empty id")
+	}
+
+	var count int64
+	if err := db.Table("resolutions").Where("LOWER(name) = LOWER(?)", "Done").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("resolutions row count = %d, want 1", count)
+	}
+
+	// Second call must return the SAME id and not duplicate.
+	id2, err := svc.EnsureResolution("Done", "Work is complete")
+	if err != nil {
+		t.Fatalf("EnsureResolution (second call): %v", err)
+	}
+	if id2 != id {
+		t.Errorf("second id = %q, want %q (same resolution)", id2, id)
+	}
+	if err := db.Table("resolutions").Where("LOWER(name) = LOWER(?)", "Done").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("after re-run resolutions row count = %d, want 1 (no duplicate)", count)
+	}
+}
+
 func TestSetResolution(t *testing.T) {
 	db := resDB(t)
 	svc := NewService(db)
