@@ -32,7 +32,8 @@ async function createProjectWithBoard(page: Page): Promise<number> {
   await page.locator(`a[href="/app/projects/${key}"]`).click();
   await page.waitForURL(new RegExp(`/app/projects/${key}$`));
 
-  await page.getByRole("button", { name: "Create board" }).click();
+  // R25 zero-config: the project is created with a default board already, so there is
+  // no "Create board" step — the Board tab is a link immediately.
   const tabs = page.locator('[data-testid="project-header-tabs"]');
   await expect(tabs.getByRole("link", { name: "Board" })).toBeVisible();
   const boardHref = await tabs.getByRole("link", { name: "Board" }).getAttribute("href");
