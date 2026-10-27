@@ -431,6 +431,19 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 	return it.ID, nil
 }
 
+// SeedStandardTypes crea (idempotente) un tipo issue per ciascun nome nel
+// progetto, delegando a TypeIDByName — che fa get-or-create per nome e inferisce
+// icon/isSubtask. Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
+// errore incontrato.
+func (s *Service) SeedStandardTypes(projectID string, names []string) error {
+	for _, name := range names {
+		if _, err := s.TypeIDByName(projectID, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ResolutionIDByName restituisce l'id della resolution con quel nome (case-insensitive).
 func (s *Service) ResolutionIDByName(name string) (string, bool) {
 	var row struct{ ID string }
