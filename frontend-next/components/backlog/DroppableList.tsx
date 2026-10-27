@@ -15,6 +15,8 @@ export function DroppableList({
   emptyLabel,
   header,
   testId,
+  hideSelect = false,
+  renderAction,
 }: {
   containerId: string;
   items: string[];
@@ -24,6 +26,10 @@ export function DroppableList({
   emptyLabel: string;
   header?: ReactNode;
   testId: string;
+  // Optional: hide the per-row bulk-select checkbox (kanban flat backlog).
+  hideSelect?: boolean;
+  // Optional: a trailing per-row action rendered after the summary.
+  renderAction?: (issue: SearchIssue) => ReactNode;
 }) {
   const { setNodeRef } = useDroppable({ id: containerId });
   return (
@@ -35,7 +41,14 @@ export function DroppableList({
             const issue = issuesByKey[key];
             if (!issue) return null;
             return (
-              <IssueCard key={key} issue={issue} selected={selected.has(key)} onToggleSelect={onToggleSelect} />
+              <IssueCard
+                key={key}
+                issue={issue}
+                selected={selected.has(key)}
+                onToggleSelect={onToggleSelect}
+                hideSelect={hideSelect}
+                action={renderAction?.(issue)}
+              />
             );
           })}
           {items.length === 0 && <p className="py-2 text-sm text-slate-400">{emptyLabel}</p>}
