@@ -109,6 +109,43 @@ Gap report attuale: **114 endpoint path-match conformi** + **87 estensioni** su 
   verificare il fix MySQL contro un server MySQL/MariaDB reale, non solo l'unit test puro — nessun
   ambiente CI lo esercita ancora end-to-end.
 
+- **Round 25 — Zero-config** ✅ (piano: `docs/superpowers/plans/2026-10-27-round-25-zero-config.md`;
+  branch `feat/round-25-zero-config`; design `docs/superpowers/specs/2026-09-21-direzione-prodotto-design.md`
+  § "R25 — Zero-config"). Obiettivo: un progetto appena creato è **immediatamente usabile** — si crea
+  un progetto e si trascina una issue sulla sua board **senza mai aprire Settings**. **Orchestrazione
+  nello scaffold del create handler** (`internal/api/handlers/project_handler.go`): dopo la riga
+  `projects`, l'handler esegue in ordine **workflow → issue types → resolution → board** — (1)
+  `wfSvc.CreateDefaultWorkflow` (ora con errori propagati, niente più `log.Printf` che inghiotte),
+  (2) `issueSvc.SeedStandardTypes` (idempotente, get-or-create via `TypeIDByName`), (3)
+  `issueSvc.EnsureResolution("Done", …)` (idempotente, tabella globale `resolutions`), (4)
+  `boardSvc.Create`. **Fail-loud + rollback full-graph**: su QUALSIASI errore di uno step l'handler
+  chiama `project.Service.Delete(key)` e risponde 500 — nessun progetto mezzo-creato. Le colonne
+  della board si rendono già 1:1 dagli status del workflow, quindi nessun seeding di colonne. **Shape
+  contratto invariata**: `POST /project` continua a restituire esattamente `{self,id,key}` (contract
+  test verdi). **Decisioni per-template** (guidate da `project.Type`): **board type** scrum→`scrum`,
+  kanban→`kanban`, business→`kanban`; **set issue type** software (scrum/kanban) = 5
+  (`Epic, Story, Task, Bug, Subtask`), business = 3 (`Task, Bug, Subtask`); **workflow uniforme**
+  (`TO DO`/`IN PROGRESS`/`DONE`) per ogni template. **Frontend**: il prompt "Create board" nel
+  `ProjectOverview.tsx` è ora **solo un fallback legacy** (reso quando `boards.list` è vuota per il
+  progetto, via `boardsList.isSuccess && !board`) — morto per i progetti nuovi che hanno già la
+  board. **E2E di accettazione** in `e2e/board.spec.ts` ("new project is usable without opening
+  Settings"): crea un progetto scrum via `CreateProjectModal`, verifica che la tab Board è già un
+  link (non lo stato disabled/"Create board"), apre la board, crea una issue (la lands nella colonna
+  iniziale `TO DO`), la `dragBetween` verso `IN PROGRESS` (transizione valida "Start Progress") e
+  asserisce lo spostamento — tutto senza visitare `/settings`; rimpiazza il vecchio test manuale
+  "create board action on project overview" ora obsoleto. **Gate**: `go build/vet/test ./...` verde;
+  `npm run build` frontend verde; gapreport **matched=119, extra=97** no-drift (R25 non aggiunge
+  rotte); E2E scritto e validato in collection (`--list`) ma **non eseguibile in locale** (porta 8080
+  occupata da un servizio ssh-forwardato estraneo che risponde 404 su `/healthz` → `e2e-backend.sh`
+  non può fare bind e Playwright va in timeout sul webServer) → validazione demandata a CI GitHub +
+  CD Forgejo. **Follow-up residui:** (a) `issue.Service.ResolutionIDByName` confonde l'errore DB con
+  il not-found (ritorna `("", false)` in entrambi i casi) — pre-esistente, basso rischio perché
+  `EnsureResolution` nel peggiore dei casi tenta un insert; (b) il **workflow resta uniforme** tra i
+  template (workflow per-template rinviati, fuori scopo R25); (c) `project.Service.Delete` fa pulizia
+  esplicita e ordinata dei figli (board/colonne/status-join, workflow/status/transizioni, issue type,
+  membership, poi il progetto) in transazione **perché l'enforcement FK di SQLite è spento su questo
+  branch** — con i vincoli FK reali un `ON DELETE CASCADE` basterebbe.
+
 ## Prossimo: direzione decisa (2026-09-21) — R23 → R24 → R25
 
 **STATO MERGE (2026-07-17):** `main` contiene ora l'INTERA parity **R13→R22**. Storia dei merge: PR #17 (`feat/frontend-next`→`main`) mergiata quando il branch era a **R17** (merge-commit `c5eb516`) → main ebbe R13-R17; poi R18-R22 sono proseguiti sul branch e sono stati mergiati con **PR #18** (merge-commit `e9f68f2`, 2026-07-17T15:32Z) → main ora ha R13-R22. `feat/frontend-next` è a **0 commit avanti** di `main` (completamente integrato). Migrazioni su main: fino a **000022**. CI di #18 tutta verde (backend/gap-report/frontend/e2e). **Ultimo tag pubblico: ancora `v1.0.2`** — `main` è avanti rispetto al tag (candidato prossima release **v1.1.0**, non ancora taggato). Da qui in avanti la sequenza è quella decisa il 2026-09-21 (design document sopra):

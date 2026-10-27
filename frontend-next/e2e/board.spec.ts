@@ -36,38 +36,77 @@ test("backlog page lists sprints controls and creates a sprint", async ({ page }
   await expect(page.getByRole("button", { name: "Start sprint" }).first()).toBeVisible();
 });
 
-test("create board action on project overview unlocks board and backlog", async ({ page }) => {
+// R25 zero-config acceptance: a brand-new project is immediately usable — it is
+// scaffolded with a default board + workflow + issue types on POST /project, so a
+// user can create it, open its board and drag an issue WITHOUT ever visiting any
+// /settings route or clicking a manual "Create board" action (which no longer
+// appears for new projects — the old "create board on overview" flow it replaces
+// is now dead because every new project already has a board).
+test("new project is usable without opening Settings", async ({ page }) => {
   await login(page);
 
-  // Il progetto DEMO seedato ha già una board: creiamo un progetto nuovo per
-  // esercitare il percorso "nessuna board ancora" → Create board.
+  // Unique per run: the Playwright webServer/DB is reused across invocations
+  // (reuseExistingServer), so a fixed key would collide with a prior run.
+  const suffix = Date.now().toString().slice(-6);
+  const key = `ZC${suffix}`;
+  const name = `Zero Config ${suffix}`;
+  const summary = `Zero Config Issue ${suffix}`;
+
+  // Create a scrum project via CreateProjectModal (scrum is the default template).
   await page.getByRole("button", { name: /create project/i }).click();
   const modal = page.locator("div.fixed.inset-0.z-50");
   await expect(modal.getByRole("heading", { name: /select project type/i })).toBeVisible();
   await modal.getByRole("button", { name: "Next" }).click();
   await expect(modal.getByRole("heading", { name: "Create project" })).toBeVisible();
-  await modal.locator('input[placeholder="My awesome project"]').fill("No Board Project");
-  await modal.locator('input[placeholder="MAP"]').fill("NOBRD");
+  await modal.locator('input[placeholder="My awesome project"]').fill(name);
+  await modal.locator('input[placeholder="MAP"]').fill(key);
   await modal.getByRole("button", { name: "Create project" }).click();
-  await expect(page.getByText("No Board Project")).toBeVisible();
+  await expect(page.getByText(name)).toBeVisible();
 
-  await page.locator('a[href="/app/projects/NOBRD"]').click();
-  await page.waitForURL(/\/app\/projects\/NOBRD$/);
+  // Open the project overview.
+  await page.locator(`a[href="/app/projects/${key}"]`).click();
+  await page.waitForURL(new RegExp(`/app/projects/${key}$`));
 
+  // Zero-config: the Board tab is ALREADY a link to the scaffolded board, NOT the
+  // disabled "no board yet" state — and no "Create board" prompt is shown.
   const tabs = page.locator('[data-testid="project-header-tabs"]');
-  // Niente board ancora: Board/Backlog non sono link (disabled), il prompt di
-  // creazione è visibile con il nome di default precompilato.
-  await expect(tabs.getByText("Board")).toBeVisible();
-  await expect(tabs.getByRole("link", { name: "Board" })).toHaveCount(0);
-  await expect(page.getByLabel("Board name")).toHaveValue("No Board Project board");
-
-  await page.getByRole("button", { name: "Create board" }).click();
-
-  // Dopo la creazione, Board/Backlog si sbloccano e puntano alla nuova board.
   await expect(tabs.getByRole("link", { name: "Board" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create board" })).toHaveCount(0);
   const boardHref = await tabs.getByRole("link", { name: "Board" }).getAttribute("href");
   expect(boardHref).toMatch(/^\/app\/boards\/\d+$/);
   await expect(tabs.getByRole("link", { name: "Backlog" })).toHaveAttribute("href", `${boardHref}/backlog`);
+
+  // Open the board (no Settings visit).
+  await tabs.getByRole("link", { name: "Board" }).click();
+  await page.waitForURL(/\/app\/boards\/\d+$/);
+  await expect(page.getByRole("heading", { name: new RegExp(name) })).toBeVisible();
+
+  // Create an issue in this project via the shared header's Create issue modal —
+  // the project is fixed here, so there is no project picker.
+  await page.getByRole("button", { name: "Create issue" }).click();
+  const issueModal = page.locator("div.fixed.inset-0.z-50");
+  await expect(issueModal.getByRole("heading", { name: "Create issue" })).toBeVisible();
+  await expect(issueModal.getByLabel("Project")).toHaveCount(0);
+  await issueModal.locator("#issue-summary").fill(summary);
+  await issueModal.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(issueModal).toHaveCount(0);
+
+  // The new issue lands in the default workflow's initial "TO DO" column (the
+  // create handler auto-assigns the project workflow's todo-category status).
+  const todo = page.getByTestId("column-TO DO");
+  const card = todo.locator('[data-testid^="card-"]').filter({ hasText: summary });
+  await expect(card).toBeVisible();
+  const cardTestId = await card.getAttribute("data-testid");
+  if (!cardTestId) throw new Error("created card not found in TO DO column");
+  const cardKey = cardTestId.replace("card-", "");
+
+  // Drag the card to the adjacent "IN PROGRESS" column — a valid "Start Progress"
+  // transition in the scaffolded default workflow — and assert it moved.
+  await dragBetween(page, cardTestId, "column-IN PROGRESS");
+
+  await expect(page.getByTestId("move-error")).not.toBeVisible();
+  await expect(page.getByTestId("column-IN PROGRESS").getByTestId(`card-${cardKey}`)).toBeVisible();
+  await expect(page.getByTestId("column-TO DO").getByTestId(`card-${cardKey}`)).toHaveCount(0);
 });
 
 test("create issue from backlog appears in the backlog list", async ({ page }) => {
