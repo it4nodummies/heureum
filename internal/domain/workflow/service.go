@@ -185,13 +185,28 @@ func (s *Service) CreateDefaultWorkflow(projectID string) (*Workflow, error) {
 		return nil, err
 	}
 
-	todo, _ := s.AddStatus(wf.ID, "TO DO", CategoryTodo, "#6B7280")
-	inProg, _ := s.AddStatus(wf.ID, "IN PROGRESS", CategoryInProgress, "#3B82F6")
-	done, _ := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
+	todo, err := s.AddStatus(wf.ID, "TO DO", CategoryTodo, "#6B7280")
+	if err != nil {
+		return nil, err
+	}
+	inProg, err := s.AddStatus(wf.ID, "IN PROGRESS", CategoryInProgress, "#3B82F6")
+	if err != nil {
+		return nil, err
+	}
+	done, err := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
+	if err != nil {
+		return nil, err
+	}
 
-	s.AddTransition(wf.ID, todo.ID, inProg.ID, "Start Progress", false, false)
-	s.AddTransition(wf.ID, inProg.ID, todo.ID, "Stop Progress", false, false)
-	s.AddTransition(wf.ID, inProg.ID, done.ID, "Done", false, true)
+	if _, err := s.AddTransition(wf.ID, todo.ID, inProg.ID, "Start Progress", false, false); err != nil {
+		return nil, err
+	}
+	if _, err := s.AddTransition(wf.ID, inProg.ID, todo.ID, "Stop Progress", false, false); err != nil {
+		return nil, err
+	}
+	if _, err := s.AddTransition(wf.ID, inProg.ID, done.ID, "Done", false, true); err != nil {
+		return nil, err
+	}
 
 	return s.GetWorkflow(projectID)
 }
