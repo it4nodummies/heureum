@@ -2,6 +2,7 @@ package issue
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"github.com/it4nodummies/heureum/internal/adf"
 )
 
 type Service struct {
@@ -60,7 +63,7 @@ func (s *Service) Create(projectKey, projectID, title, description string, prior
 		ProjectID:       projectID,
 		Key:             key,
 		Title:           title,
-		DescriptionJSON: fmt.Sprintf(`{"content":"%s"}`, description),
+		DescriptionJSON: descriptionJSONForStorage(description),
 		Priority:        priority,
 		ParentID:        parentID,
 		TypeID:          typeID,
@@ -73,6 +76,30 @@ func (s *Service) Create(projectKey, projectID, title, description string, prior
 	s.logHistory(issue.ID, "", "created", "", key)
 	s.emit("issue_created", issue)
 	return issue, nil
+}
+
+// descriptionJSONForStorage normalizes the description Create receives into
+// the format issues.description_json holds: an ADF document as valid JSON —
+// the same thing Update stores. The handler marshals the request's ADF and
+// passes the JSON string, which is stored as-is; plain text (cmd/seed,
+// programmatic callers) is wrapped into an ADF doc via json.Marshal, never by
+// formatting it into a JSON literal (which produced invalid JSON as soon as
+// the text contained a quote — every ADF description created from the UI).
+// An empty description keeps the schema default "{}", which the v3 mapping
+// renders as "no description".
+func descriptionJSONForStorage(description string) string {
+	if description == "" {
+		return "{}"
+	}
+	if strings.HasPrefix(strings.TrimSpace(description), "{") && json.Valid([]byte(description)) {
+		return description
+	}
+	b, err := json.Marshal(adf.FromText(description))
+	if err != nil {
+		// adf.Node is plain data; Marshal cannot fail. Keep the invariant anyway.
+		return "{}"
+	}
+	return string(b)
 }
 
 func (s *Service) GetByKey(key string) (*Issue, error) {

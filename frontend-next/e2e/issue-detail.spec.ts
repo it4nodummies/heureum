@@ -262,7 +262,15 @@ test("Create issue modal: crea una issue con description, priority e assignee im
 
   await expect(page.getByTestId("field-priority")).toHaveText("High");
   await expect(page.getByTestId("field-assignee")).toHaveText("Ada Admin");
-  await expect(page.getByText("Created from the rich create modal e2e test.")).toBeVisible();
+  // Exact text of the rendered description, not a substring match: when the
+  // backend stored the create-time description as broken JSON, the detail
+  // page rendered the raw JSON string — which still CONTAINED the typed
+  // sentence, so a substring `getByText` kept passing.
+  const description = page
+    .getByRole("heading", { name: "Description" })
+    .locator("..")
+    .locator("div.prose");
+  await expect(description).toHaveText("Created from the rich create modal e2e test.");
 });
 
 test("Create issue modal: 'Create another' resetta summary/description e mantiene il modale aperto", async ({

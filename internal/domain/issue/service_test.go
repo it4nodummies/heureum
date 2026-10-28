@@ -1,9 +1,12 @@
 package issue
 
 import (
+	"encoding/json"
+	"reflect"
 	"sync/atomic"
 	"testing"
 
+	"github.com/it4nodummies/heureum/internal/adf"
 	"github.com/it4nodummies/heureum/internal/storetest"
 	"gorm.io/gorm"
 )
@@ -220,5 +223,100 @@ func TestLogHistoryEmptyActorStoresNull(t *testing.T) {
 	}
 	if titleRow.ActorID != nil {
 		t.Errorf("ActorID = %q, want nil (blank actor)", *titleRow.ActorID)
+	}
+}
+
+// TestCreate_StoresValidADFDescription pins the storage invariant of
+// issues.description_json: the column holds the ADF document itself, as valid
+// JSON, exactly as Update stores it. The handler marshals the request's ADF
+// and hands the JSON string to Create; Create must persist it unchanged — not
+// wrap it in the legacy {"content":"..."} envelope. Doing that wrap with
+// fmt.Sprintf produced INVALID JSON (the inner quotes were never escaped), so
+// every description typed in the create modal came back as raw JSON text.
+func TestCreate_StoresValidADFDescription(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "proj-adf")
+	svc := NewService(db)
+
+	doc := adf.Node{Type: "doc", Version: 1, Content: []adf.Node{{
+		Type: "paragraph",
+		Content: []adf.Node{
+			{Type: "text", Text: "Hello "},
+			{Type: "text", Text: "world", Marks: []adf.Mark{{Type: "strong"}}},
+		},
+	}}}
+	in, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal doc: %v", err)
+	}
+
+	iss, err := svc.Create("proj-adf", "proj-adf", "adf description", string(in), PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	var stored string
+	if err := db.Raw("SELECT description_json FROM issues WHERE id = ?", iss.ID).Scan(&stored).Error; err != nil {
+		t.Fatalf("read description_json: %v", err)
+	}
+	if !json.Valid([]byte(stored)) {
+		t.Fatalf("stored description_json is not valid JSON: %s", stored)
+	}
+	var got adf.Node
+	if err := json.Unmarshal([]byte(stored), &got); err != nil {
+		t.Fatalf("stored description_json does not unmarshal as ADF: %v (%s)", err, stored)
+	}
+	if !reflect.DeepEqual(got, doc) {
+		t.Fatalf("stored ADF differs from input\n got: %s\nwant: %s", stored, in)
+	}
+	if iss.DescriptionJSON != stored {
+		t.Errorf("returned DescriptionJSON %q != stored %q", iss.DescriptionJSON, stored)
+	}
+}
+
+// TestCreate_PlainTextDescriptionStoredAsADF: callers that pass plain text
+// (cmd/seed, programmatic use) must still work — the text is wrapped into an
+// ADF doc via json.Marshal, never by string formatting, so quotes and
+// backslashes in the text can't break the stored JSON.
+func TestCreate_PlainTextDescriptionStoredAsADF(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "proj-txt")
+	svc := NewService(db)
+
+	text := `say "hi" \ back` + "\nsecond line"
+	iss, err := svc.Create("proj-txt", "proj-txt", "plain description", text, PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !json.Valid([]byte(iss.DescriptionJSON)) {
+		t.Fatalf("stored description_json is not valid JSON: %s", iss.DescriptionJSON)
+	}
+	var got adf.Node
+	if err := json.Unmarshal([]byte(iss.DescriptionJSON), &got); err != nil || got.Type != "doc" {
+		t.Fatalf("stored description is not an ADF doc: %v (%s)", err, iss.DescriptionJSON)
+	}
+	if pt := adf.PlainText(got); pt != text {
+		t.Errorf("PlainText = %q, want %q", pt, text)
+	}
+}
+
+// TestCreate_EmptyDescriptionStaysEmpty: no description → the column keeps
+// its "no description" value ({} — the schema default, which the v3 mapping
+// renders as a null description), not an ADF doc with an empty paragraph.
+func TestCreate_EmptyDescriptionStaysEmpty(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "proj-empty")
+	svc := NewService(db)
+
+	iss, err := svc.Create("proj-empty", "proj-empty", "no description", "", PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	var stored string
+	if err := db.Raw("SELECT description_json FROM issues WHERE id = ?", iss.ID).Scan(&stored).Error; err != nil {
+		t.Fatalf("read description_json: %v", err)
+	}
+	if stored != "{}" {
+		t.Fatalf("stored description_json = %q, want {}", stored)
 	}
 }
