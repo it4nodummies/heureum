@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/domain/board"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/user"
@@ -102,5 +104,54 @@ func TestAgileSprintCreate_AllowedOnScrumBoard(t *testing.T) {
 	db.Model(&sprint.Sprint{}).Count(&count)
 	if count != 1 {
 		t.Fatalf("expected one sprint persisted on scrum board, got %d", count)
+	}
+}
+
+// reloadIssue rilegge una issue dal DB del fixture A/B.
+func (f *nestedFixture) reloadIssue(t *testing.T, id string) issue.Issue {
+	t.Helper()
+	var got issue.Issue
+	if err := f.db.First(&got, "id = ?", id).Error; err != nil {
+		t.Fatalf("reload issue: %v", err)
+	}
+	return got
+}
+
+// TestMoveToSprint_RejectsIssueFromOtherProject: the path authorizes
+// ManageSprints on the SPRINT's project (A); the body names issues. An issue of
+// B (where the caller is only a viewer) must be rejected with 400 and — because
+// the whole batch is validated before anything is written — issue A, listed
+// first, must NOT have been moved either. The positive case (only A's issue)
+// still moves it.
+func TestMoveToSprint_RejectsIssueFromOtherProject(t *testing.T) {
+	f := setupNestedFixture(t)
+	spA, err := f.sprintSvc.Create(f.projA.ID, "Sprint A", "")
+	if err != nil {
+		t.Fatalf("create sprint: %v", err)
+	}
+	path := "/rest/agile/1.0/sprint/" + strconv.FormatInt(spA.SeqID, 10) + "/issue"
+
+	// Mixed batch: A's issue first (would be moved by a naive loop), then B's.
+	w := f.do(t, f.adminA, http.MethodPost, path, `{"issues":["`+f.issueA.Key+`","`+f.issueB.Key+`"]}`)
+	f.expect(t, "move mixed-project batch", w, http.StatusBadRequest)
+	if got := f.reloadIssue(t, f.issueA.ID); got.SprintID != nil {
+		t.Errorf("partial move: issue A was moved into the sprint although the batch was rejected")
+	}
+	if got := f.reloadIssue(t, f.issueB.ID); got.SprintID != nil {
+		t.Errorf("issue B pulled into A's sprint across project boundary")
+	}
+
+	// By seq id too (ids are guessable: 10001...).
+	w = f.do(t, f.adminA, http.MethodPost, path, `{"issues":["`+strconv.FormatInt(f.issueB.SeqID, 10)+`"]}`)
+	f.expect(t, "move other-project issue by id", w, http.StatusBadRequest)
+	if got := f.reloadIssue(t, f.issueB.ID); got.SprintID != nil {
+		t.Errorf("issue B pulled into A's sprint by seq id")
+	}
+
+	// Positive: an issue of the sprint's own project moves.
+	w = f.do(t, f.adminA, http.MethodPost, path, `{"issues":["`+f.issueA.Key+`"]}`)
+	f.expect(t, "move own-project issue", w, http.StatusNoContent)
+	if got := f.reloadIssue(t, f.issueA.ID); got.SprintID == nil || *got.SprintID != spA.ID {
+		t.Errorf("issue A not moved into its own project's sprint: %+v", got.SprintID)
 	}
 }

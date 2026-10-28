@@ -39,10 +39,11 @@ type nestedFixture struct {
 	wfSvc      *workflow.Service
 	sprintSvc  *sprint.Service
 
-	adminA  string // admin of A, viewer of B
-	memberB string // member of B (EditIssues, not AdministerProjects)
-	authorB string // member of B, author of B's comment
-	adminB  string // admin of B
+	adminA     string // admin of A, viewer of B
+	adminAOnly string // admin of A, no role at all in B
+	memberB    string // member of B (EditIssues, not AdministerProjects)
+	authorB    string // member of B, author of B's comment
+	adminB     string // admin of B
 
 	projA, projB   *project.Project
 	issueA, issueB *issue.Issue
@@ -58,7 +59,7 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 		&user.User{},
 		&project.Project{}, &project.ProjectMember{}, &project.ProjectTeam{}, &group.GroupMember{},
 		&workflow.Workflow{}, &workflow.WorkflowStatus{}, &workflow.WorkflowTransition{},
-		&issue.Issue{}, &issue.IssueType{}, &issue.IssueHistory{}, &issue.Comment{}, &issue.Worklog{},
+		&issue.Issue{}, &issue.IssueType{}, &issue.IssueHistory{}, &issue.Comment{}, &issue.Worklog{}, &issue.IssueLink{},
 		&webhook.Webhook{},
 		&sprint.Sprint{},
 	); err != nil {
@@ -74,6 +75,7 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	}
 	f := &nestedFixture{db: db}
 	f.adminA = newUser("adminA")
+	f.adminAOnly = newUser("adminAOnly")
 	f.memberB = newUser("memberB")
 	f.authorB = newUser("authorB")
 	f.adminB = newUser("adminB")
@@ -105,6 +107,7 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	}{
 		{f.projA, f.adminA, project.RoleAdmin},
 		{f.projB, f.adminA, project.RoleViewer},
+		{f.projA, f.adminAOnly, project.RoleAdmin},
 		{f.projB, f.memberB, project.RoleMember},
 		{f.projB, f.authorB, project.RoleMember},
 		{f.projB, f.adminB, project.RoleAdmin},
@@ -126,6 +129,9 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	webhookH := NewWebhookHandler(f.webhookSvc, projSvc)
 	wfH := NewWorkflowHandler(f.wfSvc, f.issueSvc, projSvc, baseURL)
 	sprintH := NewSprintHandler(f.sprintSvc, projSvc)
+	agileSprintH := NewAgileSprintHandler(f.sprintSvc, nil, f.issueSvc, nil, f.chk, baseURL)
+	agileMiscH := NewAgileMiscHandler(f.issueSvc, f.sprintSvc, nil, f.chk, baseURL)
+	issueLinkH := NewIssueLinkHandler(f.issueSvc, f.chk, baseURL)
 	chk := f.chk
 
 	// Same wiring as internal/api/router.go for the routes under test (the
@@ -144,6 +150,15 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	mux.Handle("PATCH /rest/api/3/project/{key}/sprints/{id}", chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Update)))
 	mux.Handle("POST /rest/api/3/project/{key}/sprints/{id}/start", chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Start)))
 	mux.Handle("POST /rest/api/3/project/{key}/sprints/{id}/complete", chk.Enforce(permission.ManageSprints, chk.ByKey, http.HandlerFunc(sprintH.Complete)))
+	// Body-sourced issue routes (Task 4): the path authorizes one thing (the
+	// sprint, or nothing at all), the issues come from the body.
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.MoveToSprint)))
+	mux.Handle("PUT /rest/agile/1.0/issue/rank", http.HandlerFunc(agileMiscH.Rank))
+	mux.Handle("POST /rest/agile/1.0/backlog/issue", http.HandlerFunc(agileMiscH.MoveToBacklog))
+	mux.Handle("GET /rest/api/3/issueLink/{linkId}", chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueLink("linkId"), http.HandlerFunc(issueLinkH.Get)))
+	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/issuelinks", chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueLinkH.ListForIssue)))
+	mux.Handle("POST /rest/api/3/issueLink", http.HandlerFunc(issueLinkH.Create))
+	mux.Handle("DELETE /rest/api/3/issueLink/{linkId}", http.HandlerFunc(issueLinkH.Delete))
 	f.mux = mux
 	return f
 }
