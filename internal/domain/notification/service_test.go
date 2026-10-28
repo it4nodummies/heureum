@@ -1,6 +1,7 @@
 package notification
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -174,7 +175,7 @@ func TestListByUserUnreadOnly(t *testing.T) {
 	}
 
 	// Mark just one as read directly, then confirm unreadOnly excludes it.
-	if err := svc.MarkRead(all[0].ID); err != nil {
+	if err := svc.MarkRead("u-unread", all[0].ID); err != nil {
 		t.Fatalf("MarkRead: %v", err)
 	}
 
@@ -217,7 +218,7 @@ func TestGetUnreadCountMatchesUnreadRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListByUser: %v", err)
 	}
-	if err := svc.MarkRead(all[0].ID); err != nil {
+	if err := svc.MarkRead("u-count", all[0].ID); err != nil {
 		t.Fatalf("MarkRead: %v", err)
 	}
 
@@ -253,7 +254,7 @@ func TestMarkReadFlipsExactlyOne(t *testing.T) {
 	target := all[0]
 	other := all[1]
 
-	if err := svc.MarkRead(target.ID); err != nil {
+	if err := svc.MarkRead("u-mark", target.ID); err != nil {
 		t.Fatalf("MarkRead: %v", err)
 	}
 
@@ -269,6 +270,50 @@ func TestMarkReadFlipsExactlyOne(t *testing.T) {
 	}
 	if otherRow.IsRead {
 		t.Errorf("other notification IsRead = true, want it untouched by MarkRead")
+	}
+}
+
+// TestMarkReadRefusesAnotherUsersNotification pins the ownership rule R27
+// added to MarkRead: the update is scoped to (id, user_id), so a caller that
+// knows (or guesses) someone else's notification id gets ErrNotFound — the same
+// answer as for a nonexistent id, so the call leaks nothing — and the row stays
+// unread. Both users are real users rows because notifications.user_id is a
+// NOT NULL FK in the migrated schema.
+func TestMarkReadRefusesAnotherUsersNotification(t *testing.T) {
+	db := storetest.New(t)
+	createTestUser(t, db, "u-owner", "owner-user")
+	createTestUser(t, db, "u-intruder", "intruder-user")
+	svc := NewService(db)
+
+	if err := svc.Create("u-owner", "comment", "Mine", "body", "/1"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	owned, err := svc.ListByUser("u-owner", false)
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
+	}
+	if len(owned) != 1 {
+		t.Fatalf("len(owned) = %d, want 1", len(owned))
+	}
+
+	if err := svc.MarkRead("u-intruder", owned[0].ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("MarkRead by another user: err = %v, want ErrNotFound", err)
+	}
+	if err := svc.MarkRead("u-owner", "does-not-exist"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("MarkRead of a nonexistent id: err = %v, want ErrNotFound", err)
+	}
+
+	var row Notification
+	if err := db.First(&row, "id = ?", owned[0].ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if row.IsRead {
+		t.Errorf("IsRead = true after a rejected MarkRead, want the row untouched")
+	}
+
+	// The owner can still mark it.
+	if err := svc.MarkRead("u-owner", owned[0].ID); err != nil {
+		t.Fatalf("MarkRead by owner: %v", err)
 	}
 }
 

@@ -101,6 +101,9 @@ func TestCreateAssignsSeqID(t *testing.T) {
 // duplicated and no error is returned.
 func TestSeedStandardTypesCreatesAndIsIdempotent(t *testing.T) {
 	db := newIssueTestDB(t)
+	// issue_types.project_id is a NOT NULL FK to projects(id) in the real
+	// schema, so the project the types belong to must exist first.
+	createTestProject(t, db, "p1")
 	svc := NewService(db)
 
 	names := []string{"Epic", "Story", "Task", "Bug", "Subtask"}
