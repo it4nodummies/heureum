@@ -142,6 +142,29 @@ func TestClientIP_UsesRightmostHopFromTrustedProxy(t *testing.T) {
 	}
 }
 
+// TestClientIP_WalksEveryXFFHeaderLine: some proxies (HAProxy "option
+// forwardfor" by default) ADD a second X-Forwarded-For header line instead of
+// appending to the first. Header.Get returns only the first line, which here
+// is the attacker-supplied one; the hops must be taken from every line in
+// order, so the rightmost hop is still the one our proxy wrote.
+func TestClientIP_WalksEveryXFFHeaderLine(t *testing.T) {
+	trusted := mustParseTrustedProxies(t, "10.0.0.0/8")
+	req := xffReq("10.0.0.1:4242", "")
+	req.Header.Add("X-Forwarded-For", "1.2.3.4")     // forwarded verbatim from the client
+	req.Header.Add("X-Forwarded-For", "203.0.113.9") // added by the trusted proxy
+	if got := clientIP(req, trusted); got != "203.0.113.9" {
+		t.Errorf("clientIP (two header lines) = %q, want the proxy-written hop 203.0.113.9", got)
+	}
+	// Mixed form: a comma list on the first line, the proxy's own line last,
+	// and a chained trusted hop to skip.
+	req = xffReq("10.0.0.1:4242", "")
+	req.Header.Add("X-Forwarded-For", "1.2.3.4, 5.6.7.8")
+	req.Header.Add("X-Forwarded-For", "203.0.113.9, 10.0.0.2")
+	if got := clientIP(req, trusted); got != "203.0.113.9" {
+		t.Errorf("clientIP (two lines, chained) = %q, want 203.0.113.9", got)
+	}
+}
+
 // TestRateLimit_ForgedXFFFromUntrustedPeerDoesNotChangeBucket: an attacker
 // connecting directly (not through a trusted proxy) cannot get a fresh budget
 // per request by rotating X-Forwarded-For.
