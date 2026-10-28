@@ -211,13 +211,13 @@ func TestGitLabProvider_MergeRequest(t *testing.T) {
 		"event_type":  "merge_request",
 		"repository":  map[string]interface{}{"homepage": "https://gitlab.com/test/repo"},
 		"object_attributes": map[string]interface{}{
-			"iid":            float64(10),
-			"title":          "FEAT-789: New feature",
-			"url":            "https://gitlab.com/test/repo/-/merge_requests/10",
-			"state":          "merged",
-			"action":         "merge",
-			"merged_at":      mergedAt,
-			"source_branch":  "FEAT-789-new-ui",
+			"iid":           float64(10),
+			"title":         "FEAT-789: New feature",
+			"url":           "https://gitlab.com/test/repo/-/merge_requests/10",
+			"state":         "merged",
+			"action":        "merge",
+			"merged_at":     mergedAt,
+			"source_branch": "FEAT-789-new-ui",
 		},
 	})
 	if err != nil {
@@ -346,4 +346,56 @@ func githubPRPayload(action, title string, merged bool, branchRef string) []byte
 		},
 	})
 	return payload
+}
+
+// TestNoopProvider_RejectsWebhook: a provider type with no real signature
+// validator must REJECT every inbound payload, otherwise a row whose type has
+// no implementation (e.g. one the DB CHECK allows) accepts unauthenticated
+// event injection.
+func TestNoopProvider_RejectsWebhook(t *testing.T) {
+	for _, pt := range []ProviderType{"", "bitbucket", "something-else"} {
+		p := ProviderForType(pt)
+		valid, _ := p.ValidateWebhook([]byte(`{}`), "a-perfectly-fine-secret", "sha256=deadbeef")
+		if valid {
+			t.Errorf("ProviderForType(%q).ValidateWebhook accepted a payload; want reject", pt)
+		}
+		valid, _ = p.ValidateWebhook([]byte(`{}`), "", "")
+		if valid {
+			t.Errorf("ProviderForType(%q).ValidateWebhook accepted with empty secret/signature; want reject", pt)
+		}
+	}
+}
+
+// TestValidateWebhook_EmptySecretRejected: an empty stored HMAC secret must
+// be a hard reject for every real validator — an attacker who knows the key
+// is empty can forge a matching signature for any body (GitHub/Forgejo), and
+// GitLab would otherwise accept an empty/missing X-Gitlab-Token.
+func TestValidateWebhook_EmptySecretRejected(t *testing.T) {
+	payload := []byte(`{"ref":"refs/heads/main"}`)
+	forged := "sha256=" + hmacHex("", payload)
+
+	for _, p := range []GitProvider{NewGitHubProvider(), NewForgejoProvider()} {
+		valid, _ := p.ValidateWebhook(payload, "", forged)
+		if valid {
+			t.Errorf("%s: empty secret + empty-key HMAC signature accepted; want reject", p.GetName())
+		}
+	}
+
+	gl := NewGitLabProvider()
+	for _, sig := range []string{"", "anything"} {
+		valid, _ := gl.ValidateWebhook(payload, "", sig)
+		if valid {
+			t.Errorf("gitlab: empty secret with token %q accepted; want reject", sig)
+		}
+	}
+
+	if ValidateHMACSHA256(payload, "", forged) {
+		t.Errorf("ValidateHMACSHA256: empty secret accepted; want reject")
+	}
+}
+
+func hmacHex(secret string, payload []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	return hex.EncodeToString(mac.Sum(nil))
 }

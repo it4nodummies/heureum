@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -58,8 +59,8 @@ func TestGetBySeqID(t *testing.T) {
 func TestComplete_SetsCompleteDate(t *testing.T) {
 	svc := NewService(newDB(t))
 	sp, _ := svc.CreateFull("proj-1", "S1", "", nil, nil, nil)
-	svc.Start(sp.ID)
-	done, err := svc.Complete(sp.ID, false, nil)
+	svc.Start(sp.ProjectID, sp.ID)
+	done, err := svc.Complete(sp.ProjectID, sp.ID, false, nil)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -91,13 +92,13 @@ func TestComplete_MoveIncompleteToAnotherSprint(t *testing.T) {
 
 	s1, _ := svc.CreateFull("proj-1", "S1", "", nil, nil, nil)
 	s2, _ := svc.CreateFull("proj-1", "S2", "", nil, nil, nil)
-	svc.Start(s1.ID)
+	svc.Start(s1.ProjectID, s1.ID)
 
 	// una issue incompleta (todo) e una completata (done) su s1
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-open', ?, 'st-todo')", s1.ID)
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-done', ?, 'st-done')", s1.ID)
 
-	done, err := svc.Complete(s1.ID, false, &s2.ID)
+	done, err := svc.Complete(s1.ProjectID, s1.ID, false, &s2.ID)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -122,11 +123,11 @@ func TestComplete_MoveIncompleteToBacklog(t *testing.T) {
 	seedIssuesTables(t, db)
 
 	s3, _ := svc.CreateFull("proj-1", "S3", "", nil, nil, nil)
-	svc.Start(s3.ID)
+	svc.Start(s3.ProjectID, s3.ID)
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-open2', ?, 'st-todo')", s3.ID)
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-done2', ?, 'st-done')", s3.ID)
 
-	if _, err := svc.Complete(s3.ID, true, nil); err != nil {
+	if _, err := svc.Complete(s3.ProjectID, s3.ID, true, nil); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 
@@ -139,5 +140,40 @@ func TestComplete_MoveIncompleteToBacklog(t *testing.T) {
 	}
 	if doneSprint != s3.ID {
 		t.Errorf("issue completata deve restare su s3 (%s), got %q", s3.ID, doneSprint)
+	}
+}
+
+// TestProjectScopedOps_PropagateDBErrors: only gorm.ErrRecordNotFound maps to
+// ErrNotFound; a real DB failure (here: the table is gone) must propagate so
+// the handler answers 500 instead of a misleading 404.
+func TestProjectScopedOps_PropagateDBErrors(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	if err := db.Exec("DROP TABLE sprints").Error; err != nil {
+		t.Fatal(err)
+	}
+	check := func(what string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s: err = nil, want a DB error", what)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: DB error collapsed into ErrNotFound: %v", what, err)
+		}
+	}
+	_, err := svc.GetByID("p", "s")
+	check("GetByID", err)
+	_, err = svc.Update("p", "s", "n", "g")
+	check("Update", err)
+	_, err = svc.Start("p", "s")
+	check("Start", err)
+	_, err = svc.Complete("p", "s", true, nil)
+	check("Complete", err)
+
+	// And a plain miss is still ErrNotFound.
+	db2 := newDB(t)
+	if _, err := NewService(db2).GetByID("p", "missing"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetByID(missing) = %v, want ErrNotFound", err)
 	}
 }

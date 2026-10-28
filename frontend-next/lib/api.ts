@@ -230,7 +230,29 @@ export const auth = {
     }),
 
   me: () => apiFetch<User>("/rest/api/3/users/me"),
+
+  // Personal API tokens (Heureum extension routes). The server never returns
+  // the token hash; the plaintext `token` is present ONLY in the create
+  // response and must be shown to the user once.
+  listApiTokens: () => apiFetch<ApiToken[]>("/rest/api/3/auth/api-tokens"),
+  createApiToken: (label: string, expiresInDays?: number) =>
+    apiFetch<ApiToken & { token: string }>("/rest/api/3/auth/api-tokens", {
+      method: "POST",
+      // Passed through as given (the server answers 400 for a non-positive
+      // value); only an omitted value means "never expires".
+      body: JSON.stringify(expiresInDays === undefined ? { label } : { label, expiresInDays }),
+    }),
+  revokeApiToken: (id: string) =>
+    apiFetch<void>(`/rest/api/3/auth/api-tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
+
+export interface ApiToken {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at?: string;
+  expires_at?: string; // absent = never expires
+}
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 
@@ -1285,15 +1307,15 @@ export interface Webhook {
   is_active: boolean;
 }
 
-// git.GitProviderConfig (internal/domain/git/config.go). Note the server
-// returns token_encrypted (not a plain "token") and webhook_secret as-is.
+// handlers.gitProviderResponse (internal/api/handlers/git_handler.go). The
+// server never returns the provider token or the HMAC webhook secret: only
+// has_token and the inbound webhook_url to paste into the git provider.
 export interface GitProviderConfig {
   id: string;
-  project_id: string;
   provider_type: string;
   base_url: string;
-  token_encrypted: string;
-  webhook_secret: string;
+  has_token: boolean;
+  webhook_url: string;
   created_at: string;
 }
 

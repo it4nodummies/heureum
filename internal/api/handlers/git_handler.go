@@ -2,11 +2,15 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/it4nodummies/heureum/internal/api/middleware"
+	"github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/git"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/project"
@@ -17,15 +21,44 @@ type GitHandler struct {
 	issueSvc     *issue.Service
 	projectSvc   *project.Service
 	commentSvc   *issue.CommentService
+	baseURL      string
 }
 
-func NewGitHandler(gitConfigSvc *git.ConfigService, issueSvc *issue.Service, projectSvc *project.Service, commentSvc *issue.CommentService) *GitHandler {
+func NewGitHandler(gitConfigSvc *git.ConfigService, issueSvc *issue.Service, projectSvc *project.Service, commentSvc *issue.CommentService, baseURL string) *GitHandler {
 	return &GitHandler{
 		gitConfigSvc: gitConfigSvc,
 		issueSvc:     issueSvc,
 		projectSvc:   projectSvc,
 		commentSvc:   commentSvc,
+		baseURL:      strings.TrimRight(baseURL, "/"),
 	}
+}
+
+// gitProviderResponse is the only shape the provider config is ever
+// serialized in. It carries no secret: the API token is reduced to
+// has_token, the HMAC secret is omitted, and the URL token appears solely
+// inside webhook_url (the admin needs that to paste into the provider).
+type gitProviderResponse struct {
+	ID           string    `json:"id"`
+	ProviderType string    `json:"provider_type"`
+	BaseURL      string    `json:"base_url"`
+	HasToken     bool      `json:"has_token"`
+	WebhookURL   string    `json:"webhook_url"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (h *GitHandler) toResponse(cfg *git.GitProviderConfig) gitProviderResponse {
+	out := gitProviderResponse{
+		ID:           cfg.ID,
+		ProviderType: string(cfg.ProviderType),
+		BaseURL:      cfg.BaseURL,
+		HasToken:     cfg.TokenEncrypted != "",
+		CreatedAt:    cfg.CreatedAt,
+	}
+	if cfg.WebhookURLToken != nil && *cfg.WebhookURLToken != "" {
+		out.WebhookURL = h.baseURL + "/rest/api/3/webhooks/git/" + *cfg.WebhookURLToken
+	}
+	return out
 }
 
 func (h *GitHandler) ConfigureProvider(w http.ResponseWriter, r *http.Request) {
@@ -53,13 +86,20 @@ func (h *GitHandler) ConfigureProvider(w http.ResponseWriter, r *http.Request) {
 
 	cfg, err := h.gitConfigSvc.CreateProvider(p.ID, req.ProviderType, req.BaseURL, req.Token, req.WebhookSecret)
 	if err != nil {
-		http.Error(w, `{"error":"failed to create provider"}`, http.StatusConflict)
+		switch {
+		case errors.Is(err, git.ErrProviderTypeUnsupported):
+			v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"provider_type": err.Error()})
+		case errors.Is(err, git.ErrWebhookSecretRequired), errors.Is(err, git.ErrWebhookSecretTooShort):
+			v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"webhook_secret": err.Error()})
+		default:
+			http.Error(w, `{"error":"failed to create provider"}`, http.StatusConflict)
+		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(h.toResponse(cfg))
 }
 
 func (h *GitHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +117,7 @@ func (h *GitHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(h.toResponse(cfg))
 }
 
 func (h *GitHandler) DeleteProvider(w http.ResponseWriter, r *http.Request) {
@@ -104,14 +144,19 @@ func (h *GitHandler) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 
 func (h *GitHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
-	cfg, err := h.gitConfigSvc.FindByWebhookToken(token)
+	cfg, err := h.gitConfigSvc.FindByWebhookURLToken(token)
 	if err != nil {
 		http.Error(w, `{"error":"invalid webhook token"}`, http.StatusNotFound)
 		return
 	}
 
+	// The body is capped by the global middleware.MaxBodyBytes (router.go).
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		if middleware.IsBodyTooLarge(err) {
+			http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, `{"error":"failed to read body"}`, http.StatusBadRequest)
 		return
 	}
@@ -156,6 +201,21 @@ func (h *GitHandler) processWebhookEvent(cfg *git.GitProviderConfig, event *git.
 	}
 }
 
+// projectIssue resolves an issue key referenced by an inbound event, but only
+// within the provider's own project. The event is authenticated by THAT
+// project's secret, and any authenticated user can create a project and
+// configure a provider: without this scope, correctly signed events could
+// comment on / link to / auto-transition any issue on the instance. A key
+// from another project is treated exactly like an unknown one (nil, skipped
+// silently) so a stray reference never fails the whole webhook.
+func (h *GitHandler) projectIssue(cfg *git.GitProviderConfig, issueKey string) *issue.Issue {
+	iss, err := h.issueSvc.GetByKey(issueKey)
+	if err != nil || iss.ProjectID != cfg.ProjectID {
+		return nil
+	}
+	return iss
+}
+
 func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.WebhookEvent) {
 	branchIssueKeys := git.ExtractIssueKeys(event.Branch)
 
@@ -164,8 +224,8 @@ func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.Web
 		allKeys := uniqueKeys(append(branchIssueKeys, commitKeys...))
 
 		for _, issueKey := range allKeys {
-			iss, err := h.issueSvc.GetByKey(issueKey)
-			if err != nil {
+			iss := h.projectIssue(cfg, issueKey)
+			if iss == nil {
 				continue
 			}
 			created, err := h.gitConfigSvc.LinkCommit(iss.ID, cfg.ID, commit.SHA, commit.Message, commit.Author)
@@ -176,8 +236,8 @@ func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.Web
 	}
 
 	for _, issueKey := range branchIssueKeys {
-		iss, err := h.issueSvc.GetByKey(issueKey)
-		if err != nil {
+		iss := h.projectIssue(cfg, issueKey)
+		if iss == nil {
 			continue
 		}
 		h.gitConfigSvc.LinkBranch(iss.ID, cfg.ID, event.Branch, event.RepoURL)
@@ -195,8 +255,8 @@ func (h *GitHandler) processPullRequestEvent(cfg *git.GitProviderConfig, event *
 	allKeys := uniqueKeys(append(branchKeys, titleKeys...))
 
 	for _, issueKey := range allKeys {
-		iss, err := h.issueSvc.GetByKey(issueKey)
-		if err != nil {
+		iss := h.projectIssue(cfg, issueKey)
+		if iss == nil {
 			continue
 		}
 
@@ -218,7 +278,14 @@ func (h *GitHandler) processPullRequestEvent(cfg *git.GitProviderConfig, event *
 	}
 }
 
+// autoTransitionIssue moves iss to the first "done" status of projectID's
+// workflow. The issue must belong to that project: a status id from another
+// project's workflow would corrupt the issue (callers already scope lookups
+// with projectIssue; this is the last line of defence).
 func (h *GitHandler) autoTransitionIssue(iss *issue.Issue, projectID string) {
+	if iss == nil || iss.ProjectID != projectID {
+		return
+	}
 	db := h.gitConfigSvc.DB()
 	var statuses []struct {
 		ID       string `gorm:"column:id"`

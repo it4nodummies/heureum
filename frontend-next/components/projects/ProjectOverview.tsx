@@ -62,7 +62,15 @@ export function ProjectOverview({ projectKey }: Props) {
 
       {/* Body */}
       <div className="flex-1 overflow-auto px-8 py-6">
-        {!boardsList.isLoading && !board && (
+        {/*
+          Legacy fallback only. Since R25 (zero-config) every project created via
+          POST /rest/api/3/project is scaffolded with a default board, so this
+          "Create board" prompt is dead for new projects. It stays solely for
+          legacy board-less projects created before R25: render it only once the
+          boards list has actually loaded (not while loading / on error) and the
+          project genuinely has no board — i.e. boards.list is empty for it.
+        */}
+        {boardsList.isSuccess && !board && (
           <div className="mb-5 p-4 bg-slate-50 border border-slate-100 rounded-xl">
             <p className="text-sm text-slate-500 mb-3">
               This project doesn&apos;t have a board yet — Board and Backlog will unlock once one is created.

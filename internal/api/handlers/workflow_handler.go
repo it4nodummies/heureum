@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/it4nodummies/heureum/internal/api/v3"
@@ -66,7 +67,30 @@ func (h *WorkflowHandler) AddStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
+// projectWorkflow resolves the workflow of the project in the path ({key}),
+// i.e. the project the route decorator authorized. Child status/transition
+// ids are then bound to this workflow, so an id from another project's
+// workflow is a 404 and never touched. Writes the response and returns nil
+// when either lookup fails.
+func (h *WorkflowHandler) projectWorkflow(w http.ResponseWriter, r *http.Request) *workflow.Workflow {
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return nil
+	}
+	wf, err := h.wfSvc.GetWorkflow(p.ID)
+	if err != nil {
+		http.Error(w, `{"error":"workflow not found"}`, http.StatusNotFound)
+		return nil
+	}
+	return wf
+}
+
 func (h *WorkflowHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	wf := h.projectWorkflow(w, r)
+	if wf == nil {
+		return
+	}
 	statusID := r.PathValue("id")
 	var req struct {
 		Name     string                  `json:"name"`
@@ -77,9 +101,13 @@ func (h *WorkflowHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	status, err := h.wfSvc.UpdateStatus(statusID, req.Name, req.Category, req.Color)
-	if err != nil {
+	status, err := h.wfSvc.UpdateStatus(wf.ID, statusID, req.Name, req.Category, req.Color)
+	if errors.Is(err, workflow.ErrNotFound) {
 		http.Error(w, `{"error":"status not found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, `{"error":"failed to update status"}`, http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -87,7 +115,16 @@ func (h *WorkflowHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WorkflowHandler) DeleteStatus(w http.ResponseWriter, r *http.Request) {
-	if err := h.wfSvc.RemoveStatus(r.PathValue("id")); err != nil {
+	wf := h.projectWorkflow(w, r)
+	if wf == nil {
+		return
+	}
+	err := h.wfSvc.RemoveStatus(wf.ID, r.PathValue("id"))
+	if errors.Is(err, workflow.ErrNotFound) {
+		http.Error(w, `{"error":"status not found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
 		http.Error(w, `{"error":"failed to remove status"}`, http.StatusInternalServerError)
 		return
 	}
@@ -148,6 +185,10 @@ func (h *WorkflowHandler) ListTransitions(w http.ResponseWriter, r *http.Request
 
 // UpdateTransition gestisce PATCH /rest/api/3/project/{key}/workflow/transitions/{id}.
 func (h *WorkflowHandler) UpdateTransition(w http.ResponseWriter, r *http.Request) {
+	wf := h.projectWorkflow(w, r)
+	if wf == nil {
+		return
+	}
 	var req struct {
 		Name            *string `json:"name"`
 		RequireAssignee *bool   `json:"require_assignee"`
@@ -157,9 +198,13 @@ func (h *WorkflowHandler) UpdateTransition(w http.ResponseWriter, r *http.Reques
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
-	tr, err := h.wfSvc.UpdateTransition(r.PathValue("id"), req.Name, req.RequireAssignee, req.SetResolution)
-	if err != nil {
+	tr, err := h.wfSvc.UpdateTransition(wf.ID, r.PathValue("id"), req.Name, req.RequireAssignee, req.SetResolution)
+	if errors.Is(err, workflow.ErrNotFound) {
 		v3.WriteError(w, http.StatusNotFound, []string{"transition not found"}, nil)
+		return
+	}
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to update transition"}, nil)
 		return
 	}
 	v3.WriteJSON(w, http.StatusOK, tr)
@@ -167,7 +212,16 @@ func (h *WorkflowHandler) UpdateTransition(w http.ResponseWriter, r *http.Reques
 
 // DeleteTransition gestisce DELETE /rest/api/3/project/{key}/workflow/transitions/{id}.
 func (h *WorkflowHandler) DeleteTransition(w http.ResponseWriter, r *http.Request) {
-	if err := h.wfSvc.RemoveTransition(r.PathValue("id")); err != nil {
+	wf := h.projectWorkflow(w, r)
+	if wf == nil {
+		return
+	}
+	err := h.wfSvc.RemoveTransition(wf.ID, r.PathValue("id"))
+	if errors.Is(err, workflow.ErrNotFound) {
+		v3.WriteError(w, http.StatusNotFound, []string{"transition not found"}, nil)
+		return
+	}
+	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete transition"}, nil)
 		return
 	}

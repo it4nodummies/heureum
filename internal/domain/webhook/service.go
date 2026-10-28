@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,8 +40,22 @@ func (s *Service) ListByProject(projectID string) ([]Webhook, error) {
 	return hooks, nil
 }
 
-func (s *Service) Delete(id string) error {
-	return s.db.Where("id = ?", id).Delete(&Webhook{}).Error
+// ErrNotFound is returned by Delete when no webhook with that id exists in
+// projectID (missing or belonging to another project — indistinguishable by
+// design).
+var ErrNotFound = errors.New("webhook not found")
+
+// Delete removes the webhook id of projectID. An id from another project is
+// ErrNotFound and nothing is deleted.
+func (s *Service) Delete(projectID, id string) error {
+	res := s.db.Where("id = ? AND project_id = ?", id, projectID).Delete(&Webhook{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ListActiveForEvent restituisce i webhook attivi del progetto sottoscritti a eventType.

@@ -9,8 +9,8 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"log/slog"
 	"io"
+	"log/slog"
 )
 
 func TestNextDelivery(t *testing.T) {
@@ -63,7 +63,9 @@ func TestProcessWebhookDeliveries(t *testing.T) {
 	h, _ := svc.Create("proj-1", srv.URL, "s", []string{"issue_created"})
 	svc.EnqueueDelivery(h.ID, "issue_created", h.URL, `{"event":"issue_created"}`)
 
-	processWebhookDeliveries(slog.Default(), db, srv.Client())
+	// 127.0.0.1 is allowlisted: the httptest target is loopback, which the
+	// SSRF policy would otherwise (correctly) refuse.
+	processWebhookDeliveries(slog.Default(), db, webhook.NewDeliverer([]string{"127.0.0.1"}))
 
 	select {
 	case <-hit:

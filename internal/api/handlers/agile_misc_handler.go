@@ -25,18 +25,28 @@ func NewAgileMiscHandler(issueSvc *issue.Service, sprintSvc *sprint.Service, iss
 	return &AgileMiscHandler{issueSvc: issueSvc, sprintSvc: sprintSvc, issueH: issueH, chk: chk, baseURL: baseURL}
 }
 
-func (h *AgileMiscHandler) resolveIssueID(idOrKey string) (string, bool) {
-	if n, err := strconv.ParseInt(idOrKey, 10, 64); err == nil {
-		if iss, err := h.issueSvc.GetBySeqID(n); err == nil {
-			return iss.ID, true
+// authorizeBodyIssues resolves every issue named in a request body and checks
+// that uid holds permKey on EACH issue's project. These routes have no path
+// context, so the body issues are the only thing there is to authorize: an
+// unresolvable key/id and an issue the caller cannot browse look the same
+// (404, Jira's wording) so a guessed key reveals nothing; an issue the caller
+// can browse but not manage is a plain 403. It returns the internal ids in
+// body order, or the status/message to write. Callers must not write anything
+// before this returns ok: the whole batch is validated first (no partial
+// writes).
+func (h *AgileMiscHandler) authorizeBodyIssues(uid string, keys []string, permKey string) (ids []string, status int, msg string) {
+	ids = make([]string, 0, len(keys))
+	for _, k := range keys {
+		iss := h.resolveIssue(k)
+		if iss == nil || h.chk.RequireProject(uid, iss.ProjectID, permission.BrowseProjects) != nil {
+			return nil, http.StatusNotFound, issueNotVisibleMsg
 		}
-		return "", false
+		if err := h.chk.RequireProject(uid, iss.ProjectID, permKey); err != nil {
+			return nil, http.StatusForbidden, "you do not have permission to perform this action"
+		}
+		ids = append(ids, iss.ID)
 	}
-	iss, err := h.issueSvc.GetByKey(idOrKey)
-	if err != nil {
-		return "", false
-	}
-	return iss.ID, true
+	return ids, 0, ""
 }
 
 // Rank: PUT /rest/agile/1.0/issue/rank.
@@ -54,32 +64,30 @@ func (h *AgileMiscHandler) Rank(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{"issues is required"}, nil)
 		return
 	}
-	// 1.0 simplification: enforce MANAGE_SPRINTS on the project of the first
-	// issue in the list only; a request ranking issues across multiple
-	// projects is not fully covered (see Round 11 plan, Task 5 notes).
-	if firstIss := h.resolveIssue(req.Issues[0]); firstIss != nil {
-		uid := middleware.UserIDFromContext(r.Context())
-		if err := h.chk.RequireProject(uid, firstIss.ProjectID, permission.ManageSprints); err != nil {
-			authz.WriteForbidden(w)
-			return
-		}
-	}
-	ids := make([]string, 0, len(req.Issues))
-	for _, k := range req.Issues {
-		if id, ok := h.resolveIssueID(k); ok {
-			ids = append(ids, id)
-		}
+	// Every issue in the body — the ranked ones AND the rankBefore/rankAfter
+	// anchors, whose positions are read — needs ManageSprints on its project.
+	uid := middleware.UserIDFromContext(r.Context())
+	ids, status, msg := h.authorizeBodyIssues(uid, req.Issues, permission.ManageSprints)
+	if status != 0 {
+		v3.WriteError(w, status, []string{msg}, nil)
+		return
 	}
 	var before, after *string
 	if req.RankBeforeIssue != "" {
-		if id, ok := h.resolveIssueID(req.RankBeforeIssue); ok {
-			before = &id
+		anchor, status, msg := h.authorizeBodyIssues(uid, []string{req.RankBeforeIssue}, permission.ManageSprints)
+		if status != 0 {
+			v3.WriteError(w, status, []string{msg}, nil)
+			return
 		}
+		before = &anchor[0]
 	}
 	if req.RankAfterIssue != "" {
-		if id, ok := h.resolveIssueID(req.RankAfterIssue); ok {
-			after = &id
+		anchor, status, msg := h.authorizeBodyIssues(uid, []string{req.RankAfterIssue}, permission.ManageSprints)
+		if status != 0 {
+			v3.WriteError(w, status, []string{msg}, nil)
+			return
 		}
+		after = &anchor[0]
 	}
 	if err := h.issueSvc.Rank(ids, before, after); err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to rank issues"}, nil)
@@ -97,24 +105,18 @@ func (h *AgileMiscHandler) MoveToBacklog(w http.ResponseWriter, r *http.Request)
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
-	// 1.0 simplification: enforce MANAGE_SPRINTS on the project of the first
-	// issue in the list only; a request moving issues across multiple
-	// projects is not fully covered (see Round 11 plan, Task 5 notes).
-	if len(req.Issues) > 0 {
-		if firstIss := h.resolveIssue(req.Issues[0]); firstIss != nil {
-			uid := middleware.UserIDFromContext(r.Context())
-			if err := h.chk.RequireProject(uid, firstIss.ProjectID, permission.ManageSprints); err != nil {
-				authz.WriteForbidden(w)
-				return
-			}
-		}
+	// Every issue in the body needs ManageSprints on its own project; the
+	// batch is validated as a whole before the first write (no partial move).
+	uid := middleware.UserIDFromContext(r.Context())
+	ids, status, msg := h.authorizeBodyIssues(uid, req.Issues, permission.ManageSprints)
+	if status != 0 {
+		v3.WriteError(w, status, []string{msg}, nil)
+		return
 	}
-	for _, k := range req.Issues {
-		if id, ok := h.resolveIssueID(k); ok {
-			if err := h.sprintSvc.RemoveIssue(id); err != nil {
-				v3.WriteError(w, http.StatusInternalServerError, []string{"failed to move to backlog"}, nil)
-				return
-			}
+	for _, id := range ids {
+		if err := h.sprintSvc.RemoveIssue(id); err != nil {
+			v3.WriteError(w, http.StatusInternalServerError, []string{"failed to move to backlog"}, nil)
+			return
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -135,7 +137,7 @@ func (h *AgileMiscHandler) GetIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	// arricchisce fields.sprint se la issue è in uno sprint
 	if iss.SprintID != nil {
-		if sp, err := h.sprintSvc.GetByID(*iss.SprintID); err == nil {
+		if sp, err := h.sprintSvc.GetByID(iss.ProjectID, *iss.SprintID); err == nil {
 			if fields, ok := m["fields"].(map[string]any); ok {
 				fields["sprint"] = sprintToV3(sp, h.baseURL)
 			}

@@ -30,7 +30,7 @@ func TestGetWorkflowHandler(t *testing.T) {
 	projectSvc := project.NewService(db, nil)
 	p, _ := projectSvc.Create("Test", "TEST", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wfSvc.CreateDefaultWorkflow(p.ID)
+	wfSvc.CreateDefaultWorkflow(p.ID, false)
 	h := NewWorkflowHandler(wfSvc, nil, projectSvc, "")
 
 	req := httptest.NewRequest("GET", "/rest/api/3/project/TEST/workflow", nil)
@@ -145,7 +145,7 @@ func TestTransitionIssueHandler(t *testing.T) {
 	projectSvc := project.NewService(db, nil)
 	p, _ := projectSvc.Create("Proj6", "PROJ6", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wfSvc.CreateDefaultWorkflow(p.ID)
+	wfSvc.CreateDefaultWorkflow(p.ID, false)
 
 	issueSvc := issue.NewService(db)
 	wfForIssue, _ := wfSvc.GetWorkflow(p.ID)
@@ -174,7 +174,7 @@ func TestTransitionIssueHandlerInvalid(t *testing.T) {
 	projectSvc := project.NewService(db, nil)
 	p, _ := projectSvc.Create("Proj7", "PROJ7", "", project.TypeScrum)
 	wfSvc := workflow.NewService(db)
-	wfSvc.CreateDefaultWorkflow(p.ID)
+	wfSvc.CreateDefaultWorkflow(p.ID, false)
 	wfForIssue, _ := wfSvc.GetWorkflow(p.ID)
 
 	issueSvc := issue.NewService(db)

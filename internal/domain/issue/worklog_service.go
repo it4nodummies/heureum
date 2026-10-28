@@ -1,6 +1,7 @@
 package issue
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,7 +76,34 @@ func (s *WorklogService) Get(id string) (*Worklog, error) {
 	return &wl, nil
 }
 
-// Delete rimuove un worklog per ID.
-func (s *WorklogService) Delete(id string) error {
-	return s.db.Delete(&Worklog{}, "id = ?", id).Error
+// GetForIssue loads the worklog id bound to issueID: a worklog of another
+// issue is ErrWorklogNotFound; any other DB error is propagated.
+func (s *WorklogService) GetForIssue(issueID, id string) (*Worklog, error) {
+	var wl Worklog
+	if err := s.db.First(&wl, "id = ? AND issue_id = ?", id, issueID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrWorklogNotFound
+		}
+		return nil, err
+	}
+	return &wl, nil
+}
+
+// ErrWorklogNotFound is returned by Delete when no worklog with that id exists
+// on issueID (missing, or belonging to another issue — indistinguishable by
+// design, so a foreign id cannot be probed through an issue the caller can edit).
+var ErrWorklogNotFound = errors.New("worklog not found")
+
+// Delete rimuove il worklog id dell'issue issueID. Non tocca il TimeSpent
+// denormalizzato (comportamento invariato); un id di un'altra issue è
+// ErrWorklogNotFound.
+func (s *WorklogService) Delete(issueID, id string) error {
+	res := s.db.Where("id = ? AND issue_id = ?", id, issueID).Delete(&Worklog{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrWorklogNotFound
+	}
+	return nil
 }

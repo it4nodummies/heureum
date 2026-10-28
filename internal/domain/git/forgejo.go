@@ -1,9 +1,6 @@
 package git
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -19,11 +16,12 @@ func (p *ForgejoProvider) ValidateWebhook(payload []byte, secret string, signatu
 	if signature == "" {
 		return false, fmt.Errorf("missing signature")
 	}
-	sig := strings.TrimPrefix(signature, "sha256=")
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
-	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(sig), []byte(expected)), nil
+	if secret == "" {
+		// Empty HMAC key: any body is forgeable. Legacy rows only (create
+		// refuses it); the operator must re-save the provider.
+		return false, fmt.Errorf("webhook secret not configured")
+	}
+	return ValidateHMACSHA256(payload, secret, signature), nil
 }
 
 func (p *ForgejoProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
@@ -42,12 +40,12 @@ func (p *ForgejoProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
 		} `json:"commits"`
 		Action      string `json:"action"`
 		PullRequest *struct {
-			Number int    `json:"number"`
-			Title  string `json:"title"`
-			HTMLURL string `json:"html_url"`
-			State  string `json:"state"`
+			Number   int     `json:"number"`
+			Title    string  `json:"title"`
+			HTMLURL  string  `json:"html_url"`
+			State    string  `json:"state"`
 			MergedAt *string `json:"merged_at"`
-			Head    struct {
+			Head     struct {
 				Ref string `json:"ref"`
 			} `json:"head"`
 		} `json:"pull_request"`

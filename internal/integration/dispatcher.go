@@ -4,7 +4,6 @@ package integration
 
 import (
 	"encoding/json"
-	"net/http"
 
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
@@ -20,11 +19,10 @@ type AutomationRunner interface {
 type Dispatcher struct {
 	webhookSvc *webhook.Service
 	auto       AutomationRunner
-	client     *http.Client
 }
 
-func NewDispatcher(webhookSvc *webhook.Service, auto AutomationRunner, client *http.Client) *Dispatcher {
-	return &Dispatcher{webhookSvc: webhookSvc, auto: auto, client: client}
+func NewDispatcher(webhookSvc *webhook.Service, auto AutomationRunner) *Dispatcher {
+	return &Dispatcher{webhookSvc: webhookSvc, auto: auto}
 }
 
 // IssueEvent processa le regole di automation (sincrono: solo DB, veloce) e

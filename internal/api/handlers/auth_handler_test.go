@@ -9,6 +9,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/config"
@@ -54,6 +58,13 @@ func TestRegisterUser(t *testing.T) {
 func TestRegisterUser_SignupClosedReturns403AndDoesNotCreateUser(t *testing.T) {
 	h, s := setupAuthHandlerWithSignup(t, false)
 	defer s.Close()
+	// The instance must already have an ACTIVE ADMIN: while it has none, a
+	// registration is always accepted and becomes admin (bootstrap), see
+	// TestRegister_FirstUserBecomesAdminEvenWhenClosed. A regular user alone
+	// would not make the closed policy apply.
+	if _, err := h.svc.RegisterWithPolicy("existing@example.com", "existing", "Existing", "password123", false); err != nil {
+		t.Fatal(err)
+	}
 	body := map[string]string{"email": "blocked@example.com", "username": "blockeduser", "password": "password123"}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest("POST", "/register", bytes.NewReader(b))
@@ -163,4 +174,456 @@ func TestCreateAPITokenHandler(t *testing.T) {
 			t.Errorf("errors = %v, want label field error", resp.Errors)
 		}
 	})
+}
+
+// ── Round 27: first-user bootstrap vs. closed signup ──────────────────────────
+
+// newAuthHandlerIsolated builds an AuthHandler over a fresh, private in-memory
+// DB (unlike setupAuthHandlerWithSignup, which shares one cache across tests),
+// so assertions about "the users table is empty" are reliable.
+func newAuthHandlerIsolated(t *testing.T, signupOpen bool) (*AuthHandler, *gorm.DB) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&user.User{}, &auth.APIToken{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	svc := auth.NewService(db, "test-secret-min-32-chars-long-key!!")
+	return NewAuthHandler(svc, signupOpen), db
+}
+
+func postRegister(t *testing.T, h *AuthHandler, email, username string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(map[string]string{"email": email, "username": username, "password": "password123"})
+	req := httptest.NewRequest("POST", "/rest/api/3/auth/register", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	return rec
+}
+
+func TestRegister_FirstUserBecomesAdminEvenWhenClosed(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, false)
+
+	rec := postRegister(t, h, "first@example.com", "first")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (bootstrap on an empty instance), body: %s", rec.Code, rec.Body.String())
+	}
+
+	var u user.User
+	if err := db.Where("email = ?", "first@example.com").First(&u).Error; err != nil {
+		t.Fatalf("first user not persisted: %v", err)
+	}
+	if !u.IsAdmin {
+		t.Errorf("first user is_admin = false, want true")
+	}
+	var resp struct {
+		IsAdmin bool `json:"is_admin"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — body: %s", err, rec.Body.String())
+	}
+	if !resp.IsAdmin {
+		t.Errorf("response is_admin = false, want true")
+	}
+}
+
+func TestRegister_SecondUserRefusedWhenClosed(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, false)
+	if rec := postRegister(t, h, "first@example.com", "first"); rec.Code != http.StatusCreated {
+		t.Fatalf("bootstrap status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := postRegister(t, h, "second@example.com", "second")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("second register status = %d, want 403, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ErrorMessages []string `json:"errorMessages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — body: %s", err, rec.Body.String())
+	}
+	if len(resp.ErrorMessages) == 0 || resp.ErrorMessages[0] != "signup is disabled on this instance" {
+		t.Errorf("errorMessages = %v, want [\"signup is disabled on this instance\"]", resp.ErrorMessages)
+	}
+
+	var count int64
+	db.Model(&user.User{}).Count(&count)
+	if count != 1 {
+		t.Errorf("users count = %d, want 1 (second user must not be created)", count)
+	}
+}
+
+func TestRegister_SecondUserAllowedWhenOpen(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, true)
+	if rec := postRegister(t, h, "first@example.com", "first"); rec.Code != http.StatusCreated {
+		t.Fatalf("bootstrap status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := postRegister(t, h, "second@example.com", "second")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("second register status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+
+	var second user.User
+	if err := db.Where("email = ?", "second@example.com").First(&second).Error; err != nil {
+		t.Fatalf("second user not persisted: %v", err)
+	}
+	if second.IsAdmin {
+		t.Errorf("second user is_admin = true, want false (only the bootstrap user is admin)")
+	}
+	var admins int64
+	db.Model(&user.User{}).Where("is_admin = ?", true).Count(&admins)
+	if admins != 1 {
+		t.Errorf("admin count = %d, want 1", admins)
+	}
+}
+
+// TestRegister_DoesNotLeakInternalError: an unexpected DB failure during
+// registration (here: the users table is gone) must be a generic 500, never a
+// 409 carrying the raw driver message.
+func TestRegister_DoesNotLeakInternalError(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, true)
+	if err := db.Exec("DROP TABLE users").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postRegister(t, h, "x@example.com", "x")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500, body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, leak := range []string{"no such table", "users", "SQL", "sqlite"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("500 body leaks %q: %s", leak, body)
+		}
+	}
+	var resp struct {
+		ErrorMessages []string `json:"errorMessages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil || len(resp.ErrorMessages) == 0 {
+		t.Errorf("want a generic errorMessages body, got %s (err %v)", body, err)
+	}
+}
+
+// TestRegister_DuplicateIs409Sanitized: the one client-facing conflict stays
+// a 409 with the fixed "already taken" message (no driver text).
+func TestRegister_DuplicateIs409Sanitized(t *testing.T) {
+	h, _ := newAuthHandlerIsolated(t, true)
+	if rec := postRegister(t, h, "dup@example.com", "dup"); rec.Code != http.StatusCreated {
+		t.Fatalf("first register status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	rec := postRegister(t, h, "dup@example.com", "dup2")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("duplicate email status = %d, want 409, body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "already taken") {
+		t.Errorf("409 body = %s, want the sanitized 'already taken' message", body)
+	}
+	for _, leak := range []string{"UNIQUE", "constraint", "users."} {
+		if strings.Contains(body, leak) {
+			t.Errorf("409 body leaks %q: %s", leak, body)
+		}
+	}
+}
+
+// ── Round 27 / Task 7: API token lifecycle ────────────────────────────────────
+
+func apiTokenRequest(userID, method, target string, body []byte) *http.Request {
+	var req *http.Request
+	if body != nil {
+		req = httptest.NewRequest(method, target, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+	} else {
+		req = httptest.NewRequest(method, target, nil)
+	}
+	return req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+}
+
+func TestCreateAPIToken_ExpiresInDays(t *testing.T) {
+	h, _ := newAuthHandlerIsolated(t, true)
+	u, err := h.svc.Register("token@test.com", "tokenuser", "Token", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	h.svc.Now = func() time.Time { return fixed }
+
+	t.Run("expiresInDays sets expires_at to now plus N days", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"ci","expiresInDays":1}`)))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Token     string     `json:"token"`
+			ExpiresAt *time.Time `json:"expires_at"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v — body: %s", err, rec.Body.String())
+		}
+		if resp.Token == "" {
+			t.Error("plaintext token must still be returned once at creation")
+		}
+		if resp.ExpiresAt == nil || !resp.ExpiresAt.Equal(fixed.Add(24*time.Hour)) {
+			t.Errorf("expires_at = %v, want %v", resp.ExpiresAt, fixed.Add(24*time.Hour))
+		}
+	})
+
+	t.Run("omitted expiresInDays means no expiry", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"forever"}`)))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if v, ok := resp["expires_at"]; ok && v != nil {
+			t.Errorf("expires_at = %v, want absent/null", v)
+		}
+	})
+
+	for _, bad := range []string{`{"label":"x","expiresInDays":0}`, `{"label":"x","expiresInDays":-3}`} {
+		t.Run("non-positive expiresInDays is 400: "+bad, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(bad)))
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400, body: %s", rec.Code, rec.Body.String())
+			}
+			var resp struct {
+				Errors map[string]string `json:"errors"`
+			}
+			_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+			if resp.Errors["expiresInDays"] == "" {
+				t.Errorf("want a field error on expiresInDays, got %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestCreateAPIToken_RejectsHugeExpiry: expiresInDays is multiplied into a
+// time.Duration (int64 nanoseconds); without a cap a value like 10^12 days
+// overflows and yields a bogus (possibly past, possibly far-future) expiry.
+// Anything above maxAPITokenExpiryDays is a 400 with a field error; the cap
+// itself is accepted.
+func TestCreateAPIToken_RejectsHugeExpiry(t *testing.T) {
+	h, _ := newAuthHandlerIsolated(t, true)
+	u, err := h.svc.Register("huge@test.com", "hugeuser", "Huge", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, days := range []string{"1000000000000", "3651"} {
+		rec := httptest.NewRecorder()
+		h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"x","expiresInDays":`+days+`}`)))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expiresInDays=%s: status = %d, want 400, body: %s", days, rec.Code, rec.Body.String())
+			continue
+		}
+		var resp struct {
+			Errors map[string]string `json:"errors"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		if resp.Errors["expiresInDays"] == "" {
+			t.Errorf("expiresInDays=%s: want a field error on expiresInDays, got %s", days, rec.Body.String())
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"max","expiresInDays":3650}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expiresInDays=3650 (the cap): status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ExpiresAt *time.Time `json:"expires_at"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.ExpiresAt == nil || resp.ExpiresAt.Before(time.Now().Add(3649*24*time.Hour)) {
+		t.Errorf("expires_at = %v, want ~10 years ahead", resp.ExpiresAt)
+	}
+}
+
+func TestListAndRevokeAPITokenHandlers(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, true)
+	alice, err := h.svc.Register("alice@test.com", "alice", "Alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, err := h.svc.Register("bob@test.com", "bob", "Bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	tokA, plainA, err := h.svc.CreateAPIToken(alice.ID, "alice-ci", &exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokB, _, err := h.svc.CreateAPIToken(bob.ID, "bob-ci", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GET: alice sees only her own token, with expires_at and without any secret.
+	rec := httptest.NewRecorder()
+	h.ListAPITokens(rec, apiTokenRequest(alice.ID, "GET", "/rest/api/3/auth/api-tokens", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	var list []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode list: %v — body: %s", err, rec.Body.String())
+	}
+	if len(list) != 1 || list[0]["id"] != tokA.ID || list[0]["label"] != "alice-ci" {
+		t.Fatalf("list = %v, want exactly alice's token", list)
+	}
+	if list[0]["expires_at"] != "2030-01-01T00:00:00Z" {
+		t.Errorf("expires_at = %v, want 2030-01-01T00:00:00Z", list[0]["expires_at"])
+	}
+	for _, secret := range []string{"token_hash", tokA.TokenHash, plainA, `"token"`} {
+		if strings.Contains(rec.Body.String(), secret) {
+			t.Errorf("list body leaks %q: %s", secret, rec.Body.String())
+		}
+	}
+
+	// DELETE bob's id as alice → 404, bob's row untouched.
+	rec = httptest.NewRecorder()
+	req := apiTokenRequest(alice.ID, "DELETE", "/rest/api/3/auth/api-tokens/"+tokB.ID, nil)
+	req.SetPathValue("id", tokB.ID)
+	h.RevokeAPIToken(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("revoke other's token status = %d, want 404, body: %s", rec.Code, rec.Body.String())
+	}
+	var n int64
+	db.Model(&auth.APIToken{}).Where("id = ?", tokB.ID).Count(&n)
+	if n != 1 {
+		t.Errorf("bob's token row count = %d, want 1", n)
+	}
+
+	// DELETE own id → 204, then GET is empty and DELETE again is 404.
+	rec = httptest.NewRecorder()
+	req = apiTokenRequest(alice.ID, "DELETE", "/rest/api/3/auth/api-tokens/"+tokA.ID, nil)
+	req.SetPathValue("id", tokA.ID)
+	h.RevokeAPIToken(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke own token status = %d, want 204, body: %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ListAPITokens(rec, apiTokenRequest(alice.ID, "GET", "/rest/api/3/auth/api-tokens", nil))
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Errorf("list after revoke: status=%d body=%q, want 200 []", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	req = apiTokenRequest(alice.ID, "DELETE", "/rest/api/3/auth/api-tokens/"+tokA.ID, nil)
+	req.SetPathValue("id", tokA.ID)
+	h.RevokeAPIToken(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("second revoke status = %d, want 404", rec.Code)
+	}
+}
+
+// TestAuthMiddleware_ExpiredAPITokenIs401 wires the real Auth middleware to the
+// real verifier (exactly as router.go does) and proves an expired API token
+// is refused with 401 on a protected route, while a live one passes.
+func TestAuthMiddleware_ExpiredAPITokenIs401(t *testing.T) {
+	h, _ := newAuthHandlerIsolated(t, true)
+	u, err := h.svc.Register("mw@test.com", "mwuser", "MW", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	h.svc.Now = func() time.Time { return fixed }
+	past := fixed.Add(-time.Hour)
+	_, expired, err := h.svc.CreateAPIToken(u.ID, "expired", &past)
+	if err != nil {
+		t.Fatal(err)
+	}
+	future := fixed.Add(time.Hour)
+	_, live, err := h.svc.CreateAPIToken(u.ID, "live", &future)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	protected := middleware.Auth("test-secret-min-32-chars-long-key!!", h.svc.VerifyAPIToken)(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+
+	call := func(plain string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/rest/api/3/myself", nil)
+		req.SetBasicAuth("mw@test.com", plain)
+		rec := httptest.NewRecorder()
+		protected.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := call(expired); rec.Code != http.StatusUnauthorized {
+		t.Errorf("expired token status = %d, want 401, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := call(live); rec.Code != http.StatusOK {
+		t.Errorf("live token status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCreateAPIToken_ExpiryIsUTC pins that expires_at is computed in UTC even
+// when the process clock is zoned: expires_at is a tz-less TIMESTAMP column and
+// pgx stores the wall-clock digits of the value's zone and reads them back as
+// UTC, so a local-zoned value on a UTC+N host would be honoured N hours too
+// long. (This branch has no TEST_DB_DRIVER=postgres helper, so the codec
+// round-trip itself is not exercised here — only the UTC intent.)
+func TestCreateAPIToken_ExpiryIsUTC(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, true)
+	u, err := h.svc.Register("utc@test.com", "utcuser", "UTC", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cest := time.FixedZone("CEST", 2*3600)
+	zoned := time.Date(2026, 10, 28, 14, 30, 0, 0, cest) // 12:30 UTC
+	h.svc.Now = func() time.Time { return zoned }
+	want := zoned.UTC().Add(3 * 24 * time.Hour)
+
+	if got := h.svc.Clock(); got.Location() != time.UTC || !got.Equal(zoned) {
+		t.Fatalf("Clock() = %v (loc %v), want the same instant in UTC", got, got.Location())
+	}
+
+	rec := httptest.NewRecorder()
+	h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"utc","expiresInDays":3}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ID        string     `json:"id"`
+		ExpiresAt *time.Time `json:"expires_at"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — %s", err, rec.Body.String())
+	}
+	if resp.ExpiresAt == nil || !resp.ExpiresAt.Equal(want) {
+		t.Errorf("response expires_at = %v, want %v", resp.ExpiresAt, want)
+	}
+	// The wire form carries UTC digits with a Z suffix, not the +02:00 offset.
+	if !strings.Contains(rec.Body.String(), `"expires_at":"2026-10-31T12:30:00Z"`) {
+		t.Errorf("expires_at must be serialized as UTC: %s", rec.Body.String())
+	}
+
+	// The value handed to the DB layer is UTC-located (same digits as the instant).
+	var stored auth.APIToken
+	if err := db.First(&stored, "id = ?", resp.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.ExpiresAt == nil || !stored.ExpiresAt.Equal(want) {
+		t.Errorf("stored expires_at = %v, want %v", stored.ExpiresAt, want)
+	}
+
+	// Listing later, with the clock still zoned, renders the same UTC expiry.
+	h.svc.Now = func() time.Time { return want.Add(-time.Second).In(cest) }
+	rec2 := httptest.NewRecorder()
+	h.ListAPITokens(rec2, apiTokenRequest(u.ID, "GET", "/rest/api/3/auth/api-tokens", nil))
+	if !strings.Contains(rec2.Body.String(), `"expires_at":"2026-10-31T12:30:00Z"`) {
+		t.Errorf("list must show the same UTC expiry as the POST response: %s", rec2.Body.String())
+	}
 }

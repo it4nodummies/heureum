@@ -65,14 +65,14 @@ type IssueBean struct {
 // IssueInput raccoglie l'issue di dominio e le entità collegate necessarie a
 // costruire un IssueBean v3 completo.
 type IssueInput struct {
-	Issue      issue.Issue
-	BaseURL    string
-	Assignee   *user.User
-	Reporter   *user.User
-	IssueType  *issue.IssueType
-	Status     *StatusRef
-	Resolution *ResolutionRef
-	Project    *ProjectRef
+	Issue       issue.Issue
+	BaseURL     string
+	Assignee    *user.User
+	Reporter    *user.User
+	IssueType   *issue.IssueType
+	Status      *StatusRef
+	Resolution  *ResolutionRef
+	Project     *ProjectRef
 	Parent      *ParentRef
 	Labels      []string
 	FixVersions []VersionRef

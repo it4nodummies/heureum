@@ -57,10 +57,20 @@ func (s *Service) AddStatus(workflowID, name string, category StatusCategory, co
 	return status, nil
 }
 
-func (s *Service) UpdateStatus(statusID, name string, category StatusCategory, color string) (*WorkflowStatus, error) {
+// ErrNotFound is returned by the workflow-scoped status/transition operations
+// when the child id does not exist in that workflow (missing or belonging to
+// another workflow/project — indistinguishable by design).
+var ErrNotFound = errors.New("not found")
+
+// UpdateStatus updates the status statusID of workflowID; an id from another
+// workflow is ErrNotFound.
+func (s *Service) UpdateStatus(workflowID, statusID, name string, category StatusCategory, color string) (*WorkflowStatus, error) {
 	var status WorkflowStatus
-	if err := s.db.First(&status, "id = ?", statusID).Error; err != nil {
-		return nil, errors.New("status not found")
+	if err := s.db.First(&status, "id = ? AND workflow_id = ?", statusID, workflowID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
 	status.Name = name
 	status.Category = category
@@ -71,8 +81,17 @@ func (s *Service) UpdateStatus(statusID, name string, category StatusCategory, c
 	return &status, nil
 }
 
-func (s *Service) RemoveStatus(statusID string) error {
-	return s.db.Delete(&WorkflowStatus{}, "id = ?", statusID).Error
+// RemoveStatus deletes the status statusID of workflowID; an id from another
+// workflow is ErrNotFound and nothing is deleted.
+func (s *Service) RemoveStatus(workflowID, statusID string) error {
+	res := s.db.Where("id = ? AND workflow_id = ?", statusID, workflowID).Delete(&WorkflowStatus{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // AddTransition crea una transizione from→to con nome e regole base.
@@ -92,8 +111,17 @@ func (s *Service) AddTransition(workflowID, fromStatusID, toStatusID, name strin
 	return tr, nil
 }
 
-func (s *Service) RemoveTransition(transitionID string) error {
-	return s.db.Delete(&WorkflowTransition{}, "id = ?", transitionID).Error
+// RemoveTransition deletes the transition transitionID of workflowID; an id
+// from another workflow is ErrNotFound and nothing is deleted.
+func (s *Service) RemoveTransition(workflowID, transitionID string) error {
+	res := s.db.Where("id = ? AND workflow_id = ?", transitionID, workflowID).Delete(&WorkflowTransition{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Service) GetTransitions(workflowID string) ([]WorkflowTransition, error) {
@@ -120,8 +148,16 @@ func (s *Service) GetAvailableTransitions(workflowID, fromStatusID string) ([]Wo
 	return trs, nil
 }
 
-// UpdateTransition aggiorna nome e regole di una transizione (puntatori nil = invariato).
-func (s *Service) UpdateTransition(id string, name *string, requireAssignee, setResolution *bool) (*WorkflowTransition, error) {
+// UpdateTransition aggiorna nome e regole della transizione id del workflow
+// workflowID (puntatori nil = invariato). Un id di un altro workflow è ErrNotFound.
+func (s *Service) UpdateTransition(workflowID, id string, name *string, requireAssignee, setResolution *bool) (*WorkflowTransition, error) {
+	var existing WorkflowTransition
+	if err := s.db.First(&existing, "id = ? AND workflow_id = ?", id, workflowID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
 	updates := map[string]any{}
 	if name != nil {
 		updates["name"] = *name
@@ -133,7 +169,7 @@ func (s *Service) UpdateTransition(id string, name *string, requireAssignee, set
 		updates["set_resolution"] = *setResolution
 	}
 	if len(updates) > 0 {
-		if err := s.db.Model(&WorkflowTransition{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		if err := s.db.Model(&WorkflowTransition{}).Where("id = ? AND workflow_id = ?", id, workflowID).Updates(updates).Error; err != nil {
 			return nil, err
 		}
 	}
@@ -179,19 +215,63 @@ func (s *Service) GetWorkflowByProjectID(projectID string) (*Workflow, error) {
 	return s.GetWorkflow(projectID)
 }
 
-func (s *Service) CreateDefaultWorkflow(projectID string) (*Workflow, error) {
+// CreateDefaultWorkflow scaffolds the default workflow for a project. When
+// includeReview is true it adds a QA "TO BE TESTED" state (CategoryInProgress)
+// between IN PROGRESS and DONE, with Ready to Test / Back to In Progress / Done
+// transitions routed through it; when false it produces the classic three-state
+// TO DO → IN PROGRESS → DONE workflow.
+func (s *Service) CreateDefaultWorkflow(projectID string, includeReview bool) (*Workflow, error) {
 	wf, err := s.CreateWorkflow(projectID, "Default Workflow")
 	if err != nil {
 		return nil, err
 	}
 
-	todo, _ := s.AddStatus(wf.ID, "TO DO", CategoryTodo, "#6B7280")
-	inProg, _ := s.AddStatus(wf.ID, "IN PROGRESS", CategoryInProgress, "#3B82F6")
-	done, _ := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
+	todo, err := s.AddStatus(wf.ID, "TO DO", CategoryTodo, "#6B7280")
+	if err != nil {
+		return nil, err
+	}
+	inProg, err := s.AddStatus(wf.ID, "IN PROGRESS", CategoryInProgress, "#3B82F6")
+	if err != nil {
+		return nil, err
+	}
 
-	s.AddTransition(wf.ID, todo.ID, inProg.ID, "Start Progress", false, false)
-	s.AddTransition(wf.ID, inProg.ID, todo.ID, "Stop Progress", false, false)
-	s.AddTransition(wf.ID, inProg.ID, done.ID, "Done", false, true)
+	if _, err := s.AddTransition(wf.ID, todo.ID, inProg.ID, "Start Progress", false, false); err != nil {
+		return nil, err
+	}
+	if _, err := s.AddTransition(wf.ID, inProg.ID, todo.ID, "Stop Progress", false, false); err != nil {
+		return nil, err
+	}
+
+	if includeReview {
+		toBeTested, err := s.AddStatus(wf.ID, "TO BE TESTED", CategoryInProgress, "#8B5CF6")
+		if err != nil {
+			return nil, err
+		}
+		done, err := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := s.AddTransition(wf.ID, inProg.ID, toBeTested.ID, "Ready to Test", false, false); err != nil {
+			return nil, err
+		}
+		if _, err := s.AddTransition(wf.ID, toBeTested.ID, inProg.ID, "Back to In Progress", false, false); err != nil {
+			return nil, err
+		}
+		if _, err := s.AddTransition(wf.ID, toBeTested.ID, done.ID, "Done", false, true); err != nil {
+			return nil, err
+		}
+
+		return s.GetWorkflow(projectID)
+	}
+
+	done, err := s.AddStatus(wf.ID, "DONE", CategoryDone, "#10B981")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.AddTransition(wf.ID, inProg.ID, done.ID, "Done", false, true); err != nil {
+		return nil, err
+	}
 
 	return s.GetWorkflow(projectID)
 }

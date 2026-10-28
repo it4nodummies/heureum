@@ -95,6 +95,55 @@ func TestCreateAssignsSeqID(t *testing.T) {
 	}
 }
 
+// TestSeedStandardTypesCreatesAndIsIdempotent verifies that SeedStandardTypes
+// creates one issue type per name (inferring icon/isSubtask from the name via
+// TypeIDByName) and that re-running it is a no-op: the same names are not
+// duplicated and no error is returned.
+func TestSeedStandardTypesCreatesAndIsIdempotent(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+
+	names := []string{"Epic", "Story", "Task", "Bug", "Subtask"}
+	if err := svc.SeedStandardTypes("p1", names); err != nil {
+		t.Fatalf("SeedStandardTypes: %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&IssueType{}).Where("project_id = ?", "p1").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 5 {
+		t.Fatalf("type count = %d, want 5", count)
+	}
+
+	var sub IssueType
+	if err := db.Where("project_id = ? AND name = ?", "p1", "Subtask").First(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !sub.IsSubtask {
+		t.Errorf("Subtask IsSubtask = false, want true")
+	}
+
+	var bug IssueType
+	if err := db.Where("project_id = ? AND name = ?", "p1", "Bug").First(&bug).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bug.Icon != "bug" {
+		t.Errorf("Bug icon = %q, want %q", bug.Icon, "bug")
+	}
+
+	// Idempotent: re-running must not duplicate and must not error.
+	if err := svc.SeedStandardTypes("p1", names); err != nil {
+		t.Fatalf("SeedStandardTypes (second call): %v", err)
+	}
+	if err := db.Model(&IssueType{}).Where("project_id = ?", "p1").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 5 {
+		t.Fatalf("after re-run type count = %d, want 5 (no duplicates)", count)
+	}
+}
+
 // TestUpdateEmptyAssigneeStoresNull verifies that unassigning an issue (an empty
 // accountId reaching Update) writes SQL NULL to the nullable assignee_id FK
 // column, not "". Before the fix the map wrote *assigneeID ("") which is silently

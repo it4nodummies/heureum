@@ -35,7 +35,7 @@ func setupBoardConfigTest(t *testing.T) (*AgileBoardHandler, *board.Board, []str
 	wfSvc := workflow.NewService(db)
 
 	projectID := uuid.NewString()
-	if _, err := wfSvc.CreateDefaultWorkflow(projectID); err != nil {
+	if _, err := wfSvc.CreateDefaultWorkflow(projectID, false); err != nil {
 		t.Fatalf("create workflow: %v", err)
 	}
 	wf, err := wfSvc.GetWorkflow(projectID)

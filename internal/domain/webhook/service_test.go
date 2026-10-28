@@ -67,7 +67,7 @@ func TestDeleteAndRecordDelivery(t *testing.T) {
 	if cnt != 1 {
 		t.Errorf("attesa 1 delivery, %d", cnt)
 	}
-	if err := svc.Delete(h.ID); err != nil {
+	if err := svc.Delete(h.ProjectID, h.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if l, _ := svc.ListByProject("proj-1"); len(l) != 0 {

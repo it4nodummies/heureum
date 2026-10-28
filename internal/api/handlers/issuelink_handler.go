@@ -38,12 +38,23 @@ type jiraLinkedIssue struct {
 	Key string `json:"key"`
 }
 
+const issueNotVisibleMsg = "Issue does not exist or you do not have permission to see it."
+
 // resolveIssue trova una issue per key o id (Jira accetta entrambi in LinkedIssue).
 func (h *IssueLinkHandler) resolveIssue(ref jiraLinkedIssue) (*issue.Issue, error) {
 	if ref.Key == "" {
 		return nil, fmt.Errorf("issue key is required")
 	}
 	return h.issueSvc.GetByKey(ref.Key)
+}
+
+// canBrowse reports whether uid holds BrowseProjects on the issue's project.
+// Both ends of a link are "issues taken from the request" (body on create,
+// link row on read/delete): an end the caller cannot browse is treated exactly
+// like a missing issue (404) so that linking/reading never reveals issues of
+// projects the caller is not part of.
+func (h *IssueLinkHandler) canBrowse(uid string, iss *issue.Issue) bool {
+	return iss != nil && h.chk.RequireProject(uid, iss.ProjectID, permission.BrowseProjects) == nil
 }
 
 // toIssueLinkV3 costruisce la forma v3 di un IssueLink a partire dal record di
@@ -92,7 +103,7 @@ func (h *IssueLinkHandler) statusRefFor(iss *issue.Issue) *v3.StatusRef {
 func (h *IssueLinkHandler) ListForIssue(w http.ResponseWriter, r *http.Request) {
 	iss, err := h.resolveIssueIdOrKey(r.PathValue("issueIdOrKey"))
 	if err != nil || iss == nil {
-		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
+		v3.WriteError(w, http.StatusNotFound, []string{issueNotVisibleMsg}, nil)
 		return
 	}
 
@@ -102,6 +113,7 @@ func (h *IssueLinkHandler) ListForIssue(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	uid := middleware.UserIDFromContext(r.Context())
 	out := make([]v3.IssueLinkForIssue, 0, len(links))
 	for _, link := range links {
 		otherID := link.TargetID
@@ -110,7 +122,9 @@ func (h *IssueLinkHandler) ListForIssue(w http.ResponseWriter, r *http.Request) 
 			otherID = link.SourceID
 		}
 		other, oerr := h.issueByID(otherID)
-		if oerr != nil {
+		if oerr != nil || !h.canBrowse(uid, other) {
+			// The other end lives in a project the caller cannot browse: the
+			// link is omitted rather than exposing that issue's key/summary.
 			continue
 		}
 		linked := v3.LinkedIssueForIssue{
@@ -144,10 +158,14 @@ func (h *IssueLinkHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The router enforces Browse on the source (outward) project only; the
+	// target is checked here so a link never exposes an issue of a project the
+	// caller cannot browse.
+	uid := middleware.UserIDFromContext(r.Context())
 	outwardIss, oerr := h.issueByID(link.SourceID)
 	inwardIss, ierr := h.issueByID(link.TargetID)
-	if oerr != nil || ierr != nil {
-		v3.WriteError(w, http.StatusNotFound, []string{"linked issue not found"}, nil)
+	if oerr != nil || ierr != nil || !h.canBrowse(uid, outwardIss) || !h.canBrowse(uid, inwardIss) {
+		v3.WriteError(w, http.StatusNotFound, []string{"link not found"}, nil)
 		return
 	}
 
@@ -176,20 +194,24 @@ func (h *IssueLinkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Both issues come from the body. Each must exist AND be browsable by the
+	// caller (as in Jira: Browse on every project of the link); an end that is
+	// missing and one the caller may not see get the same 404, so the endpoint
+	// cannot be used to probe keys/ids of other projects.
+	uid := middleware.UserIDFromContext(r.Context())
 	outwardIss, err := h.resolveIssue(req.OutwardIssue)
-	if err != nil {
-		v3.WriteError(w, http.StatusNotFound, []string{"outwardIssue not found"}, nil)
+	if err != nil || !h.canBrowse(uid, outwardIss) {
+		v3.WriteError(w, http.StatusNotFound, []string{issueNotVisibleMsg}, nil)
 		return
 	}
 	inwardIss, err := h.resolveIssue(req.InwardIssue)
-	if err != nil {
-		v3.WriteError(w, http.StatusNotFound, []string{"inwardIssue not found"}, nil)
+	if err != nil || !h.canBrowse(uid, inwardIss) {
+		v3.WriteError(w, http.StatusNotFound, []string{issueNotVisibleMsg}, nil)
 		return
 	}
 
 	// outwardIss è la issue sorgente del link (diventerà SourceID in AddLink):
 	// il permesso EDIT_ISSUES si valuta sul suo progetto.
-	uid := middleware.UserIDFromContext(r.Context())
 	if err := h.chk.RequireProject(uid, outwardIss.ProjectID, permission.EditIssues); err != nil {
 		authz.WriteForbidden(w)
 		return
@@ -212,12 +234,15 @@ func (h *IssueLinkHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusNotFound, []string{"link not found"}, nil)
 		return
 	}
-	srcIss, err := h.issueByID(link.SourceID)
-	if err != nil {
+	// As in Jira: Browse on both projects of the link (else the link is not
+	// visible → 404), Edit on the source project to remove it.
+	uid := middleware.UserIDFromContext(r.Context())
+	srcIss, serr := h.issueByID(link.SourceID)
+	dstIss, derr := h.issueByID(link.TargetID)
+	if serr != nil || derr != nil || !h.canBrowse(uid, srcIss) || !h.canBrowse(uid, dstIss) {
 		v3.WriteError(w, http.StatusNotFound, []string{"link not found"}, nil)
 		return
 	}
-	uid := middleware.UserIDFromContext(r.Context())
 	if err := h.chk.RequireProject(uid, srcIss.ProjectID, permission.EditIssues); err != nil {
 		authz.WriteForbidden(w)
 		return

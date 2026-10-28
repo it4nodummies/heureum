@@ -186,3 +186,168 @@ func TestLoadConfigMissingDSN(t *testing.T) {
 		t.Error("expected error for missing DB_DSN")
 	}
 }
+
+// ── Round 27: perimeter defaults ──────────────────────────────────────────────
+
+const prodSecret = "production-secret-at-least-32-characters-long"
+
+func TestLoad_ProductionDefaultsSignupClosed(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_SECRET", prodSecret)
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	// APP_SIGNUP deliberately unset.
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.SignupOpen {
+		t.Errorf("SignupOpen = true in production with APP_SIGNUP unset, want false (closed by default)")
+	}
+}
+
+func TestLoad_NonProductionDefaultsSignupOpen(t *testing.T) {
+	for _, env := range []string{"", "development", "test"} {
+		t.Run("APP_ENV="+env, func(t *testing.T) {
+			t.Setenv("APP_ENV", env)
+			t.Setenv("APP_SECRET", "dev")
+			t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if !cfg.SignupOpen {
+				t.Errorf("SignupOpen = false with APP_ENV=%q and APP_SIGNUP unset, want true", env)
+			}
+		})
+	}
+}
+
+func TestLoad_ExplicitSignupWinsOverEnv(t *testing.T) {
+	cases := []struct {
+		env, signup string
+		want        bool
+	}{
+		{"production", "open", true},
+		{"production", "closed", false},
+		{"development", "open", true},
+		{"development", "closed", false},
+	}
+	for _, c := range cases {
+		t.Run(c.env+"/"+c.signup, func(t *testing.T) {
+			t.Setenv("APP_ENV", c.env)
+			t.Setenv("APP_SIGNUP", c.signup)
+			t.Setenv("APP_SECRET", prodSecret)
+			t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.SignupOpen != c.want {
+				t.Errorf("SignupOpen = %v with APP_ENV=%s APP_SIGNUP=%s, want %v", cfg.SignupOpen, c.env, c.signup, c.want)
+			}
+		})
+	}
+}
+
+func TestLoad_RejectsUnknownSignupValue(t *testing.T) {
+	t.Setenv("APP_SIGNUP", "maybe")
+	t.Setenv("APP_SECRET", prodSecret)
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	if _, err := Load(); err == nil {
+		t.Error("expected error for APP_SIGNUP=maybe (only open|closed are valid)")
+	}
+}
+
+func TestLoad_ProductionRejectsShortSecret(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_SECRET", "short-secret")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	if _, err := Load(); err == nil {
+		t.Error("expected error: APP_SECRET shorter than 32 bytes must be rejected in production")
+	}
+
+	// A 32-byte secret is the minimum accepted.
+	t.Setenv("APP_SECRET", "0123456789abcdef0123456789abcdef")
+	if _, err := Load(); err != nil {
+		t.Errorf("Load() with a 32-byte secret in production: unexpected error %v", err)
+	}
+}
+
+func TestLoad_NonProductionAcceptsShortSecret(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("APP_SECRET", "dev")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	if _, err := Load(); err != nil {
+		t.Errorf("Load() in development with APP_SECRET=dev: unexpected error %v", err)
+	}
+}
+
+func TestLoad_WebhookAllowPrivateHosts(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_WEBHOOK_ALLOW_PRIVATE_HOSTS", " forgejo.home.arpa, 192.168.1.0/24 ,,10.0.0.5 ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []string{"forgejo.home.arpa", "192.168.1.0/24", "10.0.0.5"}
+	if len(cfg.WebhookAllowPrivateHosts) != len(want) {
+		t.Fatalf("WebhookAllowPrivateHosts = %v, want %v", cfg.WebhookAllowPrivateHosts, want)
+	}
+	for i := range want {
+		if cfg.WebhookAllowPrivateHosts[i] != want[i] {
+			t.Errorf("WebhookAllowPrivateHosts[%d] = %q, want %q", i, cfg.WebhookAllowPrivateHosts[i], want[i])
+		}
+	}
+}
+
+func TestLoad_WebhookAllowPrivateHostsDefaultEmpty(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_WEBHOOK_ALLOW_PRIVATE_HOSTS", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.WebhookAllowPrivateHosts) != 0 {
+		t.Errorf("default WebhookAllowPrivateHosts = %v, want empty (no private target allowed)", cfg.WebhookAllowPrivateHosts)
+	}
+}
+
+func TestLoadConfigTrustedProxies(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_TRUSTED_PROXIES", " 127.0.0.1, 10.42.0.0/16 ,::1")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []string{"127.0.0.1", "10.42.0.0/16", "::1"}
+	if len(cfg.TrustedProxies) != len(want) {
+		t.Fatalf("TrustedProxies = %v, want %v", cfg.TrustedProxies, want)
+	}
+	for i := range want {
+		if cfg.TrustedProxies[i] != want[i] {
+			t.Errorf("TrustedProxies[%d] = %q, want %q", i, cfg.TrustedProxies[i], want[i])
+		}
+	}
+
+	t.Setenv("APP_TRUSTED_PROXIES", "")
+	if cfg, err := Load(); err != nil || cfg.TrustedProxies != nil {
+		t.Errorf("unset: TrustedProxies = %v, err = %v; want nil, nil", cfg.TrustedProxies, err)
+	}
+
+	t.Setenv("APP_TRUSTED_PROXIES", "nginx")
+	if _, err := Load(); err == nil {
+		t.Errorf("hostname entry must be a startup error (only IPs/CIDRs are accepted)")
+	}
+}
