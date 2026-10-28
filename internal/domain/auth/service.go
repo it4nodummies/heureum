@@ -136,8 +136,6 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 	return nil, ErrBootstrapRaced
 }
 
-// countActiveAdmins is the bootstrap predicate: the instance needs a
-// bootstrap exactly when this is 0.
 // countUsers is the bootstrap condition: only an empty table bootstraps.
 func (s *Service) countUsers() (int64, error) {
 	var n int64
