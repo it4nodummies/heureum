@@ -159,6 +159,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	authMw := middleware.Auth(cfg.Secret, authSvc.VerifyAPIToken)
 	mux.Handle("POST /rest/api/3/auth/api-tokens", authMw(http.HandlerFunc(authH.CreateAPIToken)))
+	// Self-scoped (the handler filters by the authenticated user id), so the
+	// authMw alone is the guard — same as PUT /rest/api/3/myself.
+	mux.Handle("GET /rest/api/3/auth/api-tokens", authMw(http.HandlerFunc(authH.ListAPITokens)))
+	mux.Handle("DELETE /rest/api/3/auth/api-tokens/{id}", authMw(http.HandlerFunc(authH.RevokeAPIToken)))
 	mux.Handle("GET /rest/api/3/users/me", authMw(http.HandlerFunc(userH.GetMe)))
 	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMyself)))
 	mux.Handle("PUT /rest/api/3/myself", authMw(http.HandlerFunc(userH.UpdateMyself)))

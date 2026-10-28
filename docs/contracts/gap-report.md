@@ -4,7 +4,7 @@
 
 - Nel contratto e implementati (path match): **119**
 - Nel contratto ma mancanti: **602**
-- Implementati ma fuori contratto (estensioni): **97**
+- Implementati ma fuori contratto (estensioni): **99**
 
 ## Mancanti (dal contratto)
 
@@ -613,6 +613,7 @@
 
 ## Estensioni fuori contratto
 
+- `DELETE /rest/api/3/auth/api-tokens/{}`
 - `DELETE /rest/api/3/automation/{}`
 - `DELETE /rest/api/3/custom-fields/options/{}`
 - `DELETE /rest/api/3/custom-fields/{}`
@@ -627,6 +628,7 @@
 - `DELETE /rest/api/3/project/{}/workflow/transitions/{}`
 - `GET /healthz`
 - `GET /rest/agile/1.0/board/{}/config`
+- `GET /rest/api/3/auth/api-tokens`
 - `GET /rest/api/3/auth/oauth/{}/callback`
 - `GET /rest/api/3/auth/oauth/{}/redirect`
 - `GET /rest/api/3/automation/{}`

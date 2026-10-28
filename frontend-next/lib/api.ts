@@ -230,7 +230,29 @@ export const auth = {
     }),
 
   me: () => apiFetch<User>("/rest/api/3/users/me"),
+
+  // Personal API tokens (Heureum extension routes). The server never returns
+  // the token hash; the plaintext `token` is present ONLY in the create
+  // response and must be shown to the user once.
+  listApiTokens: () => apiFetch<ApiToken[]>("/rest/api/3/auth/api-tokens"),
+  createApiToken: (label: string, expiresInDays?: number) =>
+    apiFetch<ApiToken & { token: string }>("/rest/api/3/auth/api-tokens", {
+      method: "POST",
+      body: JSON.stringify(
+        expiresInDays && expiresInDays > 0 ? { label, expiresInDays } : { label }
+      ),
+    }),
+  revokeApiToken: (id: string) =>
+    apiFetch<void>(`/rest/api/3/auth/api-tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
+
+export interface ApiToken {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at?: string;
+  expires_at?: string; // absent = never expires
+}
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 

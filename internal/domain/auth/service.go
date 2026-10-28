@@ -19,6 +19,10 @@ type Service struct {
 	DB     *gorm.DB
 	Secret string
 
+	// Now is the clock used for API token expiry (creation and verification).
+	// nil means time.Now; tests override it to pin "expired" vs "live".
+	Now func() time.Time
+
 	// bootstrapMu serializes RegisterWithPolicy within this process so that two
 	// concurrent first registrations cannot both observe an empty users table
 	// (READ COMMITTED on Postgres/MySQL would otherwise let both become admin).
