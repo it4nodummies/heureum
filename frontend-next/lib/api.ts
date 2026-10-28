@@ -238,9 +238,9 @@ export const auth = {
   createApiToken: (label: string, expiresInDays?: number) =>
     apiFetch<ApiToken & { token: string }>("/rest/api/3/auth/api-tokens", {
       method: "POST",
-      body: JSON.stringify(
-        expiresInDays && expiresInDays > 0 ? { label, expiresInDays } : { label }
-      ),
+      // Passed through as given (the server answers 400 for a non-positive
+      // value); only an omitted value means "never expires".
+      body: JSON.stringify(expiresInDays === undefined ? { label } : { label, expiresInDays }),
     }),
   revokeApiToken: (id: string) =>
     apiFetch<void>(`/rest/api/3/auth/api-tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),

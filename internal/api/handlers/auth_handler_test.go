@@ -473,3 +473,68 @@ func TestAuthMiddleware_ExpiredAPITokenIs401(t *testing.T) {
 		t.Errorf("live token status = %d, want 200, body: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestCreateAPIToken_ExpiryIsUTC pins that expires_at is computed in UTC even
+// when the process clock is zoned: expires_at is a tz-less TIMESTAMP column and
+// pgx stores the wall-clock digits of the value's zone and reads them back as
+// UTC, so a local-zoned value on a UTC+N host would be honoured N hours too
+// long. (This branch has no TEST_DB_DRIVER=postgres helper, so the codec
+// round-trip itself is not exercised here — only the UTC intent.)
+func TestCreateAPIToken_ExpiryIsUTC(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, true)
+	u, err := h.svc.Register("utc@test.com", "utcuser", "UTC", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cest := time.FixedZone("CEST", 2*3600)
+	zoned := time.Date(2026, 10, 28, 14, 30, 0, 0, cest) // 12:30 UTC
+	h.svc.Now = func() time.Time { return zoned }
+	want := zoned.UTC().Add(3 * 24 * time.Hour)
+
+	if got := h.svc.Clock(); got.Location() != time.UTC || !got.Equal(zoned) {
+		t.Fatalf("Clock() = %v (loc %v), want the same instant in UTC", got, got.Location())
+	}
+
+	rec := httptest.NewRecorder()
+	h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"utc","expiresInDays":3}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ID        string     `json:"id"`
+		ExpiresAt *time.Time `json:"expires_at"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — %s", err, rec.Body.String())
+	}
+	if resp.ExpiresAt == nil || !resp.ExpiresAt.Equal(want) {
+		t.Errorf("response expires_at = %v, want %v", resp.ExpiresAt, want)
+	}
+	// The wire form carries UTC digits with a Z suffix, not the +02:00 offset.
+	if !strings.Contains(rec.Body.String(), `"expires_at":"2026-10-31T12:30:00Z"`) {
+		t.Errorf("expires_at must be serialized as UTC: %s", rec.Body.String())
+	}
+
+	// The value handed to the DB layer is UTC-located (same digits as the instant).
+	var stored auth.APIToken
+	if err := db.First(&stored, "id = ?", resp.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.ExpiresAt == nil || !stored.ExpiresAt.Equal(want) {
+		t.Errorf("stored expires_at = %v, want %v", stored.ExpiresAt, want)
+	}
+	y, mo, d := stored.ExpiresAt.UTC().Date()
+	hh, mm, _ := stored.ExpiresAt.UTC().Clock()
+	if y != 2026 || mo != time.October || d != 31 || hh != 12 || mm != 30 {
+		t.Errorf("stored UTC digits = %04d-%02d-%02d %02d:%02d, want 2026-10-31 12:30", y, mo, d, hh, mm)
+	}
+
+	// Verification compares against the same UTC clock: one second before the
+	// expiry the token is live, at the expiry it is not.
+	h.svc.Now = func() time.Time { return want.Add(-time.Second).In(cest) }
+	rec2 := httptest.NewRecorder()
+	h.ListAPITokens(rec2, apiTokenRequest(u.ID, "GET", "/rest/api/3/auth/api-tokens", nil))
+	if !strings.Contains(rec2.Body.String(), `"expires_at":"2026-10-31T12:30:00Z"`) {
+		t.Errorf("list must show the same UTC expiry as the POST response: %s", rec2.Body.String())
+	}
+}

@@ -112,11 +112,8 @@ func (h *AuthHandler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 				map[string]string{"expiresInDays": "expiresInDays must be a positive number of days."})
 			return
 		}
-		now := time.Now()
-		if h.svc.Now != nil {
-			now = h.svc.Now()
-		}
-		t := now.Add(time.Duration(*req.ExpiresInDays) * 24 * time.Hour)
+		// Clock() is UTC: the column is a tz-less TIMESTAMP, see auth.Service.Clock.
+		t := h.svc.Clock().Add(time.Duration(*req.ExpiresInDays) * 24 * time.Hour)
 		expiresAt = &t
 	}
 	tok, plaintext, err := h.svc.CreateAPIToken(userID, req.Label, expiresAt)

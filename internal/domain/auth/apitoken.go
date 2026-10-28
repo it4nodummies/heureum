@@ -31,12 +31,18 @@ func hashToken(plaintext string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// now is the expiry clock seam: Service.Now when set, time.Now otherwise.
-func (s *Service) now() time.Time {
+// Clock is the single expiry clock seam (Service.Now when set, time.Now
+// otherwise), normalized to UTC. Both the create handler (expires_at = Clock
+// + N days) and VerifyAPIToken go through it so they cannot drift. UTC matters:
+// expires_at/last_used_at are TIMESTAMP (no tz) columns, and pgx stores the
+// wall-clock digits of whatever zone the value carries and reads them back as
+// UTC — a local-zoned value on a UTC+N host would be accepted for N extra
+// hours past the expiry shown to the client. UTC digits round-trip exactly.
+func (s *Service) Clock() time.Time {
 	if s.Now != nil {
-		return s.Now()
+		return s.Now().UTC()
 	}
-	return time.Now()
+	return time.Now().UTC()
 }
 
 // CreateAPIToken generates a token, stores its hash and returns the created
@@ -105,7 +111,7 @@ func (s *Service) VerifyAPIToken(email, plaintext string) (string, error) {
 		First(&tok).Error; err != nil {
 		return "", ErrInvalidToken
 	}
-	now := s.now()
+	now := s.Clock()
 	if tok.ExpiresAt != nil && !now.Before(*tok.ExpiresAt) {
 		return "", ErrInvalidToken
 	}
