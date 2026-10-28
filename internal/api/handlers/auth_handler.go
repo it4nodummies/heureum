@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -16,16 +17,14 @@ type AuthHandler struct {
 }
 
 // NewAuthHandler builds the auth handler. signupOpen controls whether
-// Register accepts new users; when false, Register returns 403.
+// Register accepts new users; when false, Register returns 403 — except for
+// the very first user of an empty instance, who is always accepted and
+// becomes admin (see auth.Service.RegisterWithPolicy).
 func NewAuthHandler(svc *auth.Service, signupOpen bool) *AuthHandler {
 	return &AuthHandler{svc: svc, signupOpen: signupOpen}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	if !h.signupOpen {
-		v3.WriteError(w, http.StatusForbidden, []string{"signup is disabled on this instance"}, nil)
-		return
-	}
 	var req struct {
 		Email    string `json:"email"`
 		Username string `json:"username"`
@@ -39,7 +38,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"email, username, and password are required"}`, http.StatusBadRequest)
 		return
 	}
-	u, err := h.svc.Register(req.Email, req.Username, req.Username, req.Password)
+	u, err := h.svc.RegisterWithPolicy(req.Email, req.Username, req.Username, req.Password, h.signupOpen)
+	if errors.Is(err, auth.ErrSignupClosed) {
+		v3.WriteError(w, http.StatusForbidden, []string{"signup is disabled on this instance"}, nil)
+		return
+	}
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusConflict)
 		return

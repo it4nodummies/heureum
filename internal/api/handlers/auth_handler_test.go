@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/config"
 	"github.com/it4nodummies/heureum/internal/domain/auth"
@@ -54,6 +57,11 @@ func TestRegisterUser(t *testing.T) {
 func TestRegisterUser_SignupClosedReturns403AndDoesNotCreateUser(t *testing.T) {
 	h, s := setupAuthHandlerWithSignup(t, false)
 	defer s.Close()
+	// The instance must already have a user: on an empty instance the first
+	// registration is always accepted (bootstrap), see TestRegister_FirstUserBecomesAdminEvenWhenClosed.
+	if _, err := h.svc.Register("existing@example.com", "existing", "Existing", "password123"); err != nil {
+		t.Fatal(err)
+	}
 	body := map[string]string{"email": "blocked@example.com", "username": "blockeduser", "password": "password123"}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest("POST", "/register", bytes.NewReader(b))
@@ -163,4 +171,110 @@ func TestCreateAPITokenHandler(t *testing.T) {
 			t.Errorf("errors = %v, want label field error", resp.Errors)
 		}
 	})
+}
+
+// ── Round 27: first-user bootstrap vs. closed signup ──────────────────────────
+
+// newAuthHandlerIsolated builds an AuthHandler over a fresh, private in-memory
+// DB (unlike setupAuthHandlerWithSignup, which shares one cache across tests),
+// so assertions about "the users table is empty" are reliable.
+func newAuthHandlerIsolated(t *testing.T, signupOpen bool) (*AuthHandler, *gorm.DB) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&user.User{}, &auth.APIToken{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	svc := auth.NewService(db, "test-secret-min-32-chars-long-key!!")
+	return NewAuthHandler(svc, signupOpen), db
+}
+
+func postRegister(t *testing.T, h *AuthHandler, email, username string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(map[string]string{"email": email, "username": username, "password": "password123"})
+	req := httptest.NewRequest("POST", "/rest/api/3/auth/register", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.Register(rec, req)
+	return rec
+}
+
+func TestRegister_FirstUserBecomesAdminEvenWhenClosed(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, false)
+
+	rec := postRegister(t, h, "first@example.com", "first")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (bootstrap on an empty instance), body: %s", rec.Code, rec.Body.String())
+	}
+
+	var u user.User
+	if err := db.Where("email = ?", "first@example.com").First(&u).Error; err != nil {
+		t.Fatalf("first user not persisted: %v", err)
+	}
+	if !u.IsAdmin {
+		t.Errorf("first user is_admin = false, want true")
+	}
+	var resp struct {
+		IsAdmin bool `json:"is_admin"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — body: %s", err, rec.Body.String())
+	}
+	if !resp.IsAdmin {
+		t.Errorf("response is_admin = false, want true")
+	}
+}
+
+func TestRegister_SecondUserRefusedWhenClosed(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, false)
+	if rec := postRegister(t, h, "first@example.com", "first"); rec.Code != http.StatusCreated {
+		t.Fatalf("bootstrap status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := postRegister(t, h, "second@example.com", "second")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("second register status = %d, want 403, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ErrorMessages []string `json:"errorMessages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — body: %s", err, rec.Body.String())
+	}
+	if len(resp.ErrorMessages) == 0 || resp.ErrorMessages[0] != "signup is disabled on this instance" {
+		t.Errorf("errorMessages = %v, want [\"signup is disabled on this instance\"]", resp.ErrorMessages)
+	}
+
+	var count int64
+	db.Model(&user.User{}).Count(&count)
+	if count != 1 {
+		t.Errorf("users count = %d, want 1 (second user must not be created)", count)
+	}
+}
+
+func TestRegister_SecondUserAllowedWhenOpen(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, true)
+	if rec := postRegister(t, h, "first@example.com", "first"); rec.Code != http.StatusCreated {
+		t.Fatalf("bootstrap status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := postRegister(t, h, "second@example.com", "second")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("second register status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+
+	var second user.User
+	if err := db.Where("email = ?", "second@example.com").First(&second).Error; err != nil {
+		t.Fatalf("second user not persisted: %v", err)
+	}
+	if second.IsAdmin {
+		t.Errorf("second user is_admin = true, want false (only the bootstrap user is admin)")
+	}
+	var admins int64
+	db.Model(&user.User{}).Where("is_admin = ?", true).Count(&admins)
+	if admins != 1 {
+		t.Errorf("admin count = %d, want 1", admins)
+	}
 }

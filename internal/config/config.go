@@ -35,6 +35,10 @@ type Config struct {
 	AuthRateLimit int
 }
 
+// minProductionSecretLen is the minimum APP_SECRET length accepted when
+// APP_ENV=production (32 bytes: enough entropy for HMAC-SHA256 / AES-256 keys).
+const minProductionSecretLen = 32
+
 func Load() (*Config, error) {
 	port, err := strconv.Atoi(getEnv("APP_PORT", "8080"))
 	if err != nil || port == 0 {
@@ -46,13 +50,33 @@ func Load() (*Config, error) {
 		smtpPort = 587
 	}
 
+	env := getEnv("APP_ENV", "development")
+	isProduction := env == "production"
+
+	// Signup policy: an explicit APP_SIGNUP always wins; when unset, production
+	// is closed by default (the perimeter must not be open on a fresh
+	// self-hosted instance) and every other env stays open (dev/e2e flows).
+	// The very first user can always register regardless (bootstrap, see
+	// auth.Service.RegisterWithPolicy).
+	var signupOpen bool
+	switch os.Getenv("APP_SIGNUP") {
+	case "":
+		signupOpen = !isProduction
+	case "open":
+		signupOpen = true
+	case "closed":
+		signupOpen = false
+	default:
+		return nil, fmt.Errorf("APP_SIGNUP must be \"open\" or \"closed\", got %q", os.Getenv("APP_SIGNUP"))
+	}
+
 	cfg := &Config{
 		Port:       port,
-		Env:        getEnv("APP_ENV", "development"),
+		Env:        env,
 		Secret:     os.Getenv("APP_SECRET"),
 		BaseURL:    getEnv("APP_BASE_URL", fmt.Sprintf("http://localhost:%d", port)),
 		UploadsDir: getEnv("APP_UPLOADS_DIR", "./data/uploads"),
-		SignupOpen: getEnv("APP_SIGNUP", "open") != "closed",
+		SignupOpen: signupOpen,
 		DB: DBConfig{
 			Driver: getEnv("DB_DRIVER", "postgres"),
 			DSN:    os.Getenv("DB_DSN"),
@@ -70,6 +94,12 @@ func Load() (*Config, error) {
 
 	if cfg.Secret == "" {
 		return nil, errors.New("APP_SECRET is required")
+	}
+	// APP_SECRET signs JWTs and (from R27) derives encryption keys: refuse to
+	// start a production instance on a weak secret. Dev keeps APP_SECRET=dev.
+	if isProduction && len(cfg.Secret) < minProductionSecretLen {
+		return nil, fmt.Errorf("APP_SECRET must be at least %d characters when APP_ENV=production (got %d)",
+			minProductionSecretLen, len(cfg.Secret))
 	}
 	if cfg.DB.DSN == "" {
 		return nil, errors.New("DB_DSN is required")

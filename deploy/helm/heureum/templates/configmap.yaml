@@ -8,6 +8,7 @@ data:
   APP_ENV: "production"
   APP_PORT: "8080"
   APP_BASE_URL: {{ .Values.config.baseUrl | quote }}
+  APP_SIGNUP: {{ .Values.config.signup | quote }}
   DB_DRIVER: {{ .Values.config.dbDriver | quote }}
   DB_DSN: {{ .Values.config.dbDsn | quote }}
   REDIS_URL: {{ .Values.config.redisUrl | quote }}

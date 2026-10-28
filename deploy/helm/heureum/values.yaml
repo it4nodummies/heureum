@@ -9,6 +9,9 @@ config:
   dbDsn: "postgres://heureum:heureum@postgres:5432/heureum?sslmode=disable"
   redisUrl: "redis://redis:6379/0"
   baseUrl: "http://localhost"
+  # Public registration policy: "closed" (default — only the first user of an
+  # empty instance can register and becomes admin) or "open".
+  signup: "closed"
   smtpHost: ""
 ingress:
   enabled: false

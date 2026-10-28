@@ -31,10 +31,12 @@ services:
       redis:
         condition: service_healthy
     environment:
-      APP_SECRET: "${APP_SECRET:-changeme-please-set-a-real-secret-min-32-chars}"
+      APP_SECRET: "${APP_SECRET:?APP_SECRET is required — set it in .env (min 32 chars)}"
       APP_ENV: production
       APP_PORT: "8080"
       APP_BASE_URL: "${APP_BASE_URL:-http://localhost}"
+      # open | closed — the first user of an empty instance can always register (becomes admin)
+      APP_SIGNUP: "${APP_SIGNUP:-closed}"
       DB_DRIVER: postgres
       DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
       REDIS_URL: "redis://redis:6379/0"
@@ -49,7 +51,7 @@ services:
     depends_on:
       - api
     environment:
-      APP_SECRET: "${APP_SECRET:-changeme-please-set-a-real-secret-min-32-chars}"
+      APP_SECRET: "${APP_SECRET:?APP_SECRET is required — set it in .env (min 32 chars)}"
       APP_ENV: production
       DB_DRIVER: postgres
       DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"

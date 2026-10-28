@@ -186,3 +186,104 @@ func TestLoadConfigMissingDSN(t *testing.T) {
 		t.Error("expected error for missing DB_DSN")
 	}
 }
+
+// ── Round 27: perimeter defaults ──────────────────────────────────────────────
+
+const prodSecret = "production-secret-at-least-32-characters-long"
+
+func TestLoad_ProductionDefaultsSignupClosed(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_SECRET", prodSecret)
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	// APP_SIGNUP deliberately unset.
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.SignupOpen {
+		t.Errorf("SignupOpen = true in production with APP_SIGNUP unset, want false (closed by default)")
+	}
+}
+
+func TestLoad_NonProductionDefaultsSignupOpen(t *testing.T) {
+	for _, env := range []string{"", "development", "test"} {
+		t.Run("APP_ENV="+env, func(t *testing.T) {
+			t.Setenv("APP_ENV", env)
+			t.Setenv("APP_SECRET", "dev")
+			t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if !cfg.SignupOpen {
+				t.Errorf("SignupOpen = false with APP_ENV=%q and APP_SIGNUP unset, want true", env)
+			}
+		})
+	}
+}
+
+func TestLoad_ExplicitSignupWinsOverEnv(t *testing.T) {
+	cases := []struct {
+		env, signup string
+		want        bool
+	}{
+		{"production", "open", true},
+		{"production", "closed", false},
+		{"development", "open", true},
+		{"development", "closed", false},
+	}
+	for _, c := range cases {
+		t.Run(c.env+"/"+c.signup, func(t *testing.T) {
+			t.Setenv("APP_ENV", c.env)
+			t.Setenv("APP_SIGNUP", c.signup)
+			t.Setenv("APP_SECRET", prodSecret)
+			t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.SignupOpen != c.want {
+				t.Errorf("SignupOpen = %v with APP_ENV=%s APP_SIGNUP=%s, want %v", cfg.SignupOpen, c.env, c.signup, c.want)
+			}
+		})
+	}
+}
+
+func TestLoad_RejectsUnknownSignupValue(t *testing.T) {
+	t.Setenv("APP_SIGNUP", "maybe")
+	t.Setenv("APP_SECRET", prodSecret)
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	if _, err := Load(); err == nil {
+		t.Error("expected error for APP_SIGNUP=maybe (only open|closed are valid)")
+	}
+}
+
+func TestLoad_ProductionRejectsShortSecret(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_SECRET", "short-secret")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	if _, err := Load(); err == nil {
+		t.Error("expected error: APP_SECRET shorter than 32 bytes must be rejected in production")
+	}
+
+	// A 32-byte secret is the minimum accepted.
+	t.Setenv("APP_SECRET", "0123456789abcdef0123456789abcdef")
+	if _, err := Load(); err != nil {
+		t.Errorf("Load() with a 32-byte secret in production: unexpected error %v", err)
+	}
+}
+
+func TestLoad_NonProductionAcceptsShortSecret(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("APP_SECRET", "dev")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+
+	if _, err := Load(); err != nil {
+		t.Errorf("Load() in development with APP_SECRET=dev: unexpected error %v", err)
+	}
+}
