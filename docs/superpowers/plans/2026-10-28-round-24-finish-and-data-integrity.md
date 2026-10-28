@@ -24,7 +24,7 @@ R24 plan `docs/superpowers/plans/2026-09-23-round-24-gate-reale.md` (Tasks 1–5
 ## Global Constraints
 
 - Branch `feat/round-24-finish` (worktree `/Users/n0r41n/Development/heureum-r24`) = R24 commits +
-  merge of `origin/main` (1d92330). Conventional Commits; **no `Co-Authored-By`**.
+  merge of `origin/main` (7b388ca). Conventional Commits; **no `Co-Authored-By`**.
 - Every new/changed test for a data-integrity fix MUST use `storetest.New(t)` (real schema), not
   `sqlite.Open(":memory:")`+`AutoMigrate`, so the postgres CI leg exercises it. Red first.
 - Nullable FK/string columns are pointers; never write `""` or zero `time.Time{}` (anti-pattern #2/#3).
