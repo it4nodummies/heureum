@@ -2,6 +2,7 @@ package git
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -70,6 +71,34 @@ type IssuePullRequest struct {
 
 func (IssuePullRequest) TableName() string { return "issue_pull_requests" }
 
+// MinWebhookSecretLen is the minimum length (bytes) of a provider
+// webhook_secret. The secret is the only thing that authenticates inbound
+// events (HMAC key for GitHub/Forgejo/Gitea, shared token for GitLab); an
+// empty one is forgeable and a short one is brute-forceable offline from a
+// single captured signed payload. 16 matches the minimum the providers
+// themselves suggest for a webhook secret.
+const MinWebhookSecretLen = 16
+
+var (
+	ErrWebhookSecretRequired   = errors.New("webhook_secret is required")
+	ErrWebhookSecretTooShort   = fmt.Errorf("webhook_secret must be at least %d characters", MinWebhookSecretLen)
+	ErrProviderTypeUnsupported = errors.New("provider type not supported")
+)
+
+// validateProviderInput is the create-time gate on the inbound-auth inputs.
+func validateProviderInput(providerType ProviderType, webhookSecret string) error {
+	if !IsSupportedProviderType(providerType) {
+		return ErrProviderTypeUnsupported
+	}
+	if webhookSecret == "" {
+		return ErrWebhookSecretRequired
+	}
+	if len(webhookSecret) < MinWebhookSecretLen {
+		return ErrWebhookSecretTooShort
+	}
+	return nil
+}
+
 type ConfigService struct {
 	db  *gorm.DB
 	key []byte
@@ -83,8 +112,14 @@ func NewConfigService(db *gorm.DB, key []byte) *ConfigService {
 
 // CreateProvider stores a provider with its API token encrypted at rest and
 // a freshly generated webhook URL token. An empty token is stored as "" (no
-// token) rather than as the encryption of an empty string.
+// token) rather than as the encryption of an empty string. The provider type
+// must have a signature validator (ErrProviderTypeUnsupported) and the
+// webhook secret is mandatory and at least MinWebhookSecretLen long
+// (ErrWebhookSecretRequired / ErrWebhookSecretTooShort).
 func (s *ConfigService) CreateProvider(projectID, providerType, baseURL, token, webhookSecret string) (*GitProviderConfig, error) {
+	if err := validateProviderInput(ProviderType(providerType), webhookSecret); err != nil {
+		return nil, err
+	}
 	urlToken, err := newURLToken()
 	if err != nil {
 		return nil, err
@@ -121,18 +156,28 @@ func (s *ConfigService) Token(cfg *GitProviderConfig) (string, error) {
 }
 
 // BackfillStats summarises what EnsureBackfill changed (counts only — never
-// token values).
+// token values). EmptyWebhookSecrets is not a change: it counts legacy rows
+// whose webhook_secret is empty — their inbound hooks are now rejected until
+// the provider is re-saved, so startup warns the operator.
 type BackfillStats struct {
-	Encrypted int
-	URLTokens int
+	Encrypted           int
+	URLTokens           int
+	EmptyWebhookSecrets int
 }
 
 // EnsureBackfill is run at server startup, after migrations, and is
 // idempotent: rows with a NULL webhook_url_token get one, and rows whose
 // token_encrypted is legacy plaintext (no "v1:" prefix, non-empty) are
-// encrypted in place. A second run finds nothing to do.
+// encrypted in place. A second run finds nothing to do. Rows with an empty
+// webhook_secret are only counted (a secret the provider knows can't be
+// invented here).
 func (s *ConfigService) EnsureBackfill() (BackfillStats, error) {
 	var stats BackfillStats
+	var emptySecrets int64
+	if err := s.db.Model(&GitProviderConfig{}).Where("webhook_secret = ''").Count(&emptySecrets).Error; err != nil {
+		return stats, err
+	}
+	stats.EmptyWebhookSecrets = int(emptySecrets)
 	var rows []GitProviderConfig
 	if err := s.db.Where("webhook_url_token IS NULL OR (token_encrypted <> '' AND token_encrypted NOT LIKE ?)", cipherPrefix+"%").Find(&rows).Error; err != nil {
 		return stats, err

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -66,7 +67,7 @@ func TestCreateProvider_StoresEncryptedTokenAndURLToken(t *testing.T) {
 	key := KeyFromSecret("test-secret")
 	svc := NewConfigService(db, key)
 
-	cfg, err := svc.CreateProvider("proj-1", "github", "https://github.com/acme/x", "ghp_plain", "hmac-secret")
+	cfg, err := svc.CreateProvider("proj-1", "github", "https://github.com/acme/x", "ghp_plain", "hmac-secret-0123456789")
 	if err != nil {
 		t.Fatalf("CreateProvider: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestCreateProvider_StoresEncryptedTokenAndURLToken(t *testing.T) {
 	if *row.WebhookURLToken == row.WebhookSecret {
 		t.Fatalf("webhook_url_token equals the HMAC secret")
 	}
-	if row.WebhookSecret != "hmac-secret" {
+	if row.WebhookSecret != "hmac-secret-0123456789" {
 		t.Fatalf("webhook_secret = %q (must stay usable for HMAC verification)", row.WebhookSecret)
 	}
 
@@ -98,12 +99,12 @@ func TestCreateProvider_StoresEncryptedTokenAndURLToken(t *testing.T) {
 	if err != nil || found.ID != cfg.ID {
 		t.Fatalf("FindByWebhookURLToken: %v", err)
 	}
-	if _, err := svc.FindByWebhookURLToken("hmac-secret"); err == nil {
+	if _, err := svc.FindByWebhookURLToken("hmac-secret-0123456789"); err == nil {
 		t.Fatalf("HMAC secret resolved as URL token")
 	}
 
 	// Empty token: nothing to encrypt, has no token.
-	cfg2, err := svc.CreateProvider("proj-2", "github", "https://github.com/acme/y", "", "s")
+	cfg2, err := svc.CreateProvider("proj-2", "github", "https://github.com/acme/y", "", "hmac-secret-0123456789")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,5 +173,90 @@ func TestEnsureBackfill_EncryptsLegacyAndAddsURLToken(t *testing.T) {
 		if again[i].TokenEncrypted != rows[i].TokenEncrypted || *again[i].WebhookURLToken != *rows[i].WebhookURLToken {
 			t.Fatalf("row %s changed on second run", rows[i].ID)
 		}
+	}
+}
+
+// TestCreateProvider_RejectsEmptyWebhookSecret: the HMAC secret is the only
+// thing that authenticates inbound events, so an empty one (forgeable
+// empty-key HMAC) is refused at create, as is anything shorter than
+// MinWebhookSecretLen. Exactly MinWebhookSecretLen is accepted.
+func TestCreateProvider_RejectsEmptyWebhookSecret(t *testing.T) {
+	svc := NewConfigService(newProviderDB(t), KeyFromSecret("test-secret"))
+
+	if _, err := svc.CreateProvider("proj-1", "github", "https://github.com/acme/x", "", ""); !errors.Is(err, ErrWebhookSecretRequired) {
+		t.Errorf("empty webhook_secret: err = %v, want ErrWebhookSecretRequired", err)
+	}
+	short := strings.Repeat("s", MinWebhookSecretLen-1)
+	if _, err := svc.CreateProvider("proj-1", "github", "https://github.com/acme/x", "", short); !errors.Is(err, ErrWebhookSecretTooShort) {
+		t.Errorf("%d-char webhook_secret: err = %v, want ErrWebhookSecretTooShort", len(short), err)
+	}
+	var count int64
+	svc.DB().Model(&GitProviderConfig{}).Count(&count)
+	if count != 0 {
+		t.Fatalf("rejected creates still wrote %d rows", count)
+	}
+
+	ok := strings.Repeat("s", MinWebhookSecretLen)
+	cfg, err := svc.CreateProvider("proj-1", "github", "https://github.com/acme/x", "", ok)
+	if err != nil {
+		t.Fatalf("%d-char webhook_secret: unexpected err %v", len(ok), err)
+	}
+	if cfg.WebhookSecret != ok {
+		t.Errorf("stored secret = %q", cfg.WebhookSecret)
+	}
+}
+
+// TestBitbucket_CreateRefusedOrValidated: there is no Bitbucket signature
+// validator (nor payload parser) in the codebase, so creating a `bitbucket`
+// provider is refused — otherwise the row would pass the DB CHECK and its
+// inbound hook would go through the noop provider. Same for any type the
+// code doesn't know, even though the DB CHECK would already stop those.
+func TestBitbucket_CreateRefusedOrValidated(t *testing.T) {
+	svc := NewConfigService(newProviderDB(t), KeyFromSecret("test-secret"))
+	secret := strings.Repeat("s", MinWebhookSecretLen)
+
+	for _, pt := range []string{"bitbucket", "svn", ""} {
+		if _, err := svc.CreateProvider("proj-1", pt, "https://bitbucket.org/acme/x", "", secret); !errors.Is(err, ErrProviderTypeUnsupported) {
+			t.Errorf("provider_type %q: err = %v, want ErrProviderTypeUnsupported", pt, err)
+		}
+	}
+	var count int64
+	svc.DB().Model(&GitProviderConfig{}).Count(&count)
+	if count != 0 {
+		t.Fatalf("refused creates still wrote %d rows", count)
+	}
+	for _, pt := range []string{"github", "gitlab", "forgejo", "gitea"} {
+		if _, err := svc.CreateProvider("proj-"+pt, pt, "https://example.com/acme/x", "", secret); err != nil {
+			t.Errorf("provider_type %q: unexpected err %v", pt, err)
+		}
+	}
+}
+
+// TestEnsureBackfill_CountsEmptyWebhookSecrets: legacy rows with an empty
+// secret are not fixed (we can't invent a secret the provider knows), but
+// their count is reported so startup can warn the operator to re-save them.
+func TestEnsureBackfill_CountsEmptyWebhookSecrets(t *testing.T) {
+	db := newProviderDB(t)
+	svc := NewConfigService(db, KeyFromSecret("test-secret"))
+	for _, r := range []*GitProviderConfig{
+		{ID: "l1", ProjectID: "p1", ProviderType: ProviderGitHub, BaseURL: "https://github.com/a/x", WebhookSecret: ""},
+		{ID: "l2", ProjectID: "p2", ProviderType: ProviderGitLab, BaseURL: "https://gitlab.com/a/y", WebhookSecret: ""},
+		{ID: "l3", ProjectID: "p3", ProviderType: ProviderGitHub, BaseURL: "https://github.com/a/z", WebhookSecret: "a-real-secret-value"},
+	} {
+		if err := db.Create(r).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err := svc.EnsureBackfill()
+	if err != nil {
+		t.Fatalf("EnsureBackfill: %v", err)
+	}
+	if stats.EmptyWebhookSecrets != 2 {
+		t.Errorf("EmptyWebhookSecrets = %d, want 2", stats.EmptyWebhookSecrets)
+	}
+	var row GitProviderConfig
+	db.First(&row, "id = ?", "l1")
+	if row.WebhookSecret != "" {
+		t.Errorf("backfill invented a secret: %q", row.WebhookSecret)
 	}
 }

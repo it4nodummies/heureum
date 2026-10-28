@@ -1,6 +1,7 @@
 package git
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,8 +13,17 @@ func NewGitLabProvider() *GitLabProvider { return &GitLabProvider{} }
 
 func (p *GitLabProvider) GetName() ProviderType { return ProviderGitLab }
 
+// ValidateWebhook checks the shared token GitLab sends in X-Gitlab-Token.
+// Constant-time compare (a plain == leaks the matching prefix length via
+// timing); empty on either side is a hard reject.
 func (p *GitLabProvider) ValidateWebhook(payload []byte, secret string, signature string) (bool, error) {
-	return signature == secret, nil
+	if signature == "" {
+		return false, fmt.Errorf("missing token")
+	}
+	if secret == "" {
+		return false, fmt.Errorf("webhook secret not configured")
+	}
+	return subtle.ConstantTimeCompare([]byte(signature), []byte(secret)) == 1, nil
 }
 
 func (p *GitLabProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {

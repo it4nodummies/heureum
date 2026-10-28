@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/it4nodummies/heureum/internal/api/middleware"
+	"github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/git"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/project"
@@ -84,7 +86,14 @@ func (h *GitHandler) ConfigureProvider(w http.ResponseWriter, r *http.Request) {
 
 	cfg, err := h.gitConfigSvc.CreateProvider(p.ID, req.ProviderType, req.BaseURL, req.Token, req.WebhookSecret)
 	if err != nil {
-		http.Error(w, `{"error":"failed to create provider"}`, http.StatusConflict)
+		switch {
+		case errors.Is(err, git.ErrProviderTypeUnsupported):
+			v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"provider_type": err.Error()})
+		case errors.Is(err, git.ErrWebhookSecretRequired), errors.Is(err, git.ErrWebhookSecretTooShort):
+			v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"webhook_secret": err.Error()})
+		default:
+			http.Error(w, `{"error":"failed to create provider"}`, http.StatusConflict)
+		}
 		return
 	}
 

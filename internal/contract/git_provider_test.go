@@ -33,7 +33,7 @@ func TestGetProvider_ViewerForbidden(t *testing.T) {
 	res.Body.Close()
 
 	res = doJSON(t, srv, http.MethodPost, alice, "/rest/api/3/project/RD/git/providers",
-		map[string]any{"provider_type": "github", "base_url": "https://github.com/acme/rd", "token": "ghp_secret", "webhook_secret": "hmac-secret"})
+		map[string]any{"provider_type": "github", "base_url": "https://github.com/acme/rd", "token": "ghp_secret", "webhook_secret": "hmac-secret-0123456789"})
 	if res.StatusCode != http.StatusCreated {
 		_, raw := decodeBody(t, res)
 		t.Fatalf("configure provider status = %d: %s", res.StatusCode, raw)
@@ -61,7 +61,7 @@ func TestGetProvider_ViewerForbidden(t *testing.T) {
 			t.Errorf("admin body exposes %q: %s", k, raw)
 		}
 	}
-	if strings.Contains(string(raw), "ghp_secret") || strings.Contains(string(raw), "hmac-secret") {
+	if strings.Contains(string(raw), "ghp_secret") || strings.Contains(string(raw), "hmac-secret-0123456789") {
 		t.Errorf("admin body contains a secret value: %s", raw)
 	}
 	if body["has_token"] != true {

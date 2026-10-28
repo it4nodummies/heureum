@@ -65,7 +65,7 @@ func TestGetProvider_AdminBodyHasNoSecrets(t *testing.T) {
 	db := setupGitTestDB(t)
 	h, gitSvc := newGitTestHandler(t, db)
 	p := seedGitProject(t, db)
-	if _, err := gitSvc.CreateProvider(p.ID, "github", "https://github.com/acme/demo", "ghp_secret", "hmac-secret"); err != nil {
+	if _, err := gitSvc.CreateProvider(p.ID, "github", "https://github.com/acme/demo", "ghp_secret", "hmac-secret-0123456789"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,7 +85,7 @@ func TestGetProvider_AdminBodyHasNoSecrets(t *testing.T) {
 			t.Errorf("body exposes %q: %s", k, w.Body.String())
 		}
 	}
-	if strings.Contains(w.Body.String(), "ghp_secret") || strings.Contains(w.Body.String(), "hmac-secret") {
+	if strings.Contains(w.Body.String(), "ghp_secret") || strings.Contains(w.Body.String(), "hmac-secret-0123456789") {
 		t.Errorf("body contains a secret value: %s", w.Body.String())
 	}
 	if body["has_token"] != true {
@@ -110,7 +110,7 @@ func TestConfigureProvider_StoresEncryptedTokenAndURLToken(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]any{
 		"provider_type": "github", "base_url": "https://github.com/acme/demo",
-		"token": "ghp_plain", "webhook_secret": "hmac-secret",
+		"token": "ghp_plain", "webhook_secret": "hmac-secret-0123456789",
 	})
 	req := httptest.NewRequest("POST", "/rest/api/3/project/DEMO/git/providers", bytes.NewReader(body))
 	req.SetPathValue("key", "DEMO")
@@ -119,7 +119,7 @@ func TestConfigureProvider_StoresEncryptedTokenAndURLToken(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), "ghp_plain") || strings.Contains(w.Body.String(), "hmac-secret") || strings.Contains(w.Body.String(), "token_encrypted") {
+	if strings.Contains(w.Body.String(), "ghp_plain") || strings.Contains(w.Body.String(), "hmac-secret-0123456789") || strings.Contains(w.Body.String(), "token_encrypted") {
 		t.Errorf("201 body leaks a secret: %s", w.Body.String())
 	}
 
@@ -156,7 +156,7 @@ func TestWebhook_AcceptsURLToken_RejectsHMACSecret(t *testing.T) {
 	db := setupGitTestDB(t)
 	h, gitSvc := newGitTestHandler(t, db)
 	p := seedGitProject(t, db)
-	cfg, err := gitSvc.CreateProvider(p.ID, "github", "https://github.com/acme/demo", "ghp_secret", "hmac-secret")
+	cfg, err := gitSvc.CreateProvider(p.ID, "github", "https://github.com/acme/demo", "ghp_secret", "hmac-secret-0123456789")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestWebhook_AcceptsURLToken_RejectsHMACSecret(t *testing.T) {
 	post := func(token string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("POST", "/rest/api/3/webhooks/git/"+token, bytes.NewReader(payload))
 		req.SetPathValue("token", token)
-		req.Header.Set("X-Hub-Signature-256", signGitHub("hmac-secret", payload))
+		req.Header.Set("X-Hub-Signature-256", signGitHub("hmac-secret-0123456789", payload))
 		w := httptest.NewRecorder()
 		h.Webhook(w, req)
 		return w
@@ -177,7 +177,7 @@ func TestWebhook_AcceptsURLToken_RejectsHMACSecret(t *testing.T) {
 	if w := post(*cfg.WebhookURLToken); w.Code != http.StatusOK {
 		t.Errorf("URL token: status = %d, want 200: %s", w.Code, w.Body.String())
 	}
-	if w := post("hmac-secret"); w.Code != http.StatusNotFound {
+	if w := post("hmac-secret-0123456789"); w.Code != http.StatusNotFound {
 		t.Errorf("HMAC secret as URL token: status = %d, want 404: %s", w.Code, w.Body.String())
 	}
 }
@@ -191,7 +191,7 @@ func TestGitWebhook_RejectsOversizedBody(t *testing.T) {
 	db := setupGitTestDB(t)
 	h, gitSvc := newGitTestHandler(t, db)
 	p := seedGitProject(t, db)
-	cfg, err := gitSvc.CreateProvider(p.ID, "github", "https://github.com/acme/demo", "ghp_secret", "hmac-secret")
+	cfg, err := gitSvc.CreateProvider(p.ID, "github", "https://github.com/acme/demo", "ghp_secret", "hmac-secret-0123456789")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestGitWebhook_RejectsOversizedBody(t *testing.T) {
 
 	post := func(body []byte) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("POST", "/rest/api/3/webhooks/git/"+*cfg.WebhookURLToken, bytes.NewReader(body))
-		req.Header.Set("X-Hub-Signature-256", signGitHub("hmac-secret", body))
+		req.Header.Set("X-Hub-Signature-256", signGitHub("hmac-secret-0123456789", body))
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, req)
 		return w
@@ -216,5 +216,110 @@ func TestGitWebhook_RejectsOversizedBody(t *testing.T) {
 	small := []byte(`{"ref":"refs/heads/main","repository":{"html_url":"https://github.com/acme/demo"},"commits":[]}`)
 	if w := post(small); w.Code != http.StatusOK {
 		t.Errorf("normal payload through the body limit: status = %d, want 200: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestConfigureProvider_RejectsEmptyWebhookSecret: POST with an empty (or
+// too short) webhook_secret is a 400 with a Jira-style field error on
+// webhook_secret, and nothing is written. The secret is the only thing that
+// authenticates inbound events; an empty HMAC key is forgeable.
+func TestConfigureProvider_RejectsEmptyWebhookSecret(t *testing.T) {
+	db := setupGitTestDB(t)
+	h, _ := newGitTestHandler(t, db)
+	seedGitProject(t, db)
+
+	post := func(secret string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]any{
+			"provider_type": "github", "base_url": "https://github.com/acme/demo",
+			"token": "ghp_plain", "webhook_secret": secret,
+		})
+		req := httptest.NewRequest("POST", "/rest/api/3/project/DEMO/git/providers", bytes.NewReader(body))
+		req.SetPathValue("key", "DEMO")
+		w := httptest.NewRecorder()
+		h.ConfigureProvider(w, req)
+		return w
+	}
+
+	for _, secret := range []string{"", strings.Repeat("s", git.MinWebhookSecretLen-1)} {
+		w := post(secret)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("webhook_secret %q: status = %d, want 400: %s", secret, w.Code, w.Body.String())
+			continue
+		}
+		var body struct {
+			Errors map[string]string `json:"errors"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Errorf("webhook_secret %q: non-JSON 400 body: %s", secret, w.Body.String())
+			continue
+		}
+		if body.Errors["webhook_secret"] == "" {
+			t.Errorf("webhook_secret %q: no field error on webhook_secret: %s", secret, w.Body.String())
+		}
+	}
+	var count int64
+	db.Model(&git.GitProviderConfig{}).Count(&count)
+	if count != 0 {
+		t.Fatalf("rejected POSTs still wrote %d rows", count)
+	}
+	if w := post(strings.Repeat("s", git.MinWebhookSecretLen)); w.Code != http.StatusCreated {
+		t.Errorf("minimum-length webhook_secret: status = %d, want 201: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestConfigureProvider_RefusesBitbucket: no signature validator exists for
+// bitbucket, so the POST is a 400 with a field error on provider_type rather
+// than a row whose inbound hook would be unauthenticated.
+func TestConfigureProvider_RefusesBitbucket(t *testing.T) {
+	db := setupGitTestDB(t)
+	h, _ := newGitTestHandler(t, db)
+	seedGitProject(t, db)
+
+	body, _ := json.Marshal(map[string]any{
+		"provider_type": "bitbucket", "base_url": "https://bitbucket.org/acme/demo",
+		"token": "", "webhook_secret": strings.Repeat("s", git.MinWebhookSecretLen),
+	})
+	req := httptest.NewRequest("POST", "/rest/api/3/project/DEMO/git/providers", bytes.NewReader(body))
+	req.SetPathValue("key", "DEMO")
+	w := httptest.NewRecorder()
+	h.ConfigureProvider(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Errors map[string]string `json:"errors"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Errors["provider_type"] == "" {
+		t.Errorf("no field error on provider_type: %s", w.Body.String())
+	}
+	var count int64
+	db.Model(&git.GitProviderConfig{}).Count(&count)
+	if count != 0 {
+		t.Fatalf("refused POST still wrote %d rows", count)
+	}
+}
+
+// TestWebhook_LegacyEmptySecretRejected: a pre-R27 row with an empty
+// webhook_secret (can't be created any more, but may exist) must have its
+// inbound hooks rejected with 401, even when the sender signs with the
+// empty key.
+func TestWebhook_LegacyEmptySecretRejected(t *testing.T) {
+	db := setupGitTestDB(t)
+	h, _ := newGitTestHandler(t, db)
+	p := seedGitProject(t, db)
+	tok := "legacy-url-token-0123456789abcdef"
+	legacy := &git.GitProviderConfig{ID: uuid.New().String(), ProjectID: p.ID, ProviderType: git.ProviderGitHub, BaseURL: "https://github.com/acme/demo", WebhookSecret: "", WebhookURLToken: &tok}
+	if err := db.Create(legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{"ref":"refs/heads/main","repository":{"html_url":"https://github.com/acme/demo"},"commits":[]}`)
+	req := httptest.NewRequest("POST", "/rest/api/3/webhooks/git/"+tok, bytes.NewReader(payload))
+	req.SetPathValue("token", tok)
+	req.Header.Set("X-Hub-Signature-256", signGitHub("", payload))
+	w := httptest.NewRecorder()
+	h.Webhook(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("empty-key signature on legacy row: status = %d, want 401: %s", w.Code, w.Body.String())
 	}
 }

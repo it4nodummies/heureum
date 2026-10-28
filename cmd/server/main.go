@@ -37,6 +37,9 @@ func main() {
 		log.Fatal(err)
 	}
 	logger.Info("git provider backfill", "encrypted_tokens", gitStats.Encrypted, "url_tokens_generated", gitStats.URLTokens)
+	if gitStats.EmptyWebhookSecrets > 0 {
+		logger.Warn("git providers with an empty webhook_secret: their inbound webhooks are rejected until the provider is re-saved with a secret", "count", gitStats.EmptyWebhookSecrets)
+	}
 	router := api.NewRouter(cfg, s.DB)
 	logger.Info("starting server", "port", cfg.Port, "env", cfg.Env)
 	if err := http.ListenAndServe(":"+strconv.Itoa(cfg.Port), router); err != nil {
