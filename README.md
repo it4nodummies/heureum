@@ -84,7 +84,7 @@ Only the environment variables actually read by the server are listed below.
 | `DB_DRIVER` | no | `postgres` | One of `postgres`, `mysql`, `sqlite` |
 | `REDIS_URL` | no | `redis://localhost:6379/0` | Redis connection URL |
 | `APP_UPLOADS_DIR` | no | `./data/uploads` | Local disk directory where issue attachments are stored |
-| `APP_SIGNUP` | no | `closed` when `APP_ENV=production`, `open` otherwise | `open` or `closed` — whether public registration is enabled. An explicit value always wins over the default; **any other value is a startup error**. Regardless of the policy, the first registration on an instance with **no active admin** is accepted and that user becomes global admin (bootstrap, see below) |
+| `APP_SIGNUP` | no | `closed` when `APP_ENV=production`, `open` otherwise | `open` or `closed` — whether public registration is enabled. An explicit value always wins over the default; **any other value is a startup error**. Regardless of the policy, the first registration on an instance whose **users table is empty** is accepted and that user becomes global admin (bootstrap, see below) |
 | `APP_TRUSTED_PROXIES` | no | — | Comma-separated IPs/CIDRs of the reverse proxies in front of the API (e.g. `127.0.0.1,10.42.0.0/16`). Only when the connecting peer is one of them is `X-Forwarded-For` believed — the client is the rightmost non-trusted hop — for auth rate limiting; otherwise the header is ignored and the peer address is the client. A malformed entry is a startup error |
 | `APP_WEBHOOK_ALLOW_PRIVATE_HOSTS` | no | — | Comma-separated hosts, IPs or CIDRs that outgoing webhooks may target even though they resolve to private/loopback/link-local ranges (SSRF guard). A **hostname** entry is trusted wherever it resolves; an **IP/CIDR** entry lifts the restriction only for that address range |
 
@@ -97,10 +97,14 @@ are still planned and not yet wired.
 
 In production (`APP_ENV=production`) public registration is **closed by default**; in any other
 environment it is open. `APP_SIGNUP=open|closed` overrides the default either way. Whatever the
-policy, when the instance has **no active global admin** (fresh install, or the only admin was
-removed) the next registration is accepted and that user becomes global admin, so a production
-instance is never stranded without an administrator. Once an active admin exists, a closed
-instance only grows through invitations.
+policy, the very first registration — **only while the users table is empty** — is accepted and
+that user becomes global admin (bootstrap), so a fresh production instance gets its administrator
+without toggling `APP_SIGNUP`. From the second user on the policy applies: a closed instance only
+grows through invitations. Two concurrent first registrations (multi-replica) can never yield two
+admins: the loser is removed and told to retry. An instance that already has users but **no
+global admin** (e.g. the only admin was deactivated) is **not** auto-healed — promote one as an
+operator with `UPDATE users SET is_admin = true WHERE email = '…';` (a promote route is a planned
+follow-up).
 
 ### API tokens and git providers
 
@@ -183,7 +187,7 @@ its own database, its own `APP_SECRET`, and its own hostname:
   tenant stack, and set `API_PORT` to avoid host port collisions between stacks.
 
 Run every internet-facing instance with `APP_ENV=production`: registration is then closed by
-default (the first account still bootstraps as admin), so sign-ups can't leak into a shared
+default (the first account on an empty instance still bootstraps as admin), so sign-ups can't leak into a shared
 instance. Set `APP_SIGNUP=open` only when you deliberately want public registration.
 
 ## API compatibility & gap report

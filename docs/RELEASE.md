@@ -57,8 +57,10 @@ After the release workflow finishes, confirm the packages exist and are public:
       tenant isolation (see the README's Multi-tenancy section). Run every internet-facing
       instance with `APP_ENV=production`: registration is then closed by default (an unknown
       `APP_SIGNUP` value is a startup error) and `APP_SECRET` must be at least 32 characters;
-      the first account registered while the instance has no active admin bootstraps as
-      global admin, so no manual `APP_SIGNUP` toggling is needed.
+      the first account registered on an empty users table bootstraps as global admin, so no
+      manual `APP_SIGNUP` toggling is needed. An upgraded instance that already has users but
+      no global admin must have one promoted via SQL
+      (`UPDATE users SET is_admin = true WHERE email = '…';`) — it does not bootstrap again.
 
 ## Security posture at 1.0
 

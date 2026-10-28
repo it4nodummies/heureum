@@ -34,10 +34,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Signup is closed by default in production.** With `APP_ENV=production` and `APP_SIGNUP` unset,
   public registration is disabled; outside production it stays open. An explicit
   `APP_SIGNUP=open|closed` always wins, and **any other value is now a startup error**.
-- **First-admin bootstrap.** Whatever the signup policy, a registration made while the instance has
-  **no active global admin** is accepted and that user becomes global admin, so a fresh production
-  instance (or one whose only admin was removed) is never stranded. The prod compose file and the
-  Helm chart expose `APP_SIGNUP`.
+- **First-admin bootstrap.** Whatever the signup policy, the first registration on an instance
+  whose users table is **empty** is accepted and that user becomes global admin, so a fresh
+  production instance gets its administrator without toggling `APP_SIGNUP`. From the second user
+  on the policy applies. The prod compose file and the Helm chart expose `APP_SIGNUP`.
+  **Upgrade note:** an instance that already has users but no global admin (or whose only admin
+  is deactivated) does **not** bootstrap on the next registration — promote one before or after
+  the rollout with `UPDATE users SET is_admin = true WHERE email = '…';` (a promote route is a
+  planned follow-up).
 - **`APP_SECRET` must be at least 32 characters when `APP_ENV=production`** (startup error
   otherwise). It now also derives the key that encrypts git provider tokens at rest, so **rotating
   `APP_SECRET` makes stored git tokens undecryptable** — delete and recreate the provider after a
@@ -102,9 +106,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   above): a direct peer rotating the header no longer gets a fresh bucket per request.
 - **API tokens can be revoked and can expire** (see Added above): a leaked token no longer lives
   forever.
-- **Multi-replica first-user bootstrap is race-safe**: the losing replica's row is deleted and the
-  client gets a retryable 503 (open policy) or 403 (closed), so two concurrent first registrations
-  can never yield two admins or zero admins.
+- **Multi-replica first-user bootstrap is race-safe**: the active-admin count is re-checked after
+  the bootstrap insert; the losing replica's row is deleted and the client gets a retryable 503
+  (open policy) or 403 (closed), so two concurrent first registrations can never yield two admins,
+  and a regular registration landing on another replica in the same instant never strands the
+  bootstrapper. The bootstrap itself only ever happens on an empty users table (see Changed).
 - **Inbound git webhooks only touch issues of the provider's own project.** Issue keys extracted
   from commit messages, branch names and PR titles are resolved within the project the provider is
   configured on; a key from another project is skipped like an unknown one. Previously any user

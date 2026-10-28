@@ -68,8 +68,9 @@ func Load() (*Config, error) {
 	// Signup policy: an explicit APP_SIGNUP always wins; when unset, production
 	// is closed by default (the perimeter must not be open on a fresh
 	// self-hosted instance) and every other env stays open (dev/e2e flows).
-	// While the instance has no active admin a registration is always accepted
-	// and becomes admin regardless (bootstrap, see auth.Service.RegisterWithPolicy).
+	// The very first registration on an empty users table is always accepted
+	// and becomes admin regardless (bootstrap, see auth.Service.RegisterWithPolicy);
+	// a populated instance without an admin is NOT auto-healed (operator promote).
 	var signupOpen bool
 	switch os.Getenv("APP_SIGNUP") {
 	case "":

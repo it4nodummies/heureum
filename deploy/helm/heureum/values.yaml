@@ -9,9 +9,8 @@ config:
   dbDsn: "postgres://heureum:heureum@postgres:5432/heureum?sslmode=disable"
   redisUrl: "redis://redis:6379/0"
   baseUrl: "http://localhost"
-  # Public registration policy: "closed" (default — registration is accepted
-  # only while the instance has no active admin, and that user becomes admin)
-  # or "open".
+  # Public registration policy: "closed" (default — only the very first user on
+  # an empty users table is accepted, and that user becomes admin) or "open".
   signup: "closed"
   # Outgoing webhooks refuse private/loopback/link-local targets (SSRF). Comma-
   # separated hosts, IPs or CIDRs to allow anyway, e.g. "forgejo.home.arpa,10.42.0.0/16".

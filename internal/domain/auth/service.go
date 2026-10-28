@@ -66,15 +66,17 @@ func (s *Service) Register(email, username, displayName, password string) (*user
 }
 
 // RegisterWithPolicy creates a user honoring the instance signup policy, with
-// one exception: when the instance has NO ACTIVE ADMIN (fresh install, or an
-// instance whose only admin was deactivated / lost to an earlier race) the
+// one exception: while the users table is EMPTY (fresh install) the
 // registration is always accepted and that user becomes global admin
-// (bootstrap). Otherwise a closed policy yields ErrSignupClosed.
+// (bootstrap). From the first row on the policy applies: a closed policy
+// yields ErrSignupClosed, an open one creates a regular user.
 //
-// The condition is "no active admin", not "no users": a regular user that
-// landed first must never leave the instance without an admin and without a
-// way to get one — and a zero-admin instance self-heals on the next
-// registration, with the same trust model as a fresh one.
+// The condition is deliberately "no users", not "no active admin": a
+// populated instance whose only admin was deactivated or lost must NOT hand
+// global admin to the next anonymous visitor (on an upgraded instance that
+// would be a trust-model regression — pre-R27 such a visitor was a regular
+// user at most). The remedy for a zero-admin populated instance is an
+// operator promote (UPDATE users SET is_admin = true WHERE email = …).
 //
 // Race handling: the count+insert is serialized in-process by bootstrapMu
 // (the bcrypt hash is computed before taking it, so registrations are not
@@ -85,10 +87,10 @@ func (s *Service) Register(email, username, displayName, password string) (*user
 // ErrBootstrapRaced (open, retryable) is returned. Deleting — rather than
 // demoting — the loser matters when both replicas lose (each sees the
 // other's admin): demotion would leave zero admins, whereas deletion brings
-// the active-admin count back to 0 so the retry bootstraps cleanly. A regular
-// user committed by another replica in the window does not touch the admin
+// the table back to empty so the retry bootstraps cleanly. A regular user
+// committed by another replica in the window does not touch the admin
 // count, so the bootstrapper keeps its grant. Fail-safe direction: never two
-// admins, never a stranded zero-admin instance.
+// admins from a bootstrap race.
 func (s *Service) RegisterWithPolicy(email, username, displayName, password string, signupOpen bool) (*user.User, error) {
 	hashed, err := HashPassword(password)
 	if err != nil {
@@ -98,21 +100,21 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 	s.bootstrapMu.Lock()
 	defer s.bootstrapMu.Unlock()
 
-	admins, err := s.countActiveAdmins()
+	users, err := s.countUsers()
 	if err != nil {
 		return nil, err
 	}
 	if s.bootstrapHook != nil {
 		s.bootstrapHook()
 	}
-	if admins > 0 {
+	if users > 0 {
 		if !signupOpen {
 			return nil, ErrSignupClosed
 		}
 		return s.insert(email, username, displayName, hashed, false)
 	}
 
-	// Bootstrap path: no active admin → this user becomes admin.
+	// Bootstrap path: empty users table → this user becomes admin.
 	u, err := s.insert(email, username, displayName, hashed, true)
 	if err != nil {
 		return nil, err
@@ -124,7 +126,7 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 	if after == 1 {
 		return u, nil
 	}
-	// Another admin got in between the count and the insert: withdraw the grant.
+	// Another replica bootstrapped between the count and the insert: withdraw the grant.
 	if err := s.DB.Delete(&user.User{}, "id = ?", u.ID).Error; err != nil {
 		return nil, err
 	}
@@ -136,6 +138,16 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 
 // countActiveAdmins is the bootstrap predicate: the instance needs a
 // bootstrap exactly when this is 0.
+// countUsers is the bootstrap condition: only an empty table bootstraps.
+func (s *Service) countUsers() (int64, error) {
+	var n int64
+	if err := s.DB.Model(&user.User{}).Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// countActiveAdmins is the post-insert race re-check (is_admin AND is_active).
 func (s *Service) countActiveAdmins() (int64, error) {
 	var n int64
 	if err := s.DB.Model(&user.User{}).Where("is_admin = ? AND is_active = ?", true, true).Count(&n).Error; err != nil {

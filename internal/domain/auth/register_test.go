@@ -235,12 +235,14 @@ func TestRegisterWithPolicy_RacedBootstrap_RegularRegistrantDoesNotStrandAdmin(t
 	}
 }
 
-// An instance with users but no ACTIVE admin (e.g. the only admin was
-// deactivated, or an earlier raced bootstrap stranded it) is treated like a
-// fresh one: the next registration is accepted regardless of the signup
-// policy and becomes admin. Once an active admin exists the policy applies
-// again.
-func TestRegisterWithPolicy_StrandedInstanceSelfHeals(t *testing.T) {
+// A POPULATED instance with no active admin (the only admin was deactivated
+// or lost) is NOT a fresh one: the bootstrap grant exists only for an empty
+// users table. Otherwise an upgraded instance that already has users would
+// hand global admin to an anonymous visitor under a closed policy (pre-R27
+// they would have been a regular user at most). The policy applies as usual
+// — closed refuses, open creates a regular user — and the documented remedy
+// is an operator promote (UPDATE users SET is_admin = true WHERE email = …).
+func TestRegisterWithPolicy_PopulatedInstanceWithoutAdminDoesNotBootstrap(t *testing.T) {
 	db := newSharedTestDB(t)
 	svc := NewService(db, "s")
 	for _, u := range []*user.User{
@@ -257,19 +259,23 @@ func TestRegisterWithPolicy_StrandedInstanceSelfHeals(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	u, err := svc.RegisterWithPolicy("a@x.io", "a", "A", "pw", false)
+	if _, err := svc.RegisterWithPolicy("a@x.io", "a", "A", "pw", false); !errors.Is(err, ErrSignupClosed) {
+		t.Fatalf("closed policy on a populated instance without an active admin: err = %v, want ErrSignupClosed", err)
+	}
+	if n := countUsers(t, db, nil); n != 2 {
+		t.Errorf("users = %d, want 2 (refused registration must not write)", n)
+	}
+
+	u, err := svc.RegisterWithPolicy("a@x.io", "a", "A", "pw", true)
 	if err != nil {
-		t.Fatalf("registration on an instance without an active admin (closed policy): err = %v, want success", err)
+		t.Fatalf("open policy on a populated instance without an active admin: %v", err)
 	}
-	if !u.IsAdmin {
-		t.Error("the healing registration must become admin")
-	}
-	if _, err := svc.RegisterWithPolicy("b@x.io", "b", "B", "pw", false); !errors.Is(err, ErrSignupClosed) {
-		t.Fatalf("second registration after the heal (closed policy): err = %v, want ErrSignupClosed", err)
+	if u.IsAdmin {
+		t.Error("registration on a populated instance must be a regular user, never admin")
 	}
 	var active int64
 	db.Model(&user.User{}).Where("is_admin = ? AND is_active = ?", true, true).Count(&active)
-	if active != 1 {
-		t.Errorf("active admins = %d, want 1", active)
+	if active != 0 {
+		t.Errorf("active admins = %d, want 0 (no self-heal: promotion is an operator action)", active)
 	}
 }
