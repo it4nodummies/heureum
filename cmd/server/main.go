@@ -7,6 +7,7 @@ import (
 
 	"github.com/it4nodummies/heureum/internal/api"
 	"github.com/it4nodummies/heureum/internal/config"
+	"github.com/it4nodummies/heureum/internal/domain/git"
 	applog "github.com/it4nodummies/heureum/internal/log"
 	"github.com/it4nodummies/heureum/internal/store"
 )
@@ -27,6 +28,15 @@ func main() {
 		logger.Error("failed to run migrations", "error", err)
 		log.Fatal(err)
 	}
+	// Git provider lockdown (R27): rows created before token encryption and
+	// the separate webhook URL token are fixed up in place, idempotently.
+	// Counts only — token values are never logged.
+	gitStats, err := git.NewConfigService(s.DB, git.KeyFromSecret(cfg.Secret)).EnsureBackfill()
+	if err != nil {
+		logger.Error("git provider backfill failed", "error", err)
+		log.Fatal(err)
+	}
+	logger.Info("git provider backfill", "encrypted_tokens", gitStats.Encrypted, "url_tokens_generated", gitStats.URLTokens)
 	router := api.NewRouter(cfg, s.DB)
 	logger.Info("starting server", "port", cfg.Port, "env", cfg.Env)
 	if err := http.ListenAndServe(":"+strconv.Itoa(cfg.Port), router); err != nil {

@@ -1285,15 +1285,15 @@ export interface Webhook {
   is_active: boolean;
 }
 
-// git.GitProviderConfig (internal/domain/git/config.go). Note the server
-// returns token_encrypted (not a plain "token") and webhook_secret as-is.
+// handlers.gitProviderResponse (internal/api/handlers/git_handler.go). The
+// server never returns the provider token or the HMAC webhook secret: only
+// has_token and the inbound webhook_url to paste into the git provider.
 export interface GitProviderConfig {
   id: string;
-  project_id: string;
   provider_type: string;
   base_url: string;
-  token_encrypted: string;
-  webhook_secret: string;
+  has_token: boolean;
+  webhook_url: string;
   created_at: string;
 }
 

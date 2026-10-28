@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/it4nodummies/heureum/internal/domain/git"
@@ -17,15 +18,44 @@ type GitHandler struct {
 	issueSvc     *issue.Service
 	projectSvc   *project.Service
 	commentSvc   *issue.CommentService
+	baseURL      string
 }
 
-func NewGitHandler(gitConfigSvc *git.ConfigService, issueSvc *issue.Service, projectSvc *project.Service, commentSvc *issue.CommentService) *GitHandler {
+func NewGitHandler(gitConfigSvc *git.ConfigService, issueSvc *issue.Service, projectSvc *project.Service, commentSvc *issue.CommentService, baseURL string) *GitHandler {
 	return &GitHandler{
 		gitConfigSvc: gitConfigSvc,
 		issueSvc:     issueSvc,
 		projectSvc:   projectSvc,
 		commentSvc:   commentSvc,
+		baseURL:      strings.TrimRight(baseURL, "/"),
 	}
+}
+
+// gitProviderResponse is the only shape the provider config is ever
+// serialized in. It carries no secret: the API token is reduced to
+// has_token, the HMAC secret is omitted, and the URL token appears solely
+// inside webhook_url (the admin needs that to paste into the provider).
+type gitProviderResponse struct {
+	ID           string    `json:"id"`
+	ProviderType string    `json:"provider_type"`
+	BaseURL      string    `json:"base_url"`
+	HasToken     bool      `json:"has_token"`
+	WebhookURL   string    `json:"webhook_url"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (h *GitHandler) toResponse(cfg *git.GitProviderConfig) gitProviderResponse {
+	out := gitProviderResponse{
+		ID:           cfg.ID,
+		ProviderType: string(cfg.ProviderType),
+		BaseURL:      cfg.BaseURL,
+		HasToken:     cfg.TokenEncrypted != "",
+		CreatedAt:    cfg.CreatedAt,
+	}
+	if cfg.WebhookURLToken != nil && *cfg.WebhookURLToken != "" {
+		out.WebhookURL = h.baseURL + "/rest/api/3/webhooks/git/" + *cfg.WebhookURLToken
+	}
+	return out
 }
 
 func (h *GitHandler) ConfigureProvider(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +89,7 @@ func (h *GitHandler) ConfigureProvider(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(h.toResponse(cfg))
 }
 
 func (h *GitHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +107,7 @@ func (h *GitHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(h.toResponse(cfg))
 }
 
 func (h *GitHandler) DeleteProvider(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +134,7 @@ func (h *GitHandler) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 
 func (h *GitHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
-	cfg, err := h.gitConfigSvc.FindByWebhookToken(token)
+	cfg, err := h.gitConfigSvc.FindByWebhookURLToken(token)
 	if err != nil {
 		http.Error(w, `{"error":"invalid webhook token"}`, http.StatusNotFound)
 		return

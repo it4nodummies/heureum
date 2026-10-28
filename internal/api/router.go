@@ -92,8 +92,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	go wsHub.Run()
 	notifSvc := notification.NewService(db)
 	notifSvc.SetBroadcaster(func(msg []byte) { wsHub.Broadcast(msg) })
-	gitConfigSvc := git.NewConfigService(db)
-	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc, commentSvc)
+	gitConfigSvc := git.NewConfigService(db, git.KeyFromSecret(cfg.Secret))
+	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc, commentSvc, cfg.BaseURL)
 	notifH := handlers.NewNotificationHandler(notifSvc)
 	issueSvc.SetNotifier(notifSvc)
 	commentSvc.SetNotifier(notifSvc)
@@ -207,7 +207,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/project/{key}/invites", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Invite))))
 	mux.Handle("PUT /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.StarProject))))
 	mux.Handle("DELETE /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.UnstarProject))))
-	mux.Handle("GET /rest/api/3/project/{key}/git/providers", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(gitH.GetProvider))))
+	// Reading the git provider config is an admin operation (it reveals the
+	// integration setup and the inbound webhook URL), same gate as POST/DELETE.
+	mux.Handle("GET /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.GetProvider))))
 	mux.Handle("POST /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.ConfigureProvider))))
 	mux.Handle("DELETE /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.DeleteProvider))))
 	mux.Handle("GET /rest/api/3/project/{key}/webhooks", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(webhookH.List))))
