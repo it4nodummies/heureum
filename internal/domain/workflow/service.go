@@ -104,15 +104,31 @@ func (e *StatusInUseError) Error() string {
 func (e *StatusInUseError) Is(target error) bool { return target == ErrStatusInUse }
 
 // RemoveStatus deletes the status statusID of workflowID; an id from another
-// workflow is ErrNotFound and nothing is deleted. While any (non-archived)
-// issue still has this status the removal is refused with *StatusInUseError:
-// issues.status_id is ON DELETE SET NULL, so deleting anyway would silently
-// strip those issues of their status. Archived (soft-deleted) issues don't
-// block the removal — they are gone from the user's point of view and losing
-// their status is harmless. Check and delete run in one transaction so an
-// issue moved into the status concurrently cannot slip between them.
+// workflow is ErrNotFound and nothing is deleted — that binding is checked
+// FIRST, before anything about the status is computed, so a foreign status
+// never leaks its existence or its issue count. Then, while any
+// (non-archived) issue still has this status, the removal is refused with
+// *StatusInUseError: issues.status_id is ON DELETE SET NULL, so deleting
+// anyway would silently strip those issues of their status. Archived
+// (soft-deleted) issues don't block the removal — they are gone from the
+// user's point of view and losing their status is harmless.
+//
+// Check and delete run in one transaction, which on SQLite (single writer)
+// closes the window entirely; on Postgres/MySQL at READ COMMITTED the COUNT
+// takes no lock, so an issue moved into the status between the count and
+// the delete is not caught and ends up with status_id NULL via ON DELETE SET
+// NULL. Accepted: that needs a status removal and a transition into that
+// same status in the same instant, and the outcome is the pre-guard
+// behaviour for one issue, not a corrupt row.
 func (s *Service) RemoveStatus(workflowID, statusID string) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		var status WorkflowStatus
+		if err := tx.First(&status, "id = ? AND workflow_id = ?", statusID, workflowID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
 		var inUse int64
 		if err := tx.Table("issues").Where("status_id = ? AND is_archived = ?", statusID, false).Count(&inUse).Error; err != nil {
 			return err

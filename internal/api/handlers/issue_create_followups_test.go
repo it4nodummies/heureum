@@ -177,3 +177,32 @@ func TestCreateIssue_AppliesFollowUpsAtomically(t *testing.T) {
 		t.Errorf("issue_versions rows for the fix version = %d, want 1", nv)
 	}
 }
+
+// TestCreateIssue_UnknownIssueTypeIs400: an issuetype.id that is not a type
+// of the project is a client error (errors.issuetype), not an FK violation
+// surfacing as 500; nothing is created and the key counter is untouched.
+func TestCreateIssue_UnknownIssueTypeIs400(t *testing.T) {
+	f := newIssueCreateFixture(t)
+	w := f.post(t, map[string]any{
+		"summary":   "bad type",
+		"issuetype": map[string]string{"id": "type-" + uuid.New().String()},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Errors map[string]string `json:"errors"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Errors["issuetype"] == "" {
+		t.Errorf("want errors.issuetype in the body, got %s", w.Body.String())
+	}
+	if n := f.issueCount(t); n != 0 {
+		t.Errorf("%d issue row(s) created with an unknown issue type, want 0", n)
+	}
+	var counter int64
+	f.db.Raw("SELECT issue_counter FROM projects WHERE id = ?", f.proj.ID).Scan(&counter)
+	if counter != 0 {
+		t.Errorf("issue_counter = %d after a rejected create, want 0", counter)
+	}
+}

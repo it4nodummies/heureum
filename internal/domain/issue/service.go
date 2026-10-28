@@ -61,6 +61,11 @@ const seqIDRetries = 5
 // violation surfacing as an internal failure.
 var ErrAssigneeNotFound = errors.New("assignee not found")
 
+// ErrIssueTypeNotFound is returned by Create/CreateWithOptions when typeID is
+// not an issue type OF THAT PROJECT (missing or belonging to another project
+// — indistinguishable by design): a client error, not an FK violation.
+var ErrIssueTypeNotFound = errors.New("issue type not found in project")
+
 // CreateOptions carries the create-time fields that used to be applied by
 // the handler as separate UPDATEs after the insert — each with its error
 // discarded, so a failure left a half-initialized issue (no status, no
@@ -133,6 +138,15 @@ func (s *Service) CreateWithOptions(projectKey, projectID, title, description st
 func (s *Service) createOnce(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string, opts CreateOptions) (*Issue, error) {
 	var issue *Issue
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if typeID != nil {
+			var n int64
+			if err := tx.Model(&IssueType{}).Where("id = ? AND project_id = ?", *typeID, projectID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n == 0 {
+				return ErrIssueTypeNotFound
+			}
+		}
 		if opts.AssigneeID != nil {
 			var n int64
 			if err := tx.Table("users").Where("id = ?", *opts.AssigneeID).Count(&n).Error; err != nil {

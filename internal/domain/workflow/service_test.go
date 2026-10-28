@@ -429,3 +429,37 @@ func TestRemoveStatus_RefusedWhileInUse(t *testing.T) {
 		t.Errorf("status still present after a successful RemoveStatus")
 	}
 }
+
+// TestRemoveStatus_ForeignWorkflowInUseIs404: a status of another workflow
+// addressed under workflowID is ErrNotFound (R27 T3 invariant: mismatched
+// parent → 404, nothing leaked) — even when issues use it. The in-use check
+// must come AFTER the parent binding, or it would answer "status is used by
+// N issues" about a status the caller has no business seeing.
+func TestRemoveStatus_ForeignWorkflowInUseIs404(t *testing.T) {
+	db := newRealWorkflowDB(t)
+	if err := db.Exec("INSERT INTO projects (id, name, key) VALUES ('proj-4', 'P4', 'P4')").Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(db)
+	wfA, _ := svc.CreateWorkflow("proj-3", "A")
+	wfB, _ := svc.CreateWorkflow("proj-4", "B")
+	stB, _ := svc.AddStatus(wfB.ID, "B todo", CategoryTodo, "")
+	if err := db.Exec(
+		"INSERT INTO issues (id, project_id, key, title, seq_id, status_id) VALUES ('i-b', 'proj-4', 'P4-1', 'b', 80002, ?)", stB.ID,
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.RemoveStatus(wfA.ID, stB.ID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("RemoveStatus(foreign in-use status) = %v, want ErrNotFound", err)
+	}
+	if errors.Is(err, ErrStatusInUse) {
+		t.Errorf("leaked the in-use count of a foreign status: %v", err)
+	}
+	var n int64
+	db.Raw("SELECT count(*) FROM workflow_statuses WHERE id = ?", stB.ID).Scan(&n)
+	if n != 1 {
+		t.Errorf("foreign status deleted")
+	}
+}

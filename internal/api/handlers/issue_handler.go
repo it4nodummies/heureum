@@ -306,6 +306,9 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	iss, err := h.svc.CreateWithOptions(proj.Key, proj.ID, req.Fields.Summary, descJSON, priority, parentID, typeID, opts)
 	switch {
+	case errors.Is(err, issue.ErrIssueTypeNotFound):
+		v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"issuetype": "The issue type selected is invalid."})
+		return
 	case errors.Is(err, issue.ErrAssigneeNotFound):
 		v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"assignee": "User '" + req.Fields.Assignee.AccountID + "' does not exist."})
 		return

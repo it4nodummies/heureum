@@ -685,3 +685,35 @@ func (r *recordingNotifier) NotifyStatusChanged(string, string, string, string, 
 	r.status++
 	return nil
 }
+
+// TestCreate_IssueTypeOfOtherProjectIsError: the issue type must exist AND
+// belong to the project the issue is created in; a type of another project
+// (or no type at all) is ErrIssueTypeNotFound and nothing is created.
+func TestCreate_IssueTypeOfOtherProjectIsError(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "p1")
+	createTestProject(t, db, "p2")
+	svc := NewService(db)
+	foreign, err := svc.TypeIDByName("p2", "Bug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create("P1", "p1", "x", "", PriorityMedium, nil, &foreign); !errors.Is(err, ErrIssueTypeNotFound) {
+		t.Errorf("Create(type of p2 in p1) = %v, want ErrIssueTypeNotFound", err)
+	}
+	ghost := "no-such-type"
+	if _, err := svc.Create("P1", "p1", "x", "", PriorityMedium, nil, &ghost); !errors.Is(err, ErrIssueTypeNotFound) {
+		t.Errorf("Create(unknown type) = %v, want ErrIssueTypeNotFound", err)
+	}
+	var issues, counter int64
+	db.Model(&Issue{}).Count(&issues)
+	db.Raw("SELECT issue_counter FROM projects WHERE id = 'p1'").Scan(&counter)
+	if issues != 0 || counter != 0 {
+		t.Errorf("issues=%d counter=%d after rejected creates, want 0/0", issues, counter)
+	}
+	// The project's own type is fine.
+	own, _ := svc.TypeIDByName("p1", "Bug")
+	if _, err := svc.Create("P1", "p1", "ok", "", PriorityMedium, nil, &own); err != nil {
+		t.Errorf("Create with the project's own type: %v", err)
+	}
+}
