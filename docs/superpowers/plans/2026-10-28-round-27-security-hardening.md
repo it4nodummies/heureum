@@ -153,6 +153,11 @@ that demonstrates the hole and FAILS on current `main`.
   - `worklog_handler.go` DELETE: add the same author-OR-`AdministerProjects` rule used for comments (today any `EditIssues` holder can delete anyone's worklog); `TestWorklogDelete_NonAuthorNonAdminIs403`.
   - `internal/domain/sprint/service.go` (`GetByID`/`Update`/`Start`/`Complete`) and `workflow/service.go` (`UpdateStatus`/`RemoveStatus`/transition ops): a generic DB error from `First` is collapsed into `ErrNotFound` → only map `gorm.ErrRecordNotFound` to the sentinel, propagate other errors (500), as `comment_service.GetComment` already does.
   - Rename `TestNested_CommentUpdate_NonAuthorNonAdminIs403or404` → `..._Is403` (it asserts 403 only); share the `issueNotVisibleMsg` constant instead of re-spelling the 404 literal in `agile_misc_handler.go`.
+- Follow-ups from the Task 5 review (webhook SSRF, hardening not bypasses):
+  - `internal/domain/webhook/urlcheck.go` `extraDisallowed`: add the IPv4-embedding ranges `::ffff:0:0/96` (IPv4-translated), `64:ff9b:1::/48` (local NAT64), `2002::/16` (6to4), `2001::/32` (Teredo) and `0.0.0.0/8` (today only `0.0.0.0` itself is rejected); extend `TestValidateTargetURL` with `http://[::ffff:0:7f00:1]/` and `http://0.0.0.1/`.
+  - `internal/integration/dispatcher.go:23-27`: the `client *http.Client` field is dead (dispatcher only enqueues) — drop the parameter and the plain `http.Client{}` in `dispatcher_test.go`, and the `NewDeliveryClient` built only to fill it in `router.go`.
+  - `.env.example` / `values.yaml`: one sentence making explicit that a **hostname** allow-entry lifts the loopback/link-local restriction too (trusted wherever it resolves), whereas an IP/CIDR entry lifts it only for that range.
+  - `cmd/worker/main.go`: a deterministic `ErrInvalidTargetURL` (bad scheme/userinfo) could short-circuit to `dead` instead of 5 retries (optional, noise only).
 - Test: `ratelimit_test.go`, handler tests
 
 - [ ] **Step 1: Failing tests** — `TestClientIP_IgnoresXFFFromUntrustedPeer`, `TestClientIP_UsesRightmostHopFromTrustedProxy`, `TestAttachmentUpload_RejectsOver10MB`, `TestMarkRead_OtherUsersNotificationIs404`, `TestRegister_DoesNotLeakInternalError`.
