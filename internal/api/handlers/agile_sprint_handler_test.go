@@ -18,6 +18,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/storetest"
 )
 
 // setupAgileSprintTest costruisce un DB in-memory con user admin, servizi e
@@ -206,5 +207,53 @@ func TestCompleteSprint_RejectsMoveToOtherProjectSprint(t *testing.T) {
 	f.expect(t, "complete with own-project target", w, http.StatusOK)
 	if got := f.reloadIssue(t, f.issueA.ID); got.SprintID == nil || *got.SprintID != spA2.ID {
 		t.Errorf("issue A not moved into sprint A2: sprint_id=%v", got.SprintID)
+	}
+}
+
+// TestCompleteSprint_DBErrorIs500: a real DB failure while completing the
+// sprint (here: the issues table is gone, so moving the open issues fails)
+// is a 500, not a 400 — and, since completion is one transaction, the sprint
+// is still active afterwards. Runs on the real migrated schema.
+func TestCompleteSprint_DBErrorIs500(t *testing.T) {
+	db := storetest.New(t)
+	adminUID := uuid.New().String()
+	if err := db.Create(&user.User{ID: adminUID, Email: "admin@example.test", Username: adminUID, DisplayName: "Admin", IsActive: true, IsAdmin: true}).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	p := &project.Project{ID: uuid.New().String(), Key: "SPR", Name: "Sprints", SeqID: 10000}
+	if err := db.Create(p).Error; err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	sprintSvc := sprint.NewService(db)
+	sp, err := sprintSvc.CreateFull(p.ID, "Sprint 1", "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("create sprint: %v", err)
+	}
+	if _, err := sprintSvc.Start(p.ID, sp.ID); err != nil {
+		t.Fatalf("start sprint: %v", err)
+	}
+	projSvc := project.NewService(db, &user.User{ID: adminUID})
+	chk := authz.New(user.NewService(db), projSvc, nil, board.NewService(db), sprintSvc, nil, nil, nil)
+	h := NewAgileSprintHandler(sprintSvc, board.NewService(db), nil, nil, chk, "http://localhost:8080")
+
+	if err := db.Exec("ALTER TABLE issues RENAME TO issues_gone").Error; err != nil {
+		t.Fatalf("rename issues: %v", err)
+	}
+
+	seq := strconv.FormatInt(sp.SeqID, 10)
+	req := withUID(httptest.NewRequest(http.MethodPost, "/rest/agile/1.0/sprint/"+seq+"/complete", bytes.NewReader([]byte(`{"moveOpenToBacklog":true}`))), adminUID)
+	req.SetPathValue("sprintId", seq)
+	w := httptest.NewRecorder()
+	h.CompleteSprint(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500: %s", w.Code, w.Body.String())
+	}
+	got, err := sprintSvc.GetByID(p.ID, sp.ID)
+	if err != nil {
+		t.Fatalf("reload sprint: %v", err)
+	}
+	if got.State != sprint.StateActive {
+		t.Errorf("sprint state = %q after a failed completion, want active (rolled back)", got.State)
 	}
 }

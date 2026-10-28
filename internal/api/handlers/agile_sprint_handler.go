@@ -3,9 +3,12 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
@@ -174,6 +177,12 @@ func (h *AgileSprintHandler) CompleteSprint(w http.ResponseWriter, r *http.Reque
 		// must be a sprint of that same project (R27 T8). A foreign sprint
 		// looks exactly like a missing one — no cross-project probing.
 		ts, err := h.sprintSvc.GetBySeqID(*req.MoveToSprintID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			// A real DB failure is not "the client named a bad sprint".
+			log.Printf("agile: complete sprint %d: resolve moveToSprintId %d: %v", sp.SeqID, *req.MoveToSprintID, err)
+			v3.WriteError(w, http.StatusInternalServerError, []string{"cannot complete sprint"}, nil)
+			return
+		}
 		if err != nil || ts.ProjectID != sp.ProjectID {
 			v3.WriteError(w, http.StatusBadRequest, []string{"moveToSprintId not found"}, nil)
 			return
@@ -181,12 +190,18 @@ func (h *AgileSprintHandler) CompleteSprint(w http.ResponseWriter, r *http.Reque
 		target = &ts.ID
 	}
 	updated, err := h.sprintSvc.Complete(sp.ProjectID, sp.ID, req.MoveOpenToBacklog, target)
-	if errors.Is(err, sprint.ErrInvalidTarget) {
+	switch {
+	case errors.Is(err, sprint.ErrInvalidTarget):
 		v3.WriteError(w, http.StatusBadRequest, []string{"moveToSprintId not found"}, nil)
 		return
-	}
-	if err != nil {
-		v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
+	case errors.Is(err, sprint.ErrNotFound):
+		v3.WriteError(w, http.StatusNotFound, []string{"sprint not found"}, nil)
+		return
+	case err != nil:
+		// Same policy as writeSprintErr: a DB failure is a 500, never a 400
+		// that blames the request. Detail goes to the log only.
+		log.Printf("agile: complete sprint %d failed: %v", sp.SeqID, err)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"cannot complete sprint"}, nil)
 		return
 	}
 	v3.WriteJSON(w, http.StatusOK, sprintToV3(updated, h.baseURL))

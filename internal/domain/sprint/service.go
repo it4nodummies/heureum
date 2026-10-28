@@ -64,8 +64,14 @@ var ErrInvalidTarget = errors.New("target sprint not found in project")
 // GetByID loads the sprint id of projectID; an id from another project is
 // ErrNotFound. Any other DB error is propagated as-is (handler → 500).
 func (s *Service) GetByID(projectID, id string) (*Sprint, error) {
+	return getByID(s.db, projectID, id)
+}
+
+// getByID is GetByID on an arbitrary handle, so it can run inside a
+// transaction.
+func getByID(db *gorm.DB, projectID, id string) (*Sprint, error) {
 	var sp Sprint
-	if err := s.db.First(&sp, "id = ? AND project_id = ?", id, projectID).Error; err != nil {
+	if err := db.First(&sp, "id = ? AND project_id = ?", id, projectID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
@@ -125,31 +131,46 @@ func (s *Service) Start(projectID, sprintID string) (*Sprint, error) {
 // moveToSprintID must belong to projectID too, otherwise ErrInvalidTarget and
 // nothing changes (the handler checks this as well — this is the last line of
 // defence in front of the cross-project UPDATE).
+//
+// The state change and the issue moves are ONE transaction: if moving the
+// issues fails the sprint stays active, instead of being closed with its open
+// issues stranded on it. An issue whose status_id is NULL (no workflow status
+// assigned yet) is open, so the "not done" filter is written NULL-safe —
+// `status_id NOT IN (...)` alone is unknown for NULL and silently skipped it.
 func (s *Service) Complete(projectID, sprintID string, moveOpenToBacklog bool, moveToSprintID *string) (*Sprint, error) {
-	sp, err := s.GetByID(projectID, sprintID)
+	var sp *Sprint
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		sp, err = getByID(tx, projectID, sprintID)
+		if err != nil {
+			return err
+		}
+		if moveToSprintID != nil {
+			if _, err := getByID(tx, projectID, *moveToSprintID); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					return ErrInvalidTarget
+				}
+				return err
+			}
+		}
+		now := time.Now()
+		sp.State = StateClosed
+		sp.EndDate = &now
+		sp.CompleteDate = &now
+		if err := tx.Save(sp).Error; err != nil {
+			return err
+		}
+		const notDone = "(status_id IS NULL OR status_id NOT IN (SELECT id FROM workflow_statuses WHERE category = 'done'))"
+		switch {
+		case moveToSprintID != nil:
+			return tx.Exec("UPDATE issues SET sprint_id = ? WHERE sprint_id = ? AND "+notDone, *moveToSprintID, sprintID).Error
+		case moveOpenToBacklog:
+			return tx.Exec("UPDATE issues SET sprint_id = NULL WHERE sprint_id = ? AND "+notDone, sprintID).Error
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	if moveToSprintID != nil {
-		if _, err := s.GetByID(projectID, *moveToSprintID); err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return nil, ErrInvalidTarget
-			}
-			return nil, err
-		}
-	}
-	now := time.Now()
-	sp.State = StateClosed
-	sp.EndDate = &now
-	sp.CompleteDate = &now
-	if err := s.db.Save(sp).Error; err != nil {
-		return nil, err
-	}
-	switch {
-	case moveToSprintID != nil:
-		s.db.Exec("UPDATE issues SET sprint_id = ? WHERE sprint_id = ? AND status_id NOT IN (SELECT id FROM workflow_statuses WHERE category = 'done')", *moveToSprintID, sprintID)
-	case moveOpenToBacklog:
-		s.db.Exec("UPDATE issues SET sprint_id = NULL WHERE sprint_id = ? AND status_id NOT IN (SELECT id FROM workflow_statuses WHERE category = 'done')", sprintID)
 	}
 	if s.notifier != nil {
 		s.notifier.NotifySprintCompleted(sp.ProjectID, sp.ID, sp.Name, "")

@@ -2,10 +2,13 @@ package workflow
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/it4nodummies/heureum/internal/storetest"
 )
 
 func setupWorkflowTestDB(t *testing.T) *gorm.DB {
@@ -201,8 +204,19 @@ func TestCreateDefaultWorkflowPropagatesStatusError(t *testing.T) {
 	}
 }
 
+// newRealWorkflowDB returns a real-schema DB with the project the workflow
+// tests attach to (workflows.project_id is an enforced FK there).
+func newRealWorkflowDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := storetest.New(t)
+	if err := db.Exec("INSERT INTO projects (id, name, key) VALUES ('proj-3', 'P3', 'P3')").Error; err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+	return db
+}
+
 func TestAddAndRemoveStatus(t *testing.T) {
-	db := setupWorkflowTestDB(t)
+	db := newRealWorkflowDB(t)
 	svc := NewService(db)
 
 	wf, _ := svc.CreateWorkflow("proj-3", "WF")
@@ -369,5 +383,49 @@ func TestWorkflowScopedOps_PropagateDBErrors(t *testing.T) {
 	db2 := setupWorkflowTestDB(t)
 	if _, err := NewService(db2).UpdateStatus("wf", "missing", "Name", CategoryTodo, "#fff"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateStatus(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestRemoveStatus_RefusedWhileInUse: deleting a status that issues still
+// reference is refused with ErrStatusInUse (the FK is ON DELETE SET NULL, so
+// the delete would silently strip those issues of their status). Once the
+// issues are moved, the removal succeeds.
+func TestRemoveStatus_RefusedWhileInUse(t *testing.T) {
+	db := newRealWorkflowDB(t)
+	svc := NewService(db)
+	wf, err := svc.CreateWorkflow("proj-3", "WF")
+	if err != nil {
+		t.Fatalf("CreateWorkflow: %v", err)
+	}
+	todo, _ := svc.AddStatus(wf.ID, "To Do", CategoryTodo, "")
+	done, _ := svc.AddStatus(wf.ID, "Done", CategoryDone, "")
+	if err := db.Exec(
+		"INSERT INTO issues (id, project_id, key, title, seq_id, status_id) VALUES ('i1', 'proj-3', 'P3-1', 'one', 80001, ?)", todo.ID,
+	).Error; err != nil {
+		t.Fatalf("insert issue: %v", err)
+	}
+
+	err = svc.RemoveStatus(wf.ID, todo.ID)
+	if !errors.Is(err, ErrStatusInUse) {
+		t.Fatalf("RemoveStatus(in use) = %v, want ErrStatusInUse", err)
+	}
+	if msg := err.Error(); !strings.Contains(msg, "1 issue") {
+		t.Errorf("error message %q should say how many issues use the status", msg)
+	}
+	var n int64
+	db.Raw("SELECT count(*) FROM workflow_statuses WHERE id = ?", todo.ID).Scan(&n)
+	if n != 1 {
+		t.Fatalf("status was deleted although in use")
+	}
+
+	if err := db.Exec("UPDATE issues SET status_id = ? WHERE id = 'i1'", done.ID).Error; err != nil {
+		t.Fatalf("move issue: %v", err)
+	}
+	if err := svc.RemoveStatus(wf.ID, todo.ID); err != nil {
+		t.Fatalf("RemoveStatus after moving the issue: %v", err)
+	}
+	db.Raw("SELECT count(*) FROM workflow_statuses WHERE id = ?", todo.ID).Scan(&n)
+	if n != 0 {
+		t.Errorf("status still present after a successful RemoveStatus")
 	}
 }

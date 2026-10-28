@@ -563,3 +563,125 @@ func TestBackfillCounters_FromExistingKeys(t *testing.T) {
 		t.Errorf("key after backfill = %q, want BF-13", iss.Key)
 	}
 }
+
+// TestCreateWithOptions_RollsBackOnExtraFailure: a failure in the in-tx
+// follow-up hook rolls back the issue row AND the key counter, and the error
+// is returned (no issue_created event, no history row).
+func TestCreateWithOptions_RollsBackOnExtraFailure(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "p1")
+	svc := NewService(db)
+	boom := errors.New("fix versions exploded")
+	hookRan := false
+	_, err := svc.CreateWithOptions("P1", "p1", "doomed", "", PriorityMedium, nil, nil, CreateOptions{
+		Labels: []string{"backend"},
+		Extra: func(tx *gorm.DB, iss *Issue) error {
+			hookRan = true
+			// The row IS visible inside the transaction...
+			var n int64
+			tx.Model(&Issue{}).Where("id = ?", iss.ID).Count(&n)
+			if n != 1 {
+				t.Errorf("issue row not visible inside the create transaction")
+			}
+			return boom
+		},
+	})
+	if !errors.Is(err, boom) {
+		t.Fatalf("CreateWithOptions err = %v, want the hook's error", err)
+	}
+	if !hookRan {
+		t.Fatal("Extra hook never ran")
+	}
+	// ...and gone after the rollback, together with its label link, the
+	// counter increment and any history.
+	var issues, links, history int64
+	db.Model(&Issue{}).Where("project_id = ?", "p1").Count(&issues)
+	db.Model(&IssueLabel{}).Count(&links)
+	db.Model(&IssueHistory{}).Count(&history)
+	if issues != 0 || links != 0 || history != 0 {
+		t.Errorf("after rollback: issues=%d issue_labels=%d history=%d, want all 0", issues, links, history)
+	}
+	var counter int64
+	db.Raw("SELECT issue_counter FROM projects WHERE id = ?", "p1").Scan(&counter)
+	if counter != 0 {
+		t.Errorf("issue_counter = %d after a rolled-back create, want 0", counter)
+	}
+	// The next create still gets the first key.
+	iss, err := svc.Create("P1", "p1", "ok", "", PriorityMedium, nil, nil)
+	if err != nil || iss.Key != "P1-1" {
+		t.Errorf("next create: key = %v err = %v, want P1-1", iss, err)
+	}
+}
+
+// TestCreateWithOptions_AppliesFieldsInOneTransaction: status, assignee and
+// (deduplicated) labels are on the row returned and stored; the assignee is
+// notified once; only the "created" history entry exists (initial values are
+// not "changes").
+func TestCreateWithOptions_AppliesFieldsInOneTransaction(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "p1")
+	createTestUser(t, db, "u1")
+	if err := db.Exec("INSERT INTO workflows (id, project_id, name) VALUES ('wf1', 'p1', 'WF')").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO workflow_statuses (id, workflow_id, name, category) VALUES ('st-todo', 'wf1', 'To Do', 'todo')").Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(db)
+	n := &recordingNotifier{}
+	svc.SetNotifier(n)
+	status, assignee := "st-todo", "u1"
+	iss, err := svc.CreateWithOptions("P1", "p1", "full", "", PriorityHigh, nil, nil, CreateOptions{
+		StatusID: &status, AssigneeID: &assignee, Labels: []string{"a", "", "b", "a"},
+	})
+	if err != nil {
+		t.Fatalf("CreateWithOptions: %v", err)
+	}
+	stored, err := svc.GetByKey(iss.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.StatusID == nil || *stored.StatusID != status || stored.AssigneeID == nil || *stored.AssigneeID != assignee {
+		t.Errorf("stored status/assignee = %v/%v, want %s/%s", stored.StatusID, stored.AssigneeID, status, assignee)
+	}
+	labels, _ := svc.GetLabels(iss.ID)
+	if len(labels) != 2 {
+		t.Errorf("labels = %v, want 2 distinct", labels)
+	}
+	if n.assigned != 1 {
+		t.Errorf("NotifyIssueAssigned called %d times, want 1", n.assigned)
+	}
+	hist, _ := svc.GetHistory(iss.ID)
+	if len(hist) != 1 || hist[0].FieldName != "created" {
+		t.Errorf("history = %+v, want exactly the \"created\" entry", hist)
+	}
+}
+
+// TestCreateWithOptions_UnknownAssigneeIsError: an assignee that is not a
+// user is ErrAssigneeNotFound and nothing is created (no FK error, no row).
+func TestCreateWithOptions_UnknownAssigneeIsError(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "p1")
+	svc := NewService(db)
+	ghost := "ghost"
+	_, err := svc.CreateWithOptions("P1", "p1", "x", "", PriorityMedium, nil, nil, CreateOptions{AssigneeID: &ghost})
+	if !errors.Is(err, ErrAssigneeNotFound) {
+		t.Fatalf("err = %v, want ErrAssigneeNotFound", err)
+	}
+	var issues int64
+	db.Model(&Issue{}).Count(&issues)
+	if issues != 0 {
+		t.Errorf("%d issue rows created with an unknown assignee, want 0", issues)
+	}
+}
+
+type recordingNotifier struct{ assigned, status int }
+
+func (r *recordingNotifier) NotifyIssueAssigned(string, string, string, string) error {
+	r.assigned++
+	return nil
+}
+func (r *recordingNotifier) NotifyStatusChanged(string, string, string, string, string) error {
+	r.status++
+	return nil
+}

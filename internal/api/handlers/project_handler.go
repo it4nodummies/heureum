@@ -153,7 +153,10 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}
 	if err := scaffold(); err != nil {
-		_ = h.svc.Delete(p.Key)
+		if delErr := h.svc.Delete(p.Key); delErr != nil {
+			// The half-created project is still there: say so, loudly.
+			log.Printf("project: rollback of %q after a failed scaffold FAILED (project left half-created): %v", p.Key, delErr)
+		}
 		log.Printf("project: scaffold %q failed (rolled back): %v", p.Key, err)
 		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to initialize project."}, nil)
 		return

@@ -124,6 +124,14 @@ func (h *WorkflowHandler) DeleteStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"status not found"}`, http.StatusNotFound)
 		return
 	}
+	if errors.Is(err, workflow.ErrStatusInUse) {
+		// The message says how many issues block the removal ("status is used
+		// by N issues; move them first").
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
 	if err != nil {
 		http.Error(w, `{"error":"failed to remove status"}`, http.StatusInternalServerError)
 		return

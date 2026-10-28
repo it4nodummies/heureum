@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"github.com/it4nodummies/heureum/internal/adf"
 )
 
 type Service struct {
@@ -154,9 +156,21 @@ func (s *Service) execute(r *AutomationRule, issueID string) (*AutomationRun, er
 			s.db.Table("issues").Where("id = ?", issueID).Update("status_id", value)
 			log += fmt.Sprintf("Transitioned to status %s\n", value)
 		case "add_comment":
+			// comments.body_json holds an ADF document (the v3 comment mapping
+			// reads it as such). Marshal a real doc: formatting the text into
+			// a JSON literal by hand broke on the first quote or newline.
+			commentJSON, err := json.Marshal(adf.FromText(value))
+			if err != nil {
+				log += fmt.Sprintf("Failed to encode comment: %v\n", err)
+				run.Status = "error"
+				continue
+			}
 			commentID := uuid.New().String()
-			commentJSON := fmt.Sprintf(`{"content":"%s"}`, value)
-			s.db.Exec("INSERT INTO comments (id, issue_id, body_json) VALUES (?, ?, ?)", commentID, issueID, commentJSON)
+			if err := s.db.Exec("INSERT INTO comments (id, issue_id, body_json) VALUES (?, ?, ?)", commentID, issueID, string(commentJSON)).Error; err != nil {
+				log += fmt.Sprintf("Failed to add comment: %v\n", err)
+				run.Status = "error"
+				continue
+			}
 			log += fmt.Sprintf("Added comment: %s\n", value)
 		default:
 			log += fmt.Sprintf("Unknown action type: %s\n", actionType)

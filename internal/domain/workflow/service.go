@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -81,17 +82,53 @@ func (s *Service) UpdateStatus(workflowID, statusID, name string, category Statu
 	return &status, nil
 }
 
+// ErrStatusInUse is the sentinel RemoveStatus returns (via *StatusInUseError,
+// so errors.Is(err, ErrStatusInUse) works) while issues still reference the
+// status.
+var ErrStatusInUse = errors.New("status in use")
+
+// StatusInUseError carries how many issues still use the status, for the
+// handler's message. Matches ErrStatusInUse through errors.Is.
+type StatusInUseError struct {
+	Count int64
+}
+
+func (e *StatusInUseError) Error() string {
+	noun := "issues"
+	if e.Count == 1 {
+		noun = "issue"
+	}
+	return fmt.Sprintf("status is used by %d %s; move them first", e.Count, noun)
+}
+
+func (e *StatusInUseError) Is(target error) bool { return target == ErrStatusInUse }
+
 // RemoveStatus deletes the status statusID of workflowID; an id from another
-// workflow is ErrNotFound and nothing is deleted.
+// workflow is ErrNotFound and nothing is deleted. While any (non-archived)
+// issue still has this status the removal is refused with *StatusInUseError:
+// issues.status_id is ON DELETE SET NULL, so deleting anyway would silently
+// strip those issues of their status. Archived (soft-deleted) issues don't
+// block the removal — they are gone from the user's point of view and losing
+// their status is harmless. Check and delete run in one transaction so an
+// issue moved into the status concurrently cannot slip between them.
 func (s *Service) RemoveStatus(workflowID, statusID string) error {
-	res := s.db.Where("id = ? AND workflow_id = ?", statusID, workflowID).Delete(&WorkflowStatus{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var inUse int64
+		if err := tx.Table("issues").Where("status_id = ? AND is_archived = ?", statusID, false).Count(&inUse).Error; err != nil {
+			return err
+		}
+		if inUse > 0 {
+			return &StatusInUseError{Count: inUse}
+		}
+		res := tx.Where("id = ? AND workflow_id = ?", statusID, workflowID).Delete(&WorkflowStatus{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // AddTransition crea una transizione from→to con nome e regole base.

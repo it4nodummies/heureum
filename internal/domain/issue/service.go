@@ -56,6 +56,32 @@ var ErrProjectNotFound = errors.New("project not found")
 // transaction is rolled back (counter included), so it is simply retried.
 const seqIDRetries = 5
 
+// ErrAssigneeNotFound is returned by CreateWithOptions when
+// CreateOptions.AssigneeID is not a user: a client error, not an FK
+// violation surfacing as an internal failure.
+var ErrAssigneeNotFound = errors.New("assignee not found")
+
+// CreateOptions carries the create-time fields that used to be applied by
+// the handler as separate UPDATEs after the insert — each with its error
+// discarded, so a failure left a half-initialized issue (no status, no
+// assignee, missing labels) that the client was told was created. They are
+// now applied inside the create transaction: either everything is there, or
+// no issue exists.
+type CreateOptions struct {
+	// StatusID is the initial workflow status (the project's TO DO).
+	StatusID *string
+	// AssigneeID is the initial assignee; must be an existing user.
+	AssigneeID *string
+	// Labels are attached by name (reusing/creating the project's label).
+	// Empty names and duplicates are ignored.
+	Labels []string
+	// Extra, if set, runs inside the create transaction right after the
+	// issue row and its labels are written, for writes that belong to other
+	// domains (the fix-versions pivot). Returning an error rolls the whole
+	// create back.
+	Extra func(tx *gorm.DB, iss *Issue) error
+}
+
 // Create allocates the issue key and seq_id and inserts the row in ONE
 // transaction. The key number comes from projects.issue_counter: the UPDATE
 // that increments it row-locks the project for the rest of the transaction
@@ -64,13 +90,31 @@ const seqIDRetries = 5
 // with the row. Every error is propagated; nothing falls back to a guessed
 // number.
 func (s *Service) Create(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string) (*Issue, error) {
+	return s.CreateWithOptions(projectKey, projectID, title, description, priority, parentID, typeID, CreateOptions{})
+}
+
+// CreateWithOptions is Create plus the create-time follow-ups in
+// CreateOptions, all in the same transaction (see CreateOptions). The initial
+// status and assignee are part of the row itself, so they produce no
+// "changed from empty" history entries, no transition event and no
+// status-change notification — only the "created" entry and the
+// issue_created event, as for any other create. The assignee IS notified of
+// the assignment, after the commit.
+func (s *Service) CreateWithOptions(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string, opts CreateOptions) (*Issue, error) {
 	if title == "" {
 		return nil, errors.New("title is required")
+	}
+	// Nullable FKs take SQL NULL, never "" (anti-pattern #2).
+	if opts.StatusID != nil && *opts.StatusID == "" {
+		opts.StatusID = nil
+	}
+	if opts.AssigneeID != nil && *opts.AssigneeID == "" {
+		opts.AssigneeID = nil
 	}
 	var issue *Issue
 	var err error
 	for attempt := 0; attempt < seqIDRetries; attempt++ {
-		issue, err = s.createOnce(projectKey, projectID, title, description, priority, parentID, typeID)
+		issue, err = s.createOnce(projectKey, projectID, title, description, priority, parentID, typeID, opts)
 		if err == nil || !isDuplicateKeyErr(err) {
 			break
 		}
@@ -79,13 +123,25 @@ func (s *Service) Create(projectKey, projectID, title, description string, prior
 		return nil, err
 	}
 	s.logHistory(issue.ID, "", "created", "", issue.Key)
+	if issue.AssigneeID != nil && s.notifier != nil {
+		s.notifier.NotifyIssueAssigned(issue.ID, *issue.AssigneeID, issue.Key, issue.Title)
+	}
 	s.emit("issue_created", issue)
 	return issue, nil
 }
 
-func (s *Service) createOnce(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string) (*Issue, error) {
+func (s *Service) createOnce(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string, opts CreateOptions) (*Issue, error) {
 	var issue *Issue
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if opts.AssigneeID != nil {
+			var n int64
+			if err := tx.Table("users").Where("id = ?", *opts.AssigneeID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n == 0 {
+				return ErrAssigneeNotFound
+			}
+		}
 		n, err := nextKeyNumber(tx, projectID, projectKey)
 		if err != nil {
 			return err
@@ -103,10 +159,28 @@ func (s *Service) createOnce(projectKey, projectID, title, description string, p
 			Priority:        priority,
 			ParentID:        parentID,
 			TypeID:          typeID,
+			StatusID:        opts.StatusID,
+			AssigneeID:      opts.AssigneeID,
 			Position:        float64(n * 1000),
 			SeqID:           seqID,
 		}
-		return tx.Create(issue).Error
+		if err := tx.Create(issue).Error; err != nil {
+			return err
+		}
+		seen := map[string]bool{}
+		for _, name := range opts.Labels {
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			if _, err := addLabel(tx, issue.ID, projectID, name, ""); err != nil {
+				return err
+			}
+		}
+		if opts.Extra != nil {
+			return opts.Extra(tx, issue)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -416,10 +490,18 @@ func (s *Service) Delete(key string) error {
 }
 
 func (s *Service) AddLabel(issueID, projectID, name, color string) (*Label, error) {
+	return addLabel(s.db, issueID, projectID, name, color)
+}
+
+// addLabel attaches the project's label `name` (created on first use) to the
+// issue, on the given handle so it can run inside the create transaction.
+func addLabel(db *gorm.DB, issueID, projectID, name, color string) (*Label, error) {
 	label := Label{ID: uuid.New().String(), ProjectID: projectID, Name: name, Color: color}
-	s.db.Where("project_id = ? AND name = ?", projectID, name).FirstOrCreate(&label)
+	if err := db.Where("project_id = ? AND name = ?", projectID, name).FirstOrCreate(&label).Error; err != nil {
+		return nil, err
+	}
 	il := &IssueLabel{IssueID: issueID, LabelID: label.ID}
-	if err := s.db.Create(il).Error; err != nil {
+	if err := db.Create(il).Error; err != nil {
 		return nil, err
 	}
 	return &label, nil
