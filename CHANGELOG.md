@@ -70,7 +70,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   serialized the plaintext access token and the webhook secret. It is now gated by
   `ADMINISTER_PROJECTS`, never returns the token or secret, and the token is **encrypted at rest**
   (AES-256-GCM, key derived from `APP_SECRET`, `v1:`-prefixed ciphertext; legacy plaintext rows are
-  encrypted by the startup backfill). Migration `000024` adds `git_provider_configs.webhook_url_token`.
+  encrypted by the startup backfill). Migration `000024` adds `git_providers.webhook_url_token`.
 - **Inbound git webhooks require a real signature check.** Provider types without a validator are
   rejected instead of accepted by a no-op; GitLab's token comparison is constant-time
   (`crypto/subtle`); an empty HMAC secret is a hard reject because it makes GitHub/Forgejo
