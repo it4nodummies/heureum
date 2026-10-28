@@ -572,14 +572,8 @@ func TestCreateAPIToken_ExpiryIsUTC(t *testing.T) {
 	if stored.ExpiresAt == nil || !stored.ExpiresAt.Equal(want) {
 		t.Errorf("stored expires_at = %v, want %v", stored.ExpiresAt, want)
 	}
-	y, mo, d := stored.ExpiresAt.UTC().Date()
-	hh, mm, _ := stored.ExpiresAt.UTC().Clock()
-	if y != 2026 || mo != time.October || d != 31 || hh != 12 || mm != 30 {
-		t.Errorf("stored UTC digits = %04d-%02d-%02d %02d:%02d, want 2026-10-31 12:30", y, mo, d, hh, mm)
-	}
 
-	// Verification compares against the same UTC clock: one second before the
-	// expiry the token is live, at the expiry it is not.
+	// Listing later, with the clock still zoned, renders the same UTC expiry.
 	h.svc.Now = func() time.Time { return want.Add(-time.Second).In(cest) }
 	rec2 := httptest.NewRecorder()
 	h.ListAPITokens(rec2, apiTokenRequest(u.ID, "GET", "/rest/api/3/auth/api-tokens", nil))

@@ -208,3 +208,70 @@ func TestHub_UnregistersOnWriteError(t *testing.T) {
 		t.Fatalf("ClientCount after dead peer = %d, want 0", got)
 	}
 }
+
+// TestHub_WritePumpUnregistersOnClosedConn pins the write-pump unregister
+// path in isolation: the server-side conn is closed right after register and
+// only the write pump runs (no read pump, so nothing else can unregister the
+// client, and no FIN from the peer is involved). The first delivery fails to
+// write and the pump must drop the client from the hub.
+func TestHub_WritePumpUnregistersOnClosedConn(t *testing.T) {
+	hub := NewHub("")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := hub.upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		c := &Client{hub: hub, conn: conn, send: make(chan []byte, sendBufferSize), userID: "user-a", project: "P"}
+		hub.register(c)
+		_ = conn.Close() // server-side, before any write; the peer sent nothing
+		go c.writePump()
+	}))
+	t.Cleanup(srv.Close)
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL(srv), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	waitCount(t, hub, "user-a", 1)
+
+	hub.SendToUser("user-a", []byte("write-to-closed-conn"))
+	waitCount(t, hub, "user-a", 0)
+}
+
+// TestHub_FullBufferDropsClientWithoutBlocking pins "a client that does not
+// drain its buffer is dropped instead of blocking the hub": a registered
+// client with no pumps at all absorbs sendBufferSize messages, the next one
+// finds the buffer full, SendToUser returns promptly and the client is gone.
+func TestHub_FullBufferDropsClientWithoutBlocking(t *testing.T) {
+	hub := NewHub("")
+	c := &Client{hub: hub, send: make(chan []byte, sendBufferSize), userID: "user-a", project: "P"}
+	hub.register(c)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < sendBufferSize+1; i++ {
+			hub.SendToUser("user-a", []byte("fill"))
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SendToUser blocked on a client with a full buffer")
+	}
+	if got := hub.ClientCount("user-a"); got != 0 {
+		t.Fatalf("ClientCount after overflow = %d, want 0 (client dropped)", got)
+	}
+	if got := len(c.send); got != sendBufferSize {
+		t.Errorf("buffered messages = %d, want exactly %d (the overflowing one is dropped, not queued)", got, sendBufferSize)
+	}
+	// The dropped client's send channel is closed by unregister: a drained
+	// receive reports !ok instead of blocking.
+	for i := 0; i < sendBufferSize; i++ {
+		<-c.send
+	}
+	if _, ok := <-c.send; ok {
+		t.Error("send channel still open after the client was dropped")
+	}
+}
