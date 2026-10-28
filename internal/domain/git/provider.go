@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"regexp"
 	"strings"
 )
@@ -52,7 +53,28 @@ type GitProvider interface {
 
 var issueKeyRegex = regexp.MustCompile(`[A-Z]+-\d+`)
 
+// SupportedProviderTypes are the types with a real inbound signature
+// validator and payload parser. CreateProvider refuses anything else: the DB
+// CHECK also allows "bitbucket", but no validator exists for it, and a row
+// whose type has none would otherwise be served by noopProvider.
+var SupportedProviderTypes = []ProviderType{ProviderForgejo, ProviderGitea, ProviderGitLab, ProviderGitHub}
+
+func IsSupportedProviderType(pt ProviderType) bool {
+	for _, s := range SupportedProviderTypes {
+		if pt == s {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateHMACSHA256 checks a GitHub-style "sha256=<hex>" HMAC-SHA256 of
+// payload. An empty secret or signature is a hard reject: with an empty key
+// anyone can produce a matching signature for any body.
 func ValidateHMACSHA256(payload []byte, secret, signature string) bool {
+	if secret == "" || signature == "" {
+		return false
+	}
 	sig := strings.TrimPrefix(signature, "sha256=")
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(payload)
@@ -72,11 +94,14 @@ func ExtractIssueKeys(text string) []string {
 	return keys
 }
 
+// noopProvider is what ProviderForType returns for a type with no
+// implementation. It REJECTS every webhook: accepting would mean
+// unauthenticated event injection for any such row.
 type noopProvider struct{}
 
-func (p *noopProvider) GetName() ProviderType                          { return "" }
+func (p *noopProvider) GetName() ProviderType { return "" }
 func (p *noopProvider) ValidateWebhook(payload []byte, secret string, signature string) (bool, error) {
-	return true, nil
+	return false, errors.New("unsupported provider type: no signature validator")
 }
 func (p *noopProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
 	return &WebhookEvent{}, nil

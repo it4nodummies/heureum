@@ -57,10 +57,20 @@ func (s *Service) AddStatus(workflowID, name string, category StatusCategory, co
 	return status, nil
 }
 
-func (s *Service) UpdateStatus(statusID, name string, category StatusCategory, color string) (*WorkflowStatus, error) {
+// ErrNotFound is returned by the workflow-scoped status/transition operations
+// when the child id does not exist in that workflow (missing or belonging to
+// another workflow/project — indistinguishable by design).
+var ErrNotFound = errors.New("not found")
+
+// UpdateStatus updates the status statusID of workflowID; an id from another
+// workflow is ErrNotFound.
+func (s *Service) UpdateStatus(workflowID, statusID, name string, category StatusCategory, color string) (*WorkflowStatus, error) {
 	var status WorkflowStatus
-	if err := s.db.First(&status, "id = ?", statusID).Error; err != nil {
-		return nil, errors.New("status not found")
+	if err := s.db.First(&status, "id = ? AND workflow_id = ?", statusID, workflowID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
 	status.Name = name
 	status.Category = category
@@ -71,8 +81,17 @@ func (s *Service) UpdateStatus(statusID, name string, category StatusCategory, c
 	return &status, nil
 }
 
-func (s *Service) RemoveStatus(statusID string) error {
-	return s.db.Delete(&WorkflowStatus{}, "id = ?", statusID).Error
+// RemoveStatus deletes the status statusID of workflowID; an id from another
+// workflow is ErrNotFound and nothing is deleted.
+func (s *Service) RemoveStatus(workflowID, statusID string) error {
+	res := s.db.Where("id = ? AND workflow_id = ?", statusID, workflowID).Delete(&WorkflowStatus{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // AddTransition crea una transizione from→to con nome e regole base.
@@ -92,8 +111,17 @@ func (s *Service) AddTransition(workflowID, fromStatusID, toStatusID, name strin
 	return tr, nil
 }
 
-func (s *Service) RemoveTransition(transitionID string) error {
-	return s.db.Delete(&WorkflowTransition{}, "id = ?", transitionID).Error
+// RemoveTransition deletes the transition transitionID of workflowID; an id
+// from another workflow is ErrNotFound and nothing is deleted.
+func (s *Service) RemoveTransition(workflowID, transitionID string) error {
+	res := s.db.Where("id = ? AND workflow_id = ?", transitionID, workflowID).Delete(&WorkflowTransition{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Service) GetTransitions(workflowID string) ([]WorkflowTransition, error) {
@@ -120,8 +148,16 @@ func (s *Service) GetAvailableTransitions(workflowID, fromStatusID string) ([]Wo
 	return trs, nil
 }
 
-// UpdateTransition aggiorna nome e regole di una transizione (puntatori nil = invariato).
-func (s *Service) UpdateTransition(id string, name *string, requireAssignee, setResolution *bool) (*WorkflowTransition, error) {
+// UpdateTransition aggiorna nome e regole della transizione id del workflow
+// workflowID (puntatori nil = invariato). Un id di un altro workflow è ErrNotFound.
+func (s *Service) UpdateTransition(workflowID, id string, name *string, requireAssignee, setResolution *bool) (*WorkflowTransition, error) {
+	var existing WorkflowTransition
+	if err := s.db.First(&existing, "id = ? AND workflow_id = ?", id, workflowID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
 	updates := map[string]any{}
 	if name != nil {
 		updates["name"] = *name
@@ -133,7 +169,7 @@ func (s *Service) UpdateTransition(id string, name *string, requireAssignee, set
 		updates["set_resolution"] = *setResolution
 	}
 	if len(updates) > 0 {
-		if err := s.db.Model(&WorkflowTransition{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		if err := s.db.Model(&WorkflowTransition{}).Where("id = ? AND workflow_id = ?", id, workflowID).Updates(updates).Error; err != nil {
 			return nil, err
 		}
 	}

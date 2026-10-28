@@ -9,6 +9,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/handlers"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/api/ws"
 	"github.com/it4nodummies/heureum/internal/config"
 	"github.com/it4nodummies/heureum/internal/domain/auth"
@@ -66,9 +67,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	issueH := handlers.NewIssueHandler(issueSvc, projectSvc, wfSvc, chk, versionSvc, cfg.BaseURL)
 	commentSvc := issue.NewCommentService(db)
-	commentH := handlers.NewCommentHandler(commentSvc, issueSvc, cfg.BaseURL)
+	commentH := handlers.NewCommentHandler(commentSvc, issueSvc, chk, cfg.BaseURL)
 	worklogSvc := issue.NewWorklogService(db)
-	worklogH := handlers.NewWorklogHandler(worklogSvc, issueSvc, cfg.BaseURL)
+	worklogH := handlers.NewWorklogHandler(worklogSvc, issueSvc, chk, cfg.BaseURL)
 	voteSvc := issue.NewVoteService(db)
 	votesH := handlers.NewVotesHandler(voteSvc, issueSvc, cfg.BaseURL)
 	remoteLinkSvc := issue.NewRemoteLinkService(db)
@@ -88,12 +89,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	reportH := handlers.NewReportHandler(reportSvc, projectSvc)
 	dashboardSvc := dashboard.NewService(db)
 	dashboardH := handlers.NewDashboardHandler(dashboardSvc, chk)
-	wsHub := ws.NewHub()
-	go wsHub.Run()
+	wsHub := ws.NewHub(cfg.BaseURL)
 	notifSvc := notification.NewService(db)
-	notifSvc.SetBroadcaster(func(msg []byte) { wsHub.Broadcast(msg) })
-	gitConfigSvc := git.NewConfigService(db)
-	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc, commentSvc)
+	notifSvc.SetSender(wsHub.SendToUser)
+	gitConfigSvc := git.NewConfigService(db, git.KeyFromSecret(cfg.Secret))
+	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc, commentSvc, cfg.BaseURL)
 	notifH := handlers.NewNotificationHandler(notifSvc)
 	issueSvc.SetNotifier(notifSvc)
 	commentSvc.SetNotifier(notifSvc)
@@ -103,8 +103,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	versionH := handlers.NewVersionHandler(versionSvc, projectSvc, chk, cfg.BaseURL)
 	autoH := handlers.NewAutomationHandler(autoSvc, projectSvc)
 	webhookSvc := webhook.NewService(db)
-	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc)
-	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc, &http.Client{Timeout: 10 * time.Second})
+	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc, cfg.WebhookAllowPrivateHosts)
+	// The dispatcher only enqueues; the worker (cmd/worker) delivers with the
+	// hardened client, so the API process never holds an outgoing-webhook one.
+	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc)
 	issueSvc.SetEventSink(dispatcher)
 	timelineSvc := timeline.NewService(db)
 	timelineH := handlers.NewTimelineHandler(timelineSvc, projectSvc)
@@ -144,7 +146,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	registerH := http.Handler(http.HandlerFunc(authH.Register))
 	loginH := http.Handler(http.HandlerFunc(authH.Login))
 	if cfg.AuthRateLimit > 0 {
-		authLimiter := middleware.RateLimit(cfg.AuthRateLimit, 5*time.Minute)
+		// APP_TRUSTED_PROXIES was validated by config.Load; a parse error here
+		// would be a programming error, and trusting nothing is the safe side.
+		trusted, _ := middleware.ParseTrustedProxies(cfg.TrustedProxies)
+		authLimiter := middleware.RateLimit(cfg.AuthRateLimit, 5*time.Minute, trusted)
 		registerH = authLimiter(registerH)
 		loginH = authLimiter(loginH)
 	}
@@ -157,6 +162,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	authMw := middleware.Auth(cfg.Secret, authSvc.VerifyAPIToken)
 	mux.Handle("POST /rest/api/3/auth/api-tokens", authMw(http.HandlerFunc(authH.CreateAPIToken)))
+	// Self-scoped (the handler filters by the authenticated user id), so the
+	// authMw alone is the guard — same as PUT /rest/api/3/myself.
+	mux.Handle("GET /rest/api/3/auth/api-tokens", authMw(http.HandlerFunc(authH.ListAPITokens)))
+	mux.Handle("DELETE /rest/api/3/auth/api-tokens/{id}", authMw(http.HandlerFunc(authH.RevokeAPIToken)))
 	mux.Handle("GET /rest/api/3/users/me", authMw(http.HandlerFunc(userH.GetMe)))
 	mux.Handle("GET /rest/api/3/myself", authMw(http.HandlerFunc(userH.GetMyself)))
 	mux.Handle("PUT /rest/api/3/myself", authMw(http.HandlerFunc(userH.UpdateMyself)))
@@ -207,7 +216,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("POST /rest/api/3/project/{key}/invites", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(projectH.Invite))))
 	mux.Handle("PUT /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.StarProject))))
 	mux.Handle("DELETE /rest/api/3/project/{key}/star", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(projectH.UnstarProject))))
-	mux.Handle("GET /rest/api/3/project/{key}/git/providers", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(gitH.GetProvider))))
+	// Reading the git provider config is an admin operation (it reveals the
+	// integration setup and the inbound webhook URL), same gate as POST/DELETE.
+	mux.Handle("GET /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.GetProvider))))
 	mux.Handle("POST /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.ConfigureProvider))))
 	mux.Handle("DELETE /rest/api/3/project/{key}/git/providers", authMw(chk.Enforce(permission.AdministerProjects, chk.ByKey, http.HandlerFunc(gitH.DeleteProvider))))
 	mux.Handle("GET /rest/api/3/project/{key}/webhooks", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(webhookH.List))))
@@ -392,14 +403,21 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/dashboard/{dashboardId}/gadget/{gadgetId}", authMw(http.HandlerFunc(dashboardH.RemoveGadget)))
 
 	// Autenticata come le altre rotte REST (authMw legge il bearer token
-	// dall'header Authorization). FOLLOW-UP: nessun client browser consuma
-	// ancora questa rotta (i WebSocket browser non possono impostare header
-	// custom sull'handshake), quindi servirà un meccanismo dedicato — token
-	// short-lived in query string o subprotocol — quando un client verrà
-	// implementato.
-	mux.Handle("GET /ws/v1/projects/{key}/board", authMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ws.ServeWs(wsHub, w, r)
-	})))
+	// dall'header Authorization) e gated su BROWSE_PROJECTS di {key} come le
+	// rotte HTTP sorelle (R27 T6); il socket entra nella stanza del solo
+	// progetto {key} e riceve le notifiche del solo utente autenticato.
+	// FOLLOW-UP: nessun client browser consuma ancora questa rotta (i
+	// WebSocket browser non possono impostare header custom sull'handshake),
+	// quindi servirà un meccanismo dedicato — token short-lived in query
+	// string o subprotocol — quando un client verrà implementato.
+	mux.Handle("GET /ws/v1/projects/{key}/board", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p, err := projectSvc.GetByKey(r.PathValue("key"))
+		if err != nil {
+			v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+			return
+		}
+		ws.ServeWs(wsHub, w, r, middleware.UserIDFromContext(r.Context()), p.Key)
+	}))))
 
 	mux.Handle("GET /rest/api/3/notifications", authMw(http.HandlerFunc(notifH.List)))
 	mux.Handle("GET /rest/api/3/notifications/unread-count", authMw(http.HandlerFunc(notifH.UnreadCount)))
@@ -451,7 +469,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/group/user", authMw(chk.EnforceGlobalAdmin(http.HandlerFunc(groupH.RemoveUser))))
 	mux.Handle("GET /rest/api/3/groups/picker", authMw(http.HandlerFunc(groupH.Picker)))
 
-	return corsMiddleware(mux)
+	// Global request-body cap (R27 T8): outside the mux so it also covers the
+	// unauthenticated routes (git webhook, register/login) and every handler
+	// that buffers its body. Attachment uploads apply their own 10 MB cap.
+	return corsMiddleware(middleware.MaxBodyBytes(middleware.MaxRequestBodyBytes)(mux))
 }
 
 // defaultAvatarSVG è un avatar neutro (cerchio grigio con silhouette) servito

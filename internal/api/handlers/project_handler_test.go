@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -274,6 +275,58 @@ func TestCreate_TemplateDiffers(t *testing.T) {
 	}
 	if got["Epic"] || got["Story"] {
 		t.Errorf("business must not have Epic/Story, got %v", got)
+	}
+}
+
+// TestProjectCreate_DuplicateKeyIsSanitized400: a second project with the
+// same key is a client error on the "key" field — never the driver's UNIQUE
+// constraint text.
+func TestProjectCreate_DuplicateKeyIsSanitized400(t *testing.T) {
+	db := setupProjectTestDB(t)
+	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
+	h := NewProjectHandler(svc, workflow.NewService(db), board.NewService(db), issue.NewService(db), nil, "http://localhost:8080")
+
+	if w := postProject(t, h, "DUP", "com.pyxis.greenhopper.jira:gh-scrum-template"); w.Code != http.StatusCreated {
+		t.Fatalf("first create: %d %s", w.Code, w.Body.String())
+	}
+	w := postProject(t, h, "DUP", "com.pyxis.greenhopper.jira:gh-scrum-template")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate key: status = %d, want 400, body: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Errors map[string]string `json:"errors"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — %s", err, w.Body.String())
+	}
+	if resp.Errors["key"] == "" {
+		t.Errorf("want a field error on key, got %s", w.Body.String())
+	}
+	for _, leak := range []string{"UNIQUE", "constraint", "projects."} {
+		if strings.Contains(w.Body.String(), leak) {
+			t.Errorf("400 body leaks %q: %s", leak, w.Body.String())
+		}
+	}
+}
+
+// TestProjectCreate_InternalErrorIsGeneric500: an unexpected DB failure while
+// creating the projects row is a generic 500 without driver text.
+func TestProjectCreate_InternalErrorIsGeneric500(t *testing.T) {
+	db := setupProjectTestDB(t)
+	svc := project.NewService(db, &user.User{ID: uuid.New().String()})
+	h := NewProjectHandler(svc, workflow.NewService(db), board.NewService(db), issue.NewService(db), nil, "http://localhost:8080")
+	if err := db.Exec("DROP TABLE projects").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	w := postProject(t, h, "GONE", "com.pyxis.greenhopper.jira:gh-scrum-template")
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500, body: %s", w.Code, w.Body.String())
+	}
+	for _, leak := range []string{"no such table", "projects", "SQL", "sqlite"} {
+		if strings.Contains(w.Body.String(), leak) {
+			t.Errorf("500 body leaks %q: %s", leak, w.Body.String())
+		}
 	}
 }
 

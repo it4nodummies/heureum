@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
@@ -20,11 +23,15 @@ func (h *CommentHandler) toComment(c issue.Comment, author *user.User) v3.Commen
 type CommentHandler struct {
 	svc      *issue.CommentService
 	issueSvc *issue.Service
+	chk      *authz.Checker
 	baseURL  string
 }
 
-func NewCommentHandler(svc *issue.CommentService, issueSvc *issue.Service, baseURL string) *CommentHandler {
-	return &CommentHandler{svc: svc, issueSvc: issueSvc, baseURL: baseURL}
+// NewCommentHandler: chk is used in-handler for the author-or-project-admin
+// rule on update/delete (the route decorator only enforces EditIssues on the
+// parent issue's project).
+func NewCommentHandler(svc *issue.CommentService, issueSvc *issue.Service, chk *authz.Checker, baseURL string) *CommentHandler {
+	return &CommentHandler{svc: svc, issueSvc: issueSvc, chk: chk, baseURL: baseURL}
 }
 
 // resolve trova l'issue dal path param issueIdOrKey, provando prima come ID
@@ -56,14 +63,49 @@ func (h *CommentHandler) author(c *issue.Comment) *user.User {
 	return &u
 }
 
+// Get: the comment is looked up bound to the issue in the path, so a comment
+// id from another issue (possibly another project the caller cannot browse)
+// is a plain 404.
 func (h *CommentHandler) Get(w http.ResponseWriter, r *http.Request) {
-	comment, err := h.svc.GetComment(r.PathValue("id"))
+	iss := h.resolve(r)
+	if iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"issue not found"}, nil)
+		return
+	}
+	comment, err := h.svc.GetComment(iss.ID, r.PathValue("id"))
 	if err != nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"comment not found"}, nil)
 		return
 	}
 	author := h.author(comment)
 	v3.WriteJSON(w, http.StatusOK, h.toComment(*comment, author))
+}
+
+// loadForMutation resolves the issue from the path, loads the comment bound to
+// it (404 otherwise, never leaking a foreign comment's existence) and applies
+// the mutation rule: only the comment's author or a holder of
+// AdministerProjects on the issue's project (global admins included via
+// RequireProject) may change it. A visible-but-not-yours comment is 403 — the
+// caller can already read it, so hiding it would gain nothing and Jira answers
+// 403 in the same case. Returns nil after writing the response on failure.
+func (h *CommentHandler) loadForMutation(w http.ResponseWriter, r *http.Request) (*issue.Issue, *issue.Comment) {
+	iss := h.resolve(r)
+	if iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"issue not found"}, nil)
+		return nil, nil
+	}
+	comment, err := h.svc.GetComment(iss.ID, r.PathValue("id"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"comment not found"}, nil)
+		return nil, nil
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	isAuthor := comment.AuthorID != nil && *comment.AuthorID == uid
+	if !isAuthor && h.chk.RequireProject(uid, iss.ProjectID, permission.AdministerProjects) != nil {
+		authz.WriteForbidden(w)
+		return nil, nil
+	}
+	return iss, comment
 }
 
 func (h *CommentHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +181,10 @@ func (h *CommentHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CommentHandler) Update(w http.ResponseWriter, r *http.Request) {
+	iss, existing := h.loadForMutation(w, r)
+	if existing == nil {
+		return
+	}
 	var req struct {
 		Body any `json:"body"`
 	}
@@ -155,9 +201,13 @@ func (h *CommentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid body"}, nil)
 		return
 	}
-	comment, err := h.svc.UpdateComment(r.PathValue("id"), string(bodyJSON))
-	if err != nil {
+	comment, err := h.svc.UpdateComment(iss.ID, existing.ID, string(bodyJSON))
+	if errors.Is(err, issue.ErrCommentNotFound) {
 		v3.WriteError(w, http.StatusNotFound, []string{"comment not found"}, nil)
+		return
+	}
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to update comment"}, nil)
 		return
 	}
 	author := h.author(comment)
@@ -165,7 +215,16 @@ func (h *CommentHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CommentHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.SoftDeleteComment(r.PathValue("id")); err != nil {
+	iss, existing := h.loadForMutation(w, r)
+	if existing == nil {
+		return
+	}
+	err := h.svc.SoftDeleteComment(iss.ID, existing.ID)
+	if errors.Is(err, issue.ErrCommentNotFound) {
+		v3.WriteError(w, http.StatusNotFound, []string{"comment not found"}, nil)
+		return
+	}
+	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete comment"}, nil)
 		return
 	}

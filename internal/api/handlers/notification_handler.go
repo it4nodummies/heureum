@@ -28,8 +28,12 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(notifs)
 }
 
+// MarkRead marks one of the caller's notifications as read. Another user's
+// notification (or an unknown id) is a 404 either way: the id is not scoped
+// by the path, so ownership is the binding.
 func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.MarkRead(r.PathValue("id")); err != nil {
+	userID := middleware.UserIDFromContext(r.Context())
+	if err := h.svc.MarkRead(userID, r.PathValue("id")); err != nil {
 		http.Error(w, `{"error":"notification not found"}`, http.StatusNotFound)
 		return
 	}

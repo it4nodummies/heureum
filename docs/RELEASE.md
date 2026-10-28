@@ -54,8 +54,13 @@ After the release workflow finishes, confirm the packages exist and are public:
 - [ ] Confirm no Atlassian/Jira trademarked assets remain (branding is text "Heureum"; the `/rest/api/3` + `/rest/agile/1.0` + JQL surfaces are deliberate API-compatibility and are documented as such with the trademark disclaimer in `README.md`).
 - [ ] Multi-tenant deployments: install **one Helm release per tenant/namespace** (each with
       its own `ingress.host`, database, and `APP_SECRET`) — Heureum has no application-level
-      tenant isolation (see the README's Multi-tenancy section). Set `APP_SIGNUP=closed` on
-      any instance exposed to the public internet once its users are provisioned.
+      tenant isolation (see the README's Multi-tenancy section). Run every internet-facing
+      instance with `APP_ENV=production`: registration is then closed by default (an unknown
+      `APP_SIGNUP` value is a startup error) and `APP_SECRET` must be at least 32 characters;
+      the first account registered on an empty users table bootstraps as global admin, so no
+      manual `APP_SIGNUP` toggling is needed. An upgraded instance that already has users but
+      no global admin must have one promoted via SQL
+      (`UPDATE users SET is_admin = true WHERE email = '…';`) — it does not bootstrap again.
 
 ## Security posture at 1.0
 

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"errors"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -216,7 +217,7 @@ func TestAddAndRemoveStatus(t *testing.T) {
 		t.Errorf("Color = %s", status.Color)
 	}
 
-	err = svc.RemoveStatus(status.ID)
+	err = svc.RemoveStatus(status.WorkflowID, status.ID)
 	if err != nil {
 		t.Fatalf("RemoveStatus() error = %v", err)
 	}
@@ -238,7 +239,7 @@ func TestAddAndRemoveTransition(t *testing.T) {
 		t.Error("transition status IDs mismatch")
 	}
 
-	err = svc.RemoveTransition(tr.ID)
+	err = svc.RemoveTransition(tr.WorkflowID, tr.ID)
 	if err != nil {
 		t.Fatalf("RemoveTransition() error = %v", err)
 	}
@@ -327,11 +328,46 @@ func TestUpdateStatus(t *testing.T) {
 	wf, _ := svc.CreateWorkflow("proj-8", "WF")
 	s, _ := svc.AddStatus(wf.ID, "Old", CategoryTodo, "#111")
 
-	updated, err := svc.UpdateStatus(s.ID, "New", CategoryInProgress, "#222")
+	updated, err := svc.UpdateStatus(s.WorkflowID, s.ID, "New", CategoryInProgress, "#222")
 	if err != nil {
 		t.Fatalf("UpdateStatus() error = %v", err)
 	}
 	if updated.Name != "New" || updated.Category != CategoryInProgress || updated.Color != "#222" {
 		t.Error("status not updated correctly")
+	}
+}
+
+// TestWorkflowScopedOps_PropagateDBErrors: only gorm.ErrRecordNotFound maps
+// to ErrNotFound; a real DB failure must propagate (handler → 500).
+func TestWorkflowScopedOps_PropagateDBErrors(t *testing.T) {
+	db := setupWorkflowTestDB(t)
+	svc := NewService(db)
+	for _, table := range []string{"workflow_statuses", "workflow_transitions"} {
+		if err := db.Exec("DROP TABLE " + table).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(what string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s: err = nil, want a DB error", what)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: DB error collapsed into ErrNotFound: %v", what, err)
+		}
+	}
+	_, err := svc.UpdateStatus("wf", "st", "Name", CategoryTodo, "#fff")
+	check("UpdateStatus", err)
+	check("RemoveStatus", svc.RemoveStatus("wf", "st"))
+	name := "n"
+	_, err = svc.UpdateTransition("wf", "tr", &name, nil, nil)
+	check("UpdateTransition", err)
+	check("RemoveTransition", svc.RemoveTransition("wf", "tr"))
+
+	// A plain miss is still ErrNotFound.
+	db2 := setupWorkflowTestDB(t)
+	if _, err := NewService(db2).UpdateStatus("wf", "missing", "Name", CategoryTodo, "#fff"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("UpdateStatus(missing) = %v, want ErrNotFound", err)
 	}
 }

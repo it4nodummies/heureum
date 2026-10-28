@@ -21,6 +21,109 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   vs `Task, Bug, Subtask` for business. The `POST /project` request/response shape is unchanged
   (still `{self,id,key}`); the workflow is uniform across templates for now. The project-overview
   "Create board" prompt is kept only as a fallback for legacy board-less projects.
+- **API token lifecycle.** Personal API tokens can now be listed and revoked, and may carry an
+  expiry: `POST /rest/api/3/auth/api-tokens` accepts an optional `expiresInDays` (> 0, else 400),
+  new Heureum-extension routes `GET /rest/api/3/auth/api-tokens` (own tokens, never the hash or
+  plaintext) and `DELETE /rest/api/3/auth/api-tokens/{id}` (204; another user's id is 404). An
+  expired or revoked token is rejected with 401 on the next request. Migration `000025` adds
+  `api_tokens.expires_at`; the profile page gains an "API tokens" section (create with optional
+  expiry, plaintext shown once, list, confirm-guarded revoke).
+
+### Changed
+
+- **Signup is closed by default in production.** With `APP_ENV=production` and `APP_SIGNUP` unset,
+  public registration is disabled; outside production it stays open. An explicit
+  `APP_SIGNUP=open|closed` always wins, and **any other value is now a startup error**.
+- **First-admin bootstrap.** Whatever the signup policy, the first registration on an instance
+  whose users table is **empty** is accepted and that user becomes global admin, so a fresh
+  production instance gets its administrator without toggling `APP_SIGNUP`. From the second user
+  on the policy applies. The prod compose file and the Helm chart expose `APP_SIGNUP`.
+  **Upgrade note:** an instance that already has users but no global admin (or whose only admin
+  is deactivated) does **not** bootstrap on the next registration — promote one before or after
+  the rollout with `UPDATE users SET is_admin = true WHERE email = '…';` (a promote route is a
+  planned follow-up).
+- **`APP_SECRET` must be at least 32 characters when `APP_ENV=production`** (startup error
+  otherwise). It now also derives the key that encrypts git provider tokens at rest, so **rotating
+  `APP_SECRET` makes stored git tokens undecryptable** — delete and recreate the provider after a
+  rotation.
+- **Git provider response shape.** `GET /rest/api/3/project/{key}/git/providers` no longer returns
+  `token_encrypted`, `webhook_secret` or `project_id`; it returns `has_token` and `webhook_url`
+  instead (plus `id`, `provider_type`, `base_url`, `created_at`).
+- **Git inbound webhook URL.** The inbound hook is now `POST /rest/api/3/webhooks/git/{token}`
+  with a dedicated random URL token, not the HMAC secret. Existing providers get a URL token at
+  startup (idempotent backfill) — **update the webhook URL configured in GitHub / Forgejo / GitLab**
+  to the `webhook_url` shown by the provider GET; the old secret-in-URL form stops matching.
+- **Git provider creation rules.** `webhook_secret` is required and must be at least 16 characters
+  (400 otherwise); `bitbucket` is refused as a provider type (no signature validator exists for it).
+- **Rate limiting behind a proxy.** New `APP_TRUSTED_PROXIES` (IPs/CIDRs; a malformed entry is a
+  startup error). Only when the connecting peer is a trusted proxy is `X-Forwarded-For` used —
+  every header line is read and the client is the rightmost non-trusted hop; from any other peer
+  the header is ignored and `RemoteAddr` is the client. Deployments that relied on the old
+  "trust any XFF" behaviour must set this variable or every client behind the proxy shares one
+  bucket.
+- **Request body limits.** Attachment uploads are capped at the advertised 10 MB (413 above it),
+  and a global 32 MB body limit applies to every route, including the unauthenticated git webhook.
+- **Generic error messages.** Register, login and project create no longer surface raw driver /
+  GORM error text: unexpected errors are a generic 500 with the detail logged; "already taken" (409),
+  invalid credentials and duplicate project key (400) are sanitized sentinels.
+- `gofmt` applied to nine pre-existing unformatted files (no behaviour change).
+
+### Security
+
+- **Git provider credentials locked down.** The provider GET was readable by any project viewer and
+  serialized the plaintext access token and the webhook secret. It is now gated by
+  `ADMINISTER_PROJECTS`, never returns the token or secret, and the token is **encrypted at rest**
+  (AES-256-GCM, key derived from `APP_SECRET`, `v1:`-prefixed ciphertext; legacy plaintext rows are
+  encrypted by the startup backfill). Migration `000024` adds `git_providers.webhook_url_token`.
+- **Inbound git webhooks require a real signature check.** Provider types without a validator are
+  rejected instead of accepted by a no-op; GitLab's token comparison is constant-time
+  (`crypto/subtle`); an empty HMAC secret is a hard reject because it makes GitHub/Forgejo
+  signatures forgeable. **Legacy providers stored with an empty `webhook_secret` stop receiving
+  events until deleted and recreated with a secret** — the server logs a startup warning with the
+  count.
+- **Nested routes are bound to their authorized parent.** Comment, worklog, project webhook,
+  workflow status/transition and sprint lookups now include the parent id (`issue_id`,
+  `project_id`, `workflow_id`); a child reached through another project's path is a **404** and the
+  row is untouched. Comment update/delete and worklog delete additionally require being the author
+  or a project admin (403 otherwise). Generic DB errors are no longer collapsed into not-found.
+- **Issues taken from request bodies are authorized.** `POST /rest/agile/1.0/sprint/{id}/issue`
+  (move to sprint), backlog and rank moves refuse an issue that does not belong to the sprint's /
+  board's project with no partial write; `POST /rest/api/3/issueLink` requires `BROWSE_PROJECTS` on
+  **both** issues; `CompleteSprint`'s `moveToSprintId` target must be in the same project (400).
+- **Outgoing webhooks are SSRF-safe.** Target URLs are validated on create and again at delivery:
+  http/https only, no userinfo, and the host (literal or DNS-resolved) must not be loopback,
+  private, link-local, multicast, unspecified, CGNAT/reserved/NAT64, 6to4/Teredo or
+  IPv4-mapped/translated. Redirects are never followed (a 3xx is a failed attempt) and deliveries
+  time out after 10 s. `APP_WEBHOOK_ALLOW_PRIVATE_HOSTS` (hosts/IPs/CIDRs) is the explicit escape
+  hatch — **existing webhooks pointing at private hosts fail at delivery until it is set**.
+- **WebSocket hardening.** Notifications are routed to the owning user only (the hub broadcast
+  every user's notifications to every socket); the board socket requires `BROWSE_PROJECTS` on the
+  project; `CheckOrigin` accepts only the `APP_BASE_URL` origin / same host; dead connections are
+  unregistered (read pump, write errors, full send buffer).
+- **Notification mark-read ownership.** `MarkRead` binds the notification to the caller; another
+  user's notification id is 404 and the row is untouched.
+- **Rate limiter no longer trusts a client-forged `X-Forwarded-For`** (see `APP_TRUSTED_PROXIES`
+  above): a direct peer rotating the header no longer gets a fresh bucket per request.
+- **API tokens can be revoked and can expire** (see Added above): a leaked token no longer lives
+  forever.
+- **Multi-replica first-user bootstrap is race-safe**: the active-admin count is re-checked after
+  the bootstrap insert; the losing replica's row is deleted and the client gets a retryable 503
+  (open policy) or 403 (closed), so two concurrent first registrations can never yield two admins,
+  and a regular registration landing on another replica in the same instant never strands the
+  bootstrapper. The bootstrap itself only ever happens on an empty users table (see Changed).
+- **SSRF ranges extended**: outgoing webhook targets in the IPv4-compatible `::/96` (e.g.
+  `[::127.0.0.1]`) and site-local `fec0::/10` IPv6 ranges are refused too.
+- **`expiresInDays` is capped at 3650** on `POST /rest/api/3/auth/api-tokens` (400 above it): an
+  unbounded value overflowed the duration arithmetic and produced a bogus expiry.
+- **Database logging no longer prints bound SQL values** outside development (`ParameterizedQueries`,
+  and `ErrRecordNotFound` is not logged): a failed or slow statement used to log webhook secrets,
+  password hashes and URL tokens in clear.
+- **Inbound git webhooks only touch issues of the provider's own project.** Issue keys extracted
+  from commit messages, branch names and PR titles are resolved within the project the provider is
+  configured on; a key from another project is skipped like an unknown one. Previously any user
+  able to create a project could configure a provider with their own secret and, with correctly
+  signed events, add commit comments/links to any issue on the instance and — on "PR merged" —
+  move it to a status of the attacker's workflow.
 
 ## [1.2.0] - 2026-09-23
 

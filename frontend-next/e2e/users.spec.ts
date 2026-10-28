@@ -83,3 +83,33 @@ test("profile page can add a notification preference", async ({ page }) => {
   await expect(row).toContainText("mention");
   await expect(row).toContainText("All projects");
 });
+
+test("profile page creates an API token with expiry, lists it, and revokes it", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/profile");
+  const section = page.getByTestId("api-tokens");
+  await expect(section).toBeVisible();
+
+  const label = `e2e-${Date.now()}`;
+  await section.getByTestId("api-token-label-input").fill(label);
+  await section.getByTestId("api-token-expires-input").fill("7");
+  await section.getByTestId("api-token-create").click();
+
+  // The plaintext is shown once, right after creation.
+  const created = section.getByTestId("api-token-created");
+  await expect(created).toBeVisible();
+  await expect(created).toContainText(label);
+  await expect(section.getByTestId("api-token-plaintext")).toContainText(/^ojt_/);
+
+  // The new token appears in the list with an expiry date (not "never").
+  const row = section.locator('[data-testid^="api-token-row-"]', { hasText: label });
+  await expect(row).toBeVisible();
+  const expires = row.locator('[data-testid^="api-token-expires-"]');
+  await expect(expires).not.toHaveText("never");
+  await expect(expires).not.toHaveText("");
+
+  // Revoke (confirm dialog) → the row disappears.
+  page.once("dialog", (d) => d.accept());
+  await row.locator('[data-testid^="api-token-revoke-"]').click();
+  await expect(row).toHaveCount(0);
+});

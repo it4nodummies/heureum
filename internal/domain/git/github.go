@@ -1,9 +1,6 @@
 package git
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -19,11 +16,12 @@ func (p *GitHubProvider) ValidateWebhook(payload []byte, secret string, signatur
 	if signature == "" {
 		return false, fmt.Errorf("missing signature")
 	}
-	sig := strings.TrimPrefix(signature, "sha256=")
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
-	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(sig), []byte(expected)), nil
+	if secret == "" {
+		// Empty HMAC key: any body is forgeable. Legacy rows only (create
+		// refuses it); the operator must re-save the provider.
+		return false, fmt.Errorf("webhook secret not configured")
+	}
+	return ValidateHMACSHA256(payload, secret, signature), nil
 }
 
 func (p *GitHubProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
@@ -42,11 +40,11 @@ func (p *GitHubProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
 		} `json:"commits"`
 		Action      string `json:"action"`
 		PullRequest *struct {
-			Number   int    `json:"number"`
-			Title    string `json:"title"`
-			HTMLURL  string `json:"html_url"`
-			State    string `json:"state"`
-			Merged   bool   `json:"merged"`
+			Number   int     `json:"number"`
+			Title    string  `json:"title"`
+			HTMLURL  string  `json:"html_url"`
+			State    string  `json:"state"`
+			Merged   bool    `json:"merged"`
 			MergedAt *string `json:"merged_at"`
 			Head     struct {
 				Ref string `json:"ref"`

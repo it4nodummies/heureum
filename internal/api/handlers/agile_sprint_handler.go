@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -124,12 +125,12 @@ func (h *AgileSprintHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.State != nil {
 		switch *req.State {
 		case "active":
-			if _, err := h.sprintSvc.Start(sp.ID); err != nil {
+			if _, err := h.sprintSvc.Start(sp.ProjectID, sp.ID); err != nil {
 				v3.WriteError(w, http.StatusBadRequest, []string{"cannot start sprint"}, nil)
 				return
 			}
 		case "closed":
-			if _, err := h.sprintSvc.Complete(sp.ID, true, nil); err != nil {
+			if _, err := h.sprintSvc.Complete(sp.ProjectID, sp.ID, true, nil); err != nil {
 				v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
 				return
 			}
@@ -169,14 +170,21 @@ func (h *AgileSprintHandler) CompleteSprint(w http.ResponseWriter, r *http.Reque
 	}
 	var target *string
 	if req.MoveToSprintID != nil {
+		// Body-sourced: the path only authorized sp's project, so the target
+		// must be a sprint of that same project (R27 T8). A foreign sprint
+		// looks exactly like a missing one — no cross-project probing.
 		ts, err := h.sprintSvc.GetBySeqID(*req.MoveToSprintID)
-		if err != nil {
+		if err != nil || ts.ProjectID != sp.ProjectID {
 			v3.WriteError(w, http.StatusBadRequest, []string{"moveToSprintId not found"}, nil)
 			return
 		}
 		target = &ts.ID
 	}
-	updated, err := h.sprintSvc.Complete(sp.ID, req.MoveOpenToBacklog, target)
+	updated, err := h.sprintSvc.Complete(sp.ProjectID, sp.ID, req.MoveOpenToBacklog, target)
+	if errors.Is(err, sprint.ErrInvalidTarget) {
+		v3.WriteError(w, http.StatusBadRequest, []string{"moveToSprintId not found"}, nil)
+		return
+	}
 	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
 		return
@@ -232,12 +240,24 @@ func (h *AgileSprintHandler) MoveToSprint(w http.ResponseWriter, r *http.Request
 		v3.WriteError(w, http.StatusBadRequest, []string{"invalid request body"}, nil)
 		return
 	}
+	// The path authorizes ManageSprints on the SPRINT's project; the issues come
+	// from the body and are only authorized through that same project: sprints
+	// are project-scoped in Heureum, so every issue must belong to the sprint's
+	// project. Anything else (an issue of another project, or a key/id that
+	// does not resolve) makes the request invalid → 400, with one message for
+	// both cases so a guessed key/id reveals nothing about other projects.
+	// The whole batch is validated before the first write: no partial move.
+	ids := make([]string, 0, len(req.Issues))
 	for _, key := range req.Issues {
 		iss := h.resolveIssue(key)
-		if iss == nil {
-			continue
+		if iss == nil || iss.ProjectID != sp.ProjectID {
+			v3.WriteError(w, http.StatusBadRequest, []string{"issues must belong to the sprint's project"}, nil)
+			return
 		}
-		if err := h.sprintSvc.AddIssue(sp.ID, iss.ID); err != nil {
+		ids = append(ids, iss.ID)
+	}
+	for _, id := range ids {
+		if err := h.sprintSvc.AddIssue(sp.ID, id); err != nil {
 			v3.WriteError(w, http.StatusInternalServerError, []string{"failed to move issue"}, nil)
 			return
 		}

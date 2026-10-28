@@ -9,6 +9,18 @@ config:
   dbDsn: "postgres://heureum:heureum@postgres:5432/heureum?sslmode=disable"
   redisUrl: "redis://redis:6379/0"
   baseUrl: "http://localhost"
+  # Public registration policy: "closed" (default — only the very first user on
+  # an empty users table is accepted, and that user becomes admin) or "open".
+  signup: "closed"
+  # Outgoing webhooks refuse private/loopback/link-local targets (SSRF). Comma-
+  # separated hosts, IPs or CIDRs to allow anyway, e.g. "forgejo.home.arpa,10.42.0.0/16".
+  # A hostname entry is trusted wherever it resolves (loopback/link-local included);
+  # an IP/CIDR entry lifts the restriction only for that range.
+  webhookAllowPrivateHosts: ""
+  # Reverse proxies (IPs/CIDRs, comma-separated) whose X-Forwarded-For is trusted
+  # for auth rate limiting — typically the ingress controller's pod CIDR, e.g.
+  # "10.42.0.0/16". Empty: the header is ignored and the peer address is the client.
+  trustedProxies: ""
   smtpHost: ""
 ingress:
   enabled: false

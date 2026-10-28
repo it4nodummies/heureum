@@ -45,7 +45,7 @@ func TestWorklogService_AddListDelete(t *testing.T) {
 		t.Errorf("Get id = %q, want %q", got.ID, wl.ID)
 	}
 
-	if err := svc.Delete(wl.ID); err != nil {
+	if err := svc.Delete(wl.IssueID, wl.ID); err != nil {
 		t.Fatal(err)
 	}
 	list, err = svc.ListByIssue("issue-1")

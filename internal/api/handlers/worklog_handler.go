@@ -2,13 +2,16 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
+	"github.com/it4nodummies/heureum/internal/domain/permission"
 	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
@@ -16,11 +19,12 @@ import (
 type WorklogHandler struct {
 	svc      *issue.WorklogService
 	issueSvc *issue.Service
+	chk      *authz.Checker
 	baseURL  string
 }
 
-func NewWorklogHandler(svc *issue.WorklogService, issueSvc *issue.Service, baseURL string) *WorklogHandler {
-	return &WorklogHandler{svc: svc, issueSvc: issueSvc, baseURL: baseURL}
+func NewWorklogHandler(svc *issue.WorklogService, issueSvc *issue.Service, chk *authz.Checker, baseURL string) *WorklogHandler {
+	return &WorklogHandler{svc: svc, issueSvc: issueSvc, chk: chk, baseURL: baseURL}
 }
 
 // resolve trova l'issue dal path param issueIdOrKey, provando prima come ID
@@ -161,9 +165,38 @@ func (h *WorklogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusCreated, h.toWorklog(*wl))
 }
 
-// Delete rimuove il worklog identificato dal path param "id".
+// Delete rimuove il worklog "id" dell'issue nel path: un id di un'altra issue
+// (anche di un progetto dove il caller non ha EditIssues) è un 404 secco.
+// Same mutation rule as comments (R27 T8): only the worklog's author or a
+// holder of AdministerProjects on the issue's project may delete it; a
+// visible-but-not-yours worklog is 403.
 func (h *WorklogHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.PathValue("id")); err != nil {
+	iss := h.resolve(r)
+	if iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"issue not found"}, nil)
+		return
+	}
+	wl, err := h.svc.GetForIssue(iss.ID, r.PathValue("id"))
+	if errors.Is(err, issue.ErrWorklogNotFound) {
+		v3.WriteError(w, http.StatusNotFound, []string{"worklog not found"}, nil)
+		return
+	}
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete worklog"}, nil)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	isAuthor := wl.AuthorID != nil && *wl.AuthorID == uid
+	if !isAuthor && h.chk.RequireProject(uid, iss.ProjectID, permission.AdministerProjects) != nil {
+		authz.WriteForbidden(w)
+		return
+	}
+	err = h.svc.Delete(iss.ID, wl.ID)
+	if errors.Is(err, issue.ErrWorklogNotFound) {
+		v3.WriteError(w, http.StatusNotFound, []string{"worklog not found"}, nil)
+		return
+	}
+	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete worklog"}, nil)
 		return
 	}
