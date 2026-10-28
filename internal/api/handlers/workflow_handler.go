@@ -102,8 +102,12 @@ func (h *WorkflowHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, err := h.wfSvc.UpdateStatus(wf.ID, statusID, req.Name, req.Category, req.Color)
-	if err != nil {
+	if errors.Is(err, workflow.ErrNotFound) {
 		http.Error(w, `{"error":"status not found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, `{"error":"failed to update status"}`, http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -195,8 +199,12 @@ func (h *WorkflowHandler) UpdateTransition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	tr, err := h.wfSvc.UpdateTransition(wf.ID, r.PathValue("id"), req.Name, req.RequireAssignee, req.SetResolution)
-	if err != nil {
+	if errors.Is(err, workflow.ErrNotFound) {
 		v3.WriteError(w, http.StatusNotFound, []string{"transition not found"}, nil)
+		return
+	}
+	if err != nil {
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to update transition"}, nil)
 		return
 	}
 	v3.WriteJSON(w, http.StatusOK, tr)

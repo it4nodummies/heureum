@@ -2,11 +2,22 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
 )
+
+// writeSprintErr maps a project-scoped sprint service error: ErrNotFound is
+// 404, anything else is a real failure and must not masquerade as one.
+func writeSprintErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, sprint.ErrNotFound) {
+		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
+		return
+	}
+	http.Error(w, `{"error":"sprint operation failed"}`, http.StatusInternalServerError)
+}
 
 type SprintHandler struct {
 	svc        *sprint.Service
@@ -76,7 +87,7 @@ func (h *SprintHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	sp, err := h.svc.GetByID(pid, r.PathValue("id"))
 	if err != nil {
-		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
+		writeSprintErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -95,7 +106,7 @@ func (h *SprintHandler) Update(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 	sp, err := h.svc.Update(pid, r.PathValue("id"), req.Name, req.Goal)
 	if err != nil {
-		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
+		writeSprintErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -109,7 +120,7 @@ func (h *SprintHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	sp, err := h.svc.Start(pid, r.PathValue("id"))
 	if err != nil {
-		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
+		writeSprintErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -127,7 +138,7 @@ func (h *SprintHandler) Complete(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 	sp, err := h.svc.Complete(pid, r.PathValue("id"), req.MoveOpenToBacklog, nil)
 	if err != nil {
-		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
+		writeSprintErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

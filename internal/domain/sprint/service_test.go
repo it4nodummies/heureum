@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -139,5 +140,40 @@ func TestComplete_MoveIncompleteToBacklog(t *testing.T) {
 	}
 	if doneSprint != s3.ID {
 		t.Errorf("issue completata deve restare su s3 (%s), got %q", s3.ID, doneSprint)
+	}
+}
+
+// TestProjectScopedOps_PropagateDBErrors: only gorm.ErrRecordNotFound maps to
+// ErrNotFound; a real DB failure (here: the table is gone) must propagate so
+// the handler answers 500 instead of a misleading 404.
+func TestProjectScopedOps_PropagateDBErrors(t *testing.T) {
+	db := newDB(t)
+	svc := NewService(db)
+	if err := db.Exec("DROP TABLE sprints").Error; err != nil {
+		t.Fatal(err)
+	}
+	check := func(what string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s: err = nil, want a DB error", what)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: DB error collapsed into ErrNotFound: %v", what, err)
+		}
+	}
+	_, err := svc.GetByID("p", "s")
+	check("GetByID", err)
+	_, err = svc.Update("p", "s", "n", "g")
+	check("Update", err)
+	_, err = svc.Start("p", "s")
+	check("Start", err)
+	_, err = svc.Complete("p", "s", true, nil)
+	check("Complete", err)
+
+	// And a plain miss is still ErrNotFound.
+	db2 := newDB(t)
+	if _, err := NewService(db2).GetByID("p", "missing"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetByID(missing) = %v, want ErrNotFound", err)
 	}
 }

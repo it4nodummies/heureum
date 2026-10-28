@@ -103,7 +103,7 @@ func (h *IssueLinkHandler) statusRefFor(iss *issue.Issue) *v3.StatusRef {
 func (h *IssueLinkHandler) ListForIssue(w http.ResponseWriter, r *http.Request) {
 	iss, err := h.resolveIssueIdOrKey(r.PathValue("issueIdOrKey"))
 	if err != nil || iss == nil {
-		v3.WriteError(w, http.StatusNotFound, []string{"Issue does not exist or you do not have permission to see it."}, nil)
+		v3.WriteError(w, http.StatusNotFound, []string{issueNotVisibleMsg}, nil)
 		return
 	}
 

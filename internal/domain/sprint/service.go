@@ -57,12 +57,19 @@ func (s *Service) CreateFull(projectID, name, goal string, originBoardID *int64,
 // project — indistinguishable by design).
 var ErrNotFound = errors.New("sprint not found")
 
+// ErrInvalidTarget is returned by Complete when moveToSprintID is not a sprint
+// of the same project (missing or foreign — indistinguishable by design).
+var ErrInvalidTarget = errors.New("target sprint not found in project")
+
 // GetByID loads the sprint id of projectID; an id from another project is
-// ErrNotFound.
+// ErrNotFound. Any other DB error is propagated as-is (handler → 500).
 func (s *Service) GetByID(projectID, id string) (*Sprint, error) {
 	var sp Sprint
 	if err := s.db.First(&sp, "id = ? AND project_id = ?", id, projectID).Error; err != nil {
-		return nil, ErrNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
 	return &sp, nil
 }
@@ -93,20 +100,20 @@ func (s *Service) Update(projectID, id, name, goal string) (*Sprint, error) {
 
 // Start activates the sprint sprintID of projectID.
 func (s *Service) Start(projectID, sprintID string) (*Sprint, error) {
-	var sp Sprint
-	if err := s.db.First(&sp, "id = ? AND project_id = ?", sprintID, projectID).Error; err != nil {
-		return nil, ErrNotFound
+	sp, err := s.GetByID(projectID, sprintID)
+	if err != nil {
+		return nil, err
 	}
 	now := time.Now()
 	sp.State = StateActive
 	sp.StartDate = &now
-	if err := s.db.Save(&sp).Error; err != nil {
+	if err := s.db.Save(sp).Error; err != nil {
 		return nil, err
 	}
 	if s.notifier != nil {
 		s.notifier.NotifySprintStarted(sp.ProjectID, sp.ID, sp.Name, "")
 	}
-	return &sp, nil
+	return sp, nil
 }
 
 // Complete chiude lo sprint e gestisce le issue incomplete (categoria != 'done'):
@@ -114,17 +121,28 @@ func (s *Service) Start(projectID, sprintID string) (*Sprint, error) {
 //   - altrimenti moveOpenToBacklog → sprint_id NULL (backlog)
 //   - altrimenti restano sullo sprint chiuso
 //
-// sprintID must belong to projectID, otherwise ErrNotFound and nothing changes.
+// sprintID must belong to projectID, otherwise ErrNotFound and nothing changes;
+// moveToSprintID must belong to projectID too, otherwise ErrInvalidTarget and
+// nothing changes (the handler checks this as well — this is the last line of
+// defence in front of the cross-project UPDATE).
 func (s *Service) Complete(projectID, sprintID string, moveOpenToBacklog bool, moveToSprintID *string) (*Sprint, error) {
-	var sp Sprint
-	if err := s.db.First(&sp, "id = ? AND project_id = ?", sprintID, projectID).Error; err != nil {
-		return nil, ErrNotFound
+	sp, err := s.GetByID(projectID, sprintID)
+	if err != nil {
+		return nil, err
+	}
+	if moveToSprintID != nil {
+		if _, err := s.GetByID(projectID, *moveToSprintID); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, ErrInvalidTarget
+			}
+			return nil, err
+		}
 	}
 	now := time.Now()
 	sp.State = StateClosed
 	sp.EndDate = &now
 	sp.CompleteDate = &now
-	if err := s.db.Save(&sp).Error; err != nil {
+	if err := s.db.Save(sp).Error; err != nil {
 		return nil, err
 	}
 	switch {
@@ -136,7 +154,7 @@ func (s *Service) Complete(projectID, sprintID string, moveOpenToBacklog bool, m
 	if s.notifier != nil {
 		s.notifier.NotifySprintCompleted(sp.ProjectID, sp.ID, sp.Name, "")
 	}
-	return &sp, nil
+	return sp, nil
 }
 
 func (s *Service) ListByProject(projectID string) ([]Sprint, error) {

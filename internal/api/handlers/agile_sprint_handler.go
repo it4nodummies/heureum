@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -169,14 +170,21 @@ func (h *AgileSprintHandler) CompleteSprint(w http.ResponseWriter, r *http.Reque
 	}
 	var target *string
 	if req.MoveToSprintID != nil {
+		// Body-sourced: the path only authorized sp's project, so the target
+		// must be a sprint of that same project (R27 T8). A foreign sprint
+		// looks exactly like a missing one — no cross-project probing.
 		ts, err := h.sprintSvc.GetBySeqID(*req.MoveToSprintID)
-		if err != nil {
+		if err != nil || ts.ProjectID != sp.ProjectID {
 			v3.WriteError(w, http.StatusBadRequest, []string{"moveToSprintId not found"}, nil)
 			return
 		}
 		target = &ts.ID
 	}
 	updated, err := h.sprintSvc.Complete(sp.ProjectID, sp.ID, req.MoveOpenToBacklog, target)
+	if errors.Is(err, sprint.ErrInvalidTarget) {
+		v3.WriteError(w, http.StatusBadRequest, []string{"moveToSprintId not found"}, nil)
+		return
+	}
 	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
 		return

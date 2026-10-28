@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"errors"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -333,5 +334,40 @@ func TestUpdateStatus(t *testing.T) {
 	}
 	if updated.Name != "New" || updated.Category != CategoryInProgress || updated.Color != "#222" {
 		t.Error("status not updated correctly")
+	}
+}
+
+// TestWorkflowScopedOps_PropagateDBErrors: only gorm.ErrRecordNotFound maps
+// to ErrNotFound; a real DB failure must propagate (handler → 500).
+func TestWorkflowScopedOps_PropagateDBErrors(t *testing.T) {
+	db := setupWorkflowTestDB(t)
+	svc := NewService(db)
+	for _, table := range []string{"workflow_statuses", "workflow_transitions"} {
+		if err := db.Exec("DROP TABLE " + table).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(what string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s: err = nil, want a DB error", what)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: DB error collapsed into ErrNotFound: %v", what, err)
+		}
+	}
+	_, err := svc.UpdateStatus("wf", "st", "Name", CategoryTodo, "#fff")
+	check("UpdateStatus", err)
+	check("RemoveStatus", svc.RemoveStatus("wf", "st"))
+	name := "n"
+	_, err = svc.UpdateTransition("wf", "tr", &name, nil, nil)
+	check("UpdateTransition", err)
+	check("RemoveTransition", svc.RemoveTransition("wf", "tr"))
+
+	// A plain miss is still ErrNotFound.
+	db2 := setupWorkflowTestDB(t)
+	if _, err := NewService(db2).UpdateStatus("wf", "missing", "Name", CategoryTodo, "#fff"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("UpdateStatus(missing) = %v, want ErrNotFound", err)
 	}
 }

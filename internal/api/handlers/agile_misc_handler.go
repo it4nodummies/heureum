@@ -39,7 +39,7 @@ func (h *AgileMiscHandler) authorizeBodyIssues(uid string, keys []string, permKe
 	for _, k := range keys {
 		iss := h.resolveIssue(k)
 		if iss == nil || h.chk.RequireProject(uid, iss.ProjectID, permission.BrowseProjects) != nil {
-			return nil, http.StatusNotFound, "Issue does not exist or you do not have permission to see it."
+			return nil, http.StatusNotFound, issueNotVisibleMsg
 		}
 		if err := h.chk.RequireProject(uid, iss.ProjectID, permKey); err != nil {
 			return nil, http.StatusForbidden, "you do not have permission to perform this action"

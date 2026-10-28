@@ -67,7 +67,10 @@ var ErrNotFound = errors.New("not found")
 func (s *Service) UpdateStatus(workflowID, statusID, name string, category StatusCategory, color string) (*WorkflowStatus, error) {
 	var status WorkflowStatus
 	if err := s.db.First(&status, "id = ? AND workflow_id = ?", statusID, workflowID).Error; err != nil {
-		return nil, ErrNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
 	status.Name = name
 	status.Category = category
@@ -150,7 +153,10 @@ func (s *Service) GetAvailableTransitions(workflowID, fromStatusID string) ([]Wo
 func (s *Service) UpdateTransition(workflowID, id string, name *string, requireAssignee, setResolution *bool) (*WorkflowTransition, error) {
 	var existing WorkflowTransition
 	if err := s.db.First(&existing, "id = ? AND workflow_id = ?", id, workflowID).Error; err != nil {
-		return nil, ErrNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
 	updates := map[string]any{}
 	if name != nil {

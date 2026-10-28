@@ -125,7 +125,7 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 
 	const baseURL = "http://localhost:8080"
 	commentH := NewCommentHandler(f.commentSvc, f.issueSvc, f.chk, baseURL)
-	worklogH := NewWorklogHandler(f.worklogSvc, f.issueSvc, baseURL)
+	worklogH := NewWorklogHandler(f.worklogSvc, f.issueSvc, f.chk, baseURL)
 	webhookH := NewWebhookHandler(f.webhookSvc, projSvc, nil)
 	wfH := NewWorkflowHandler(f.wfSvc, f.issueSvc, projSvc, baseURL)
 	sprintH := NewSprintHandler(f.sprintSvc, projSvc)
@@ -153,6 +153,7 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	// Body-sourced issue routes (Task 4): the path authorizes one thing (the
 	// sprint, or nothing at all), the issues come from the body.
 	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/issue", chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.MoveToSprint)))
+	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/complete", chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.CompleteSprint)))
 	mux.Handle("PUT /rest/agile/1.0/issue/rank", http.HandlerFunc(agileMiscH.Rank))
 	mux.Handle("POST /rest/agile/1.0/backlog/issue", http.HandlerFunc(agileMiscH.MoveToBacklog))
 	mux.Handle("GET /rest/api/3/issueLink/{linkId}", chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueLink("linkId"), http.HandlerFunc(issueLinkH.Get)))
@@ -230,13 +231,13 @@ func TestNested_CommentUpdateDelete_OtherProjectChildIs404(t *testing.T) {
 	}
 }
 
-// TestNested_CommentUpdate_NonAuthorNonAdminIs403or404: a member of B who is
+// TestNested_CommentUpdate_NonAuthorNonAdminIs403: a member of B who is
 // neither the comment's author nor a project admin may read the comment
 // (BrowseProjects) but may not edit or delete it → 403 (not 404: the comment
 // is visible to them, so hiding its existence buys nothing; 403 is also what
 // Jira returns). The author may edit it (200) and a project admin may delete
 // it (204).
-func TestNested_CommentUpdate_NonAuthorNonAdminIs403or404(t *testing.T) {
+func TestNested_CommentUpdate_NonAuthorNonAdminIs403(t *testing.T) {
 	f := setupNestedFixture(t)
 	cB := f.seedCommentB(t)
 	base := "/rest/api/3/issue/" + f.issueB.Key + "/comment/" + cB.ID
@@ -278,6 +279,48 @@ func TestNested_WorklogDelete_OtherProjectChildIs404(t *testing.T) {
 	if cnt != 1 {
 		t.Errorf("worklog deleted across project boundary (rows=%d)", cnt)
 	}
+}
+
+// TestWorklogDelete_NonAuthorNonAdminIs403: the same mutation rule as comments
+// — only the worklog's author or a holder of AdministerProjects on the issue's
+// project may delete it. A member with EditIssues who is neither gets 403 and
+// the row stays; the author and a project admin succeed.
+func TestWorklogDelete_NonAuthorNonAdminIs403(t *testing.T) {
+	f := setupNestedFixture(t)
+	wl1, err := f.worklogSvc.Add(f.issueB.ID, f.authorB, "", 3600)
+	if err != nil {
+		t.Fatalf("add worklog: %v", err)
+	}
+	wl2, err := f.worklogSvc.Add(f.issueB.ID, f.authorB, "", 1800)
+	if err != nil {
+		t.Fatalf("add worklog: %v", err)
+	}
+	base := "/rest/api/3/issue/" + f.issueB.Key + "/worklog/"
+
+	f.expect(t, "DELETE as non-author member", f.do(t, f.memberB, http.MethodDelete, base+wl1.ID, ""), http.StatusForbidden)
+	var cnt int64
+	f.db.Model(&issue.Worklog{}).Where("id = ?", wl1.ID).Count(&cnt)
+	if cnt != 1 {
+		t.Errorf("worklog deleted by a non-author non-admin (rows=%d)", cnt)
+	}
+
+	f.expect(t, "DELETE as author", f.do(t, f.authorB, http.MethodDelete, base+wl1.ID, ""), http.StatusNoContent)
+	f.expect(t, "DELETE as project admin", f.do(t, f.adminB, http.MethodDelete, base+wl2.ID, ""), http.StatusNoContent)
+	f.db.Model(&issue.Worklog{}).Where("issue_id = ?", f.issueB.ID).Count(&cnt)
+	if cnt != 0 {
+		t.Errorf("worklogs left = %d, want 0", cnt)
+	}
+}
+
+// TestNested_SprintGet_DBErrorIs500: a real DB failure on the project-scoped
+// sprint lookup must surface as 500, not be collapsed into "sprint not found".
+func TestNested_SprintGet_DBErrorIs500(t *testing.T) {
+	f := setupNestedFixture(t)
+	if err := f.db.Exec("DROP TABLE sprints").Error; err != nil {
+		t.Fatal(err)
+	}
+	w := f.do(t, f.adminA, http.MethodGet, "/rest/api/3/project/AAA/sprints/whatever", "")
+	f.expect(t, "GET sprint with the table gone", w, http.StatusInternalServerError)
 }
 
 // TestNested_ProjectWebhookUpdateDelete_OtherProjectChildIs404: B's webhook id
