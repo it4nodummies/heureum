@@ -321,3 +321,33 @@ func TestLoad_WebhookAllowPrivateHostsDefaultEmpty(t *testing.T) {
 		t.Errorf("default WebhookAllowPrivateHosts = %v, want empty (no private target allowed)", cfg.WebhookAllowPrivateHosts)
 	}
 }
+
+func TestLoadConfigTrustedProxies(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_TRUSTED_PROXIES", " 127.0.0.1, 10.42.0.0/16 ,::1")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []string{"127.0.0.1", "10.42.0.0/16", "::1"}
+	if len(cfg.TrustedProxies) != len(want) {
+		t.Fatalf("TrustedProxies = %v, want %v", cfg.TrustedProxies, want)
+	}
+	for i := range want {
+		if cfg.TrustedProxies[i] != want[i] {
+			t.Errorf("TrustedProxies[%d] = %q, want %q", i, cfg.TrustedProxies[i], want[i])
+		}
+	}
+
+	t.Setenv("APP_TRUSTED_PROXIES", "")
+	if cfg, err := Load(); err != nil || cfg.TrustedProxies != nil {
+		t.Errorf("unset: TrustedProxies = %v, err = %v; want nil, nil", cfg.TrustedProxies, err)
+	}
+
+	t.Setenv("APP_TRUSTED_PROXIES", "nginx")
+	if _, err := Load(); err == nil {
+		t.Errorf("hostname entry must be a startup error (only IPs/CIDRs are accepted)")
+	}
+}

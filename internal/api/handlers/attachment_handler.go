@@ -12,6 +12,15 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/permission"
 )
 
+// maxAttachmentBytes is the attachment upload cap (10 MB), the same number
+// /rest/api/3/attachment/meta advertises as uploadLimit. The request body is
+// allowed multipartOverhead on top of it for the multipart framing (boundary
+// lines, part headers, filename), as the avatar upload does.
+const (
+	maxAttachmentBytes = 10 << 20
+	multipartOverhead  = 4 << 10
+)
+
 type AttachmentHandler struct {
 	svc      *issue.AttachmentService
 	issueSvc *issue.Service
@@ -28,7 +37,15 @@ func (h *AttachmentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"issue not found"}`, http.StatusNotFound)
 		return
 	}
+	// Enforce the limit advertised by /attachment/meta (uploadLimit) on the
+	// whole request body; ParseMultipartForm's argument is only the in-memory
+	// threshold, not a cap.
+	r.Body = http.MaxBytesReader(w, r.Body, maxAttachmentBytes+multipartOverhead)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		if middleware.IsBodyTooLarge(err) {
+			http.Error(w, `{"error":"attachment exceeds the upload limit"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, `{"error":"failed to parse form"}`, http.StatusBadRequest)
 		return
 	}
@@ -124,7 +141,7 @@ func (h *AttachmentHandler) ServeFile(w http.ResponseWriter, r *http.Request) {
 func (h *AttachmentHandler) Meta(w http.ResponseWriter, r *http.Request) {
 	meta := map[string]interface{}{
 		"enabled":         true,
-		"uploadLimit":     10485760,
+		"uploadLimit":     maxAttachmentBytes,
 		"allowedFormats":  []string{"*"},
 	}
 	w.Header().Set("Content-Type", "application/json")

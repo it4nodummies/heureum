@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/domain/git"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/project"
@@ -140,8 +141,13 @@ func (h *GitHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The body is capped by the global middleware.MaxBodyBytes (router.go).
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		if middleware.IsBodyTooLarge(err) {
+			http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, `{"error":"failed to read body"}`, http.StatusBadRequest)
 		return
 	}

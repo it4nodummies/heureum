@@ -15,6 +15,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/it4nodummies/heureum/internal/api/middleware"
 	"github.com/it4nodummies/heureum/internal/domain/git"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/project"
@@ -178,5 +179,42 @@ func TestWebhook_AcceptsURLToken_RejectsHMACSecret(t *testing.T) {
 	}
 	if w := post("hmac-secret"); w.Code != http.StatusNotFound {
 		t.Errorf("HMAC secret as URL token: status = %d, want 404: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestGitWebhook_RejectsOversizedBody: the inbound git webhook is
+// unauthenticated and reads the whole body (io.ReadAll); behind the global
+// body-limit middleware (router.go) a body over 32 MB is refused with 413
+// before any parsing, and a normal payload still works through the same
+// wrapper.
+func TestGitWebhook_RejectsOversizedBody(t *testing.T) {
+	db := setupGitTestDB(t)
+	h, gitSvc := newGitTestHandler(t, db)
+	p := seedGitProject(t, db)
+	cfg, err := gitSvc.CreateProvider(p.ID, "github", "https://github.com/acme/demo", "ghp_secret", "hmac-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same wrapping as router.go: the limit sits outside the mux so it covers
+	// this unauthenticated route too.
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /rest/api/3/webhooks/git/{token}", h.Webhook)
+	srv := middleware.MaxBodyBytes(middleware.MaxRequestBodyBytes)(mux)
+
+	post := func(body []byte) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/rest/api/3/webhooks/git/"+*cfg.WebhookURLToken, bytes.NewReader(body))
+		req.Header.Set("X-Hub-Signature-256", signGitHub("hmac-secret", body))
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		return w
+	}
+
+	big := bytes.Repeat([]byte("x"), middleware.MaxRequestBodyBytes+1)
+	if w := post(big); w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversized body: status = %d, want 413: %.200s", w.Code, w.Body.String())
+	}
+	small := []byte(`{"ref":"refs/heads/main","repository":{"html_url":"https://github.com/acme/demo"},"commits":[]}`)
+	if w := post(small); w.Code != http.StatusOK {
+		t.Errorf("normal payload through the body limit: status = %d, want 200: %s", w.Code, w.Body.String())
 	}
 }

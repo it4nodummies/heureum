@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -39,6 +40,11 @@ type Config struct {
 	// (APP_WEBHOOK_ALLOW_PRIVATE_HOSTS, comma-separated). Empty by default:
 	// every non-public target is refused at create and at delivery (SSRF).
 	WebhookAllowPrivateHosts []string
+	// TrustedProxies lists the reverse proxies (IPs and/or CIDRs,
+	// APP_TRUSTED_PROXIES, comma-separated) whose X-Forwarded-For header is
+	// believed when resolving the client IP for rate limiting. Empty by
+	// default: the header is ignored and RemoteAddr is the client.
+	TrustedProxies []string
 }
 
 // minProductionSecretLen is the minimum APP_SECRET length accepted when
@@ -98,6 +104,19 @@ func Load() (*Config, error) {
 		AuthRateLimit: getEnvInt("APP_AUTH_RATELIMIT", 10),
 
 		WebhookAllowPrivateHosts: getEnvList("APP_WEBHOOK_ALLOW_PRIVATE_HOSTS"),
+		TrustedProxies:           getEnvList("APP_TRUSTED_PROXIES"),
+	}
+
+	// A malformed trusted-proxy entry is a startup error: silently dropping it
+	// would either ignore a real proxy (every client shares one bucket) or,
+	// worse, never be noticed.
+	for _, e := range cfg.TrustedProxies {
+		if _, _, err := net.ParseCIDR(e); err == nil {
+			continue
+		}
+		if net.ParseIP(e) == nil {
+			return nil, fmt.Errorf("APP_TRUSTED_PROXIES entry %q is neither a CIDR nor an IP address", e)
+		}
 	}
 
 	if cfg.Secret == "" {

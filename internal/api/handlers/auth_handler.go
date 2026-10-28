@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -43,8 +44,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusForbidden, []string{"signup is disabled on this instance"}, nil)
 		return
 	}
+	if errors.Is(err, auth.ErrAlreadyTaken) {
+		v3.WriteError(w, http.StatusConflict, []string{auth.ErrAlreadyTaken.Error()}, nil)
+		return
+	}
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusConflict)
+		// Anything else is an internal failure (DB down, schema drift, ...):
+		// log the detail, never echo it to the client.
+		log.Printf("auth: register %q failed: %v", req.Email, err)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Registration failed."}, nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -62,8 +70,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, err := h.svc.Login(req.Email, req.Password)
-	if err != nil {
+	if errors.Is(err, auth.ErrInvalidCredentials) {
 		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		log.Printf("auth: login %q failed: %v", req.Email, err)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Login failed."}, nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

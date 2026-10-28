@@ -11,9 +11,18 @@ import (
 	"github.com/it4nodummies/heureum/internal/domain/user"
 )
 
-// ErrSignupClosed is returned by RegisterWithPolicy when the instance does not
-// accept public registration and the users table is not empty.
-var ErrSignupClosed = errors.New("signup is disabled on this instance")
+var (
+	// ErrSignupClosed is returned by RegisterWithPolicy when the instance does
+	// not accept public registration and the users table is not empty.
+	ErrSignupClosed = errors.New("signup is disabled on this instance")
+	// ErrAlreadyTaken is the only client-facing conflict of registration: the
+	// email or username is already in use. Every other create failure is
+	// propagated as-is (an internal error for the handler to log, not echo).
+	ErrAlreadyTaken = errors.New("email or username already taken")
+	// ErrInvalidCredentials is returned by Login for an unknown email or a
+	// wrong password (indistinguishable on purpose).
+	ErrInvalidCredentials = errors.New("invalid credentials")
+)
 
 type Service struct {
 	DB     *gorm.DB
@@ -121,18 +130,33 @@ func (s *Service) create(email, username, displayName, password string, isAdmin 
 	}
 	u.ID = generateID()
 	if err := s.DB.Create(u).Error; err != nil {
-		return nil, errors.New("email or username already taken")
+		// Distinguish the one expected conflict from a real failure without
+		// parsing driver-specific messages: if a row with that email or
+		// username now exists, the insert lost to it.
+		if taken, qerr := s.identityTaken(email, username); qerr == nil && taken {
+			return nil, ErrAlreadyTaken
+		}
+		return nil, err
 	}
 	return u, nil
+}
+
+func (s *Service) identityTaken(email, username string) (bool, error) {
+	var n int64
+	err := s.DB.Model(&user.User{}).Where("email = ? OR username = ?", email, username).Count(&n).Error
+	return n > 0, err
 }
 
 func (s *Service) Login(email, password string) (string, error) {
 	var u user.User
 	if err := s.DB.Where("email = ?", email).First(&u).Error; err != nil {
-		return "", errors.New("invalid credentials")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrInvalidCredentials
+		}
+		return "", err
 	}
 	if !VerifyPassword(u.PasswordHash, password) {
-		return "", errors.New("invalid credentials")
+		return "", ErrInvalidCredentials
 	}
 	return GenerateToken(s.Secret, u.ID, 24*time.Hour)
 }

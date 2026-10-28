@@ -146,7 +146,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	registerH := http.Handler(http.HandlerFunc(authH.Register))
 	loginH := http.Handler(http.HandlerFunc(authH.Login))
 	if cfg.AuthRateLimit > 0 {
-		authLimiter := middleware.RateLimit(cfg.AuthRateLimit, 5*time.Minute)
+		// APP_TRUSTED_PROXIES was validated by config.Load; a parse error here
+		// would be a programming error, and trusting nothing is the safe side.
+		trusted, _ := middleware.ParseTrustedProxies(cfg.TrustedProxies)
+		authLimiter := middleware.RateLimit(cfg.AuthRateLimit, 5*time.Minute, trusted)
 		registerH = authLimiter(registerH)
 		loginH = authLimiter(loginH)
 	}
@@ -466,7 +469,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/group/user", authMw(chk.EnforceGlobalAdmin(http.HandlerFunc(groupH.RemoveUser))))
 	mux.Handle("GET /rest/api/3/groups/picker", authMw(http.HandlerFunc(groupH.Picker)))
 
-	return corsMiddleware(mux)
+	// Global request-body cap (R27 T8): outside the mux so it also covers the
+	// unauthenticated routes (git webhook, register/login) and every handler
+	// that buffers its body. Attachment uploads apply their own 10 MB cap.
+	return corsMiddleware(middleware.MaxBodyBytes(middleware.MaxRequestBodyBytes)(mux))
 }
 
 // defaultAvatarSVG è un avatar neutro (cerchio grigio con silhouette) servito

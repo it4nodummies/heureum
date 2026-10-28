@@ -21,6 +21,9 @@ var keyFormat = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
 // ErrInvalidKey is returned when a project key does not match Jira's key format.
 var ErrInvalidKey = errors.New("key: must start with an uppercase letter, contain only uppercase letters and digits, and be 2-10 characters")
 
+// ErrKeyExists is returned when a project with the same key already exists.
+var ErrKeyExists = errors.New("project key already exists")
+
 type Service struct {
 	db   *gorm.DB
 	lead *user.User
@@ -49,7 +52,7 @@ func (s *Service) Create(name, key, description string, pType Type) (*Project, e
 	}
 	var existing Project
 	if s.db.Where("key = ?", key).First(&existing).Error == nil {
-		return nil, errors.New("project key already exists")
+		return nil, ErrKeyExists
 	}
 	seqID, err := s.nextSeqID()
 	if err != nil {
@@ -121,6 +124,13 @@ func (s *Service) CreateProject(in CreateInput) (*Project, error) {
 		URL:          in.URL,
 	}
 	if err := s.db.Create(p).Error; err != nil {
+		// The key has a unique index: if a row with it now exists, the insert
+		// lost to it (checked after the fact so a concurrent create is a clean
+		// conflict too, and without parsing driver-specific messages).
+		var n int64
+		if qerr := s.db.Model(&Project{}).Where("key = ?", key).Count(&n).Error; qerr == nil && n > 0 {
+			return nil, ErrKeyExists
+		}
 		return nil, err
 	}
 	if in.CreatorID != "" {

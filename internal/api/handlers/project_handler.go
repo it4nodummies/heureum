@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -123,7 +124,14 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 			v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"key": project.ErrInvalidKey.Error()})
 			return
 		}
-		v3.WriteError(w, http.StatusBadRequest, []string{err.Error()}, nil)
+		if errors.Is(err, project.ErrKeyExists) {
+			v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"key": "A project with that key already exists."})
+			return
+		}
+		// Anything else is internal (DB failure): log the detail, keep the
+		// client message generic.
+		log.Printf("project: create %q failed: %v", raw.Key, err)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to create project."}, nil)
 		return
 	}
 	// Scaffold the project so it is immediately usable (workflow → issue types
@@ -146,7 +154,8 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := scaffold(); err != nil {
 		_ = h.svc.Delete(p.Key)
-		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to initialize project: " + err.Error()}, nil)
+		log.Printf("project: scaffold %q failed (rolled back): %v", p.Key, err)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to initialize project."}, nil)
 		return
 	}
 	v3.WriteJSON(w, http.StatusCreated, map[string]any{

@@ -39,6 +39,9 @@ services:
       APP_SIGNUP: "${APP_SIGNUP:-closed}"
       # hosts/IPs/CIDRs outgoing webhooks may target although private (SSRF policy escape hatch)
       APP_WEBHOOK_ALLOW_PRIVATE_HOSTS: "${APP_WEBHOOK_ALLOW_PRIVATE_HOSTS:-}"
+      # reverse proxies (IPs/CIDRs) whose X-Forwarded-For is trusted for auth rate limiting,
+      # e.g. the compose network of the nginx service; empty = header ignored
+      APP_TRUSTED_PROXIES: "${APP_TRUSTED_PROXIES:-}"
       DB_DRIVER: postgres
       DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
       REDIS_URL: "redis://redis:6379/0"

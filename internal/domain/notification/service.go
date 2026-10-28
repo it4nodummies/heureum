@@ -2,6 +2,7 @@ package notification
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -89,8 +90,22 @@ func (s *Service) ListByUser(userID string, unreadOnly bool) ([]Notification, er
 	return notifs, nil
 }
 
-func (s *Service) MarkRead(notificationID string) error {
-	return s.db.Model(&Notification{}).Where("id = ?", notificationID).Update("is_read", true).Error
+// ErrNotFound is returned when a notification does not exist or does not
+// belong to the given user (indistinguishable on purpose).
+var ErrNotFound = errors.New("notification not found")
+
+// MarkRead marks notificationID as read only if it belongs to userID.
+func (s *Service) MarkRead(userID, notificationID string) error {
+	res := s.db.Model(&Notification{}).
+		Where("id = ? AND user_id = ?", notificationID, userID).
+		Update("is_read", true)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Service) MarkAllRead(userID string) error {

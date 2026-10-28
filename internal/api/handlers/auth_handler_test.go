@@ -280,6 +280,55 @@ func TestRegister_SecondUserAllowedWhenOpen(t *testing.T) {
 	}
 }
 
+// TestRegister_DoesNotLeakInternalError: an unexpected DB failure during
+// registration (here: the users table is gone) must be a generic 500, never a
+// 409 carrying the raw driver message.
+func TestRegister_DoesNotLeakInternalError(t *testing.T) {
+	h, db := newAuthHandlerIsolated(t, true)
+	if err := db.Exec("DROP TABLE users").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postRegister(t, h, "x@example.com", "x")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500, body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, leak := range []string{"no such table", "users", "SQL", "sqlite"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("500 body leaks %q: %s", leak, body)
+		}
+	}
+	var resp struct {
+		ErrorMessages []string `json:"errorMessages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil || len(resp.ErrorMessages) == 0 {
+		t.Errorf("want a generic errorMessages body, got %s (err %v)", body, err)
+	}
+}
+
+// TestRegister_DuplicateIs409Sanitized: the one client-facing conflict stays
+// a 409 with the fixed "already taken" message (no driver text).
+func TestRegister_DuplicateIs409Sanitized(t *testing.T) {
+	h, _ := newAuthHandlerIsolated(t, true)
+	if rec := postRegister(t, h, "dup@example.com", "dup"); rec.Code != http.StatusCreated {
+		t.Fatalf("first register status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	rec := postRegister(t, h, "dup@example.com", "dup2")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("duplicate email status = %d, want 409, body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "already taken") {
+		t.Errorf("409 body = %s, want the sanitized 'already taken' message", body)
+	}
+	for _, leak := range []string{"UNIQUE", "constraint", "users."} {
+		if strings.Contains(body, leak) {
+			t.Errorf("409 body leaks %q: %s", leak, body)
+		}
+	}
+}
+
 // ── Round 27 / Task 7: API token lifecycle ────────────────────────────────────
 
 func apiTokenRequest(userID, method, target string, body []byte) *http.Request {
