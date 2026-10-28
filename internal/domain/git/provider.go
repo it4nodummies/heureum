@@ -74,7 +74,7 @@ func ExtractIssueKeys(text string) []string {
 
 type noopProvider struct{}
 
-func (p *noopProvider) GetName() ProviderType                          { return "" }
+func (p *noopProvider) GetName() ProviderType { return "" }
 func (p *noopProvider) ValidateWebhook(payload []byte, secret string, signature string) (bool, error) {
 	return true, nil
 }

@@ -211,13 +211,13 @@ func TestGitLabProvider_MergeRequest(t *testing.T) {
 		"event_type":  "merge_request",
 		"repository":  map[string]interface{}{"homepage": "https://gitlab.com/test/repo"},
 		"object_attributes": map[string]interface{}{
-			"iid":            float64(10),
-			"title":          "FEAT-789: New feature",
-			"url":            "https://gitlab.com/test/repo/-/merge_requests/10",
-			"state":          "merged",
-			"action":         "merge",
-			"merged_at":      mergedAt,
-			"source_branch":  "FEAT-789-new-ui",
+			"iid":           float64(10),
+			"title":         "FEAT-789: New feature",
+			"url":           "https://gitlab.com/test/repo/-/merge_requests/10",
+			"state":         "merged",
+			"action":        "merge",
+			"merged_at":     mergedAt,
+			"source_branch": "FEAT-789-new-ui",
 		},
 	})
 	if err != nil {

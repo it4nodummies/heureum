@@ -42,12 +42,12 @@ func (p *ForgejoProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
 		} `json:"commits"`
 		Action      string `json:"action"`
 		PullRequest *struct {
-			Number int    `json:"number"`
-			Title  string `json:"title"`
-			HTMLURL string `json:"html_url"`
-			State  string `json:"state"`
+			Number   int     `json:"number"`
+			Title    string  `json:"title"`
+			HTMLURL  string  `json:"html_url"`
+			State    string  `json:"state"`
 			MergedAt *string `json:"merged_at"`
-			Head    struct {
+			Head     struct {
 				Ref string `json:"ref"`
 			} `json:"head"`
 		} `json:"pull_request"`

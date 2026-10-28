@@ -140,9 +140,9 @@ func (h *AttachmentHandler) ServeFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *AttachmentHandler) Meta(w http.ResponseWriter, r *http.Request) {
 	meta := map[string]interface{}{
-		"enabled":         true,
-		"uploadLimit":     maxAttachmentBytes,
-		"allowedFormats":  []string{"*"},
+		"enabled":        true,
+		"uploadLimit":    maxAttachmentBytes,
+		"allowedFormats": []string{"*"},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(meta)

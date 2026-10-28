@@ -42,11 +42,11 @@ func (p *GitHubProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
 		} `json:"commits"`
 		Action      string `json:"action"`
 		PullRequest *struct {
-			Number   int    `json:"number"`
-			Title    string `json:"title"`
-			HTMLURL  string `json:"html_url"`
-			State    string `json:"state"`
-			Merged   bool   `json:"merged"`
+			Number   int     `json:"number"`
+			Title    string  `json:"title"`
+			HTMLURL  string  `json:"html_url"`
+			State    string  `json:"state"`
+			Merged   bool    `json:"merged"`
 			MergedAt *string `json:"merged_at"`
 			Head     struct {
 				Ref string `json:"ref"`

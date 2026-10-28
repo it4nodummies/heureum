@@ -30,15 +30,15 @@ func (p *GitLabProvider) ParseWebhook(payload []byte) (*WebhookEvent, error) {
 				Name string `json:"name"`
 			} `json:"author"`
 		} `json:"commits"`
-		EventType string `json:"event_type"`
+		EventType        string `json:"event_type"`
 		ObjectAttributes *struct {
-			IID           int     `json:"iid"`
-			Title         string  `json:"title"`
-			URL           string  `json:"url"`
-			State         string  `json:"state"`
-			Action        string  `json:"action"`
-			MergedAt      *string `json:"merged_at"`
-			SourceBranch  string  `json:"source_branch"`
+			IID          int     `json:"iid"`
+			Title        string  `json:"title"`
+			URL          string  `json:"url"`
+			State        string  `json:"state"`
+			Action       string  `json:"action"`
+			MergedAt     *string `json:"merged_at"`
+			SourceBranch string  `json:"source_branch"`
 		} `json:"object_attributes"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {

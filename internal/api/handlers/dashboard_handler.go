@@ -100,12 +100,12 @@ func (h *DashboardHandler) Get(w http.ResponseWriter, r *http.Request) {
 	widgets, _ := h.svc.GetWidgets(d.ID)
 
 	type widgetJSON struct {
-		ID           string          `json:"id"`
-		DashboardID  string          `json:"dashboard_id"`
-		WidgetType   string          `json:"widget_type"`
-		ConfigJSON   string          `json:"config_json"`
-		PositionJSON string          `json:"position_json"`
-		Data         interface{}     `json:"data,omitempty"`
+		ID           string      `json:"id"`
+		DashboardID  string      `json:"dashboard_id"`
+		WidgetType   string      `json:"widget_type"`
+		ConfigJSON   string      `json:"config_json"`
+		PositionJSON string      `json:"position_json"`
+		Data         interface{} `json:"data,omitempty"`
 	}
 	wjs := make([]widgetJSON, 0, len(widgets))
 	for _, w := range widgets {
