@@ -407,6 +407,50 @@ func TestCreateAPIToken_ExpiresInDays(t *testing.T) {
 	}
 }
 
+// TestCreateAPIToken_RejectsHugeExpiry: expiresInDays is multiplied into a
+// time.Duration (int64 nanoseconds); without a cap a value like 10^12 days
+// overflows and yields a bogus (possibly past, possibly far-future) expiry.
+// Anything above maxAPITokenExpiryDays is a 400 with a field error; the cap
+// itself is accepted.
+func TestCreateAPIToken_RejectsHugeExpiry(t *testing.T) {
+	h, _ := newAuthHandlerIsolated(t, true)
+	u, err := h.svc.Register("huge@test.com", "hugeuser", "Huge", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, days := range []string{"1000000000000", "3651"} {
+		rec := httptest.NewRecorder()
+		h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"x","expiresInDays":`+days+`}`)))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expiresInDays=%s: status = %d, want 400, body: %s", days, rec.Code, rec.Body.String())
+			continue
+		}
+		var resp struct {
+			Errors map[string]string `json:"errors"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		if resp.Errors["expiresInDays"] == "" {
+			t.Errorf("expiresInDays=%s: want a field error on expiresInDays, got %s", days, rec.Body.String())
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	h.CreateAPIToken(rec, apiTokenRequest(u.ID, "POST", "/rest/api/3/auth/api-tokens", []byte(`{"label":"max","expiresInDays":3650}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expiresInDays=3650 (the cap): status = %d, want 201, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ExpiresAt *time.Time `json:"expires_at"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.ExpiresAt == nil || resp.ExpiresAt.Before(time.Now().Add(3649*24*time.Hour)) {
+		t.Errorf("expires_at = %v, want ~10 years ahead", resp.ExpiresAt)
+	}
+}
+
 func TestListAndRevokeAPITokenHandlers(t *testing.T) {
 	h, db := newAuthHandlerIsolated(t, true)
 	alice, err := h.svc.Register("alice@test.com", "alice", "Alice", "password123")

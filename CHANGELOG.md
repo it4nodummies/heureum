@@ -111,6 +111,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (open policy) or 403 (closed), so two concurrent first registrations can never yield two admins,
   and a regular registration landing on another replica in the same instant never strands the
   bootstrapper. The bootstrap itself only ever happens on an empty users table (see Changed).
+- **SSRF ranges extended**: outgoing webhook targets in the IPv4-compatible `::/96` (e.g.
+  `[::127.0.0.1]`) and site-local `fec0::/10` IPv6 ranges are refused too.
+- **`expiresInDays` is capped at 3650** on `POST /rest/api/3/auth/api-tokens` (400 above it): an
+  unbounded value overflowed the duration arithmetic and produced a bogus expiry.
+- **Database logging no longer prints bound SQL values** outside development (`ParameterizedQueries`,
+  and `ErrRecordNotFound` is not logged): a failed or slow statement used to log webhook secrets,
+  password hashes and URL tokens in clear.
 - **Inbound git webhooks only touch issues of the provider's own project.** Issue keys extracted
   from commit messages, branch names and PR titles are resolved within the project the provider is
   configured on; a key from another project is skipped like an unknown one. Previously any user

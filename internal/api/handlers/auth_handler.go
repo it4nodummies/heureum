@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -106,10 +107,15 @@ func toAPITokenView(t auth.APIToken) apiTokenView {
 	return apiTokenView{ID: t.ID, Label: t.Label, CreatedAt: t.CreatedAt, LastUsedAt: t.LastUsedAt, ExpiresAt: t.ExpiresAt}
 }
 
+// maxAPITokenExpiryDays caps expiresInDays (10 years). The value is
+// multiplied into a time.Duration (int64 ns), so an unbounded input overflows
+// and silently produces a bogus expiry.
+const maxAPITokenExpiryDays = 3650
+
 // CreateAPIToken creates a personal API token (in real Jira Cloud, these are
 // managed on id.atlassian.com; here they are self-service). An optional
-// expiresInDays (> 0) sets expires_at = now + N days; omitted means the token
-// never expires.
+// expiresInDays (1..maxAPITokenExpiryDays) sets expires_at = now + N days;
+// omitted means the token never expires.
 func (h *AuthHandler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
 	var req struct {
@@ -130,6 +136,11 @@ func (h *AuthHandler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 		if *req.ExpiresInDays <= 0 {
 			v3.WriteError(w, http.StatusBadRequest, nil,
 				map[string]string{"expiresInDays": "expiresInDays must be a positive number of days."})
+			return
+		}
+		if *req.ExpiresInDays > maxAPITokenExpiryDays {
+			v3.WriteError(w, http.StatusBadRequest, nil,
+				map[string]string{"expiresInDays": fmt.Sprintf("expiresInDays must be at most %d.", maxAPITokenExpiryDays)})
 			return
 		}
 		// Clock() is UTC: the column is a tz-less TIMESTAMP, see auth.Service.Clock.

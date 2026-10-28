@@ -121,7 +121,10 @@ func resolveAllowed(ctx context.Context, host string, allow allowlist) ([]net.IP
 // translator or relay: NAT64 well-known + local-use prefixes, IPv4-translated
 // (SIIT ::ffff:0:0:0/96 — unlike IPv4-mapped ::ffff:0:0/96 it is NOT
 // normalised by To4; the mapped prefix itself must not be listed, since
-// net.ParseCIDR turns it into the IPv4 network 0.0.0.0/0), 6to4 and Teredo.
+// net.ParseCIDR turns it into the IPv4 network 0.0.0.0/0), IPv4-compatible
+// (deprecated ::/96, e.g. ::127.0.0.1 — To4 does not normalise it either),
+// 6to4 and Teredo; plus the deprecated IPv6 site-local range fec0::/10,
+// which net.IP has no predicate for.
 var extraDisallowed = mustCIDRs(
 	"0.0.0.0/8",
 	"100.64.0.0/10",
@@ -131,8 +134,10 @@ var extraDisallowed = mustCIDRs(
 	"64:ff9b::/96",
 	"64:ff9b:1::/48",
 	"::ffff:0:0:0/96",
+	"::/96",
 	"2002::/16",
 	"2001::/32",
+	"fec0::/10",
 )
 
 // isDisallowedIP reports whether ip is loopback, private, link-local,
