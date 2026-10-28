@@ -154,6 +154,18 @@ that demonstrates the hole and FAILS on current `main`.
 - [ ] **Step 2:** implement. **Step 3:** `go test ./...` PASS.
 - [ ] **Step 4: Commit** `fix(api): trusted-proxy client IP, request body limits, notification ownership, generic auth errors`
 
+### Task 9: Inbound git webhook signature hardening (found by the Task 2 review)
+
+**Files:**
+- Modify: `internal/domain/git/provider.go:78` (`noopProvider.ValidateWebhook` returns `true` → any provider type without a real validator must **reject**; `bitbucket` passes the DB CHECK but has no signature check → either implement its signature scheme or refuse to create a bitbucket provider until it does)
+- Modify: `internal/domain/git/gitlab.go:16` (`signature == secret` → `crypto/subtle.ConstantTimeCompare`)
+- Modify: `internal/domain/git/config.go` `CreateProvider` + `internal/api/handlers/git_handler.go` (reject an **empty** `webhook_secret` at create with 400; an empty HMAC key makes GitHub/Forgejo signatures forgeable)
+- Test: `internal/domain/git/provider_test.go`, `gitlab_test.go`, handler test
+
+- [ ] **Step 1: Failing tests** — `TestNoopProvider_RejectsWebhook`, `TestGitLab_ValidateWebhook_ConstantTime` (behavioral: wrong token rejected, right token accepted; plus a static check that `subtle.ConstantTimeCompare` is used), `TestCreateProvider_RejectsEmptyWebhookSecret`, `TestBitbucket_CreateRefusedOrValidated`.
+- [ ] **Step 2:** implement. **Step 3:** `go test ./internal/domain/git/... ./internal/api/handlers/... ./internal/contract/...` PASS.
+- [ ] **Step 4: Commit** `fix(git): inbound webhooks require a real signature check, constant-time compare, non-empty secret`
+
 ---
 
 ## Final
