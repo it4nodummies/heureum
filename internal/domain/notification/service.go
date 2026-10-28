@@ -21,16 +21,19 @@ type Notification struct {
 }
 
 type Service struct {
-	db          *gorm.DB
-	broadcaster func([]byte)
+	db     *gorm.DB
+	sender func(userID string, msg []byte)
 }
 
 func NewService(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
-func (s *Service) SetBroadcaster(fn func([]byte)) {
-	s.broadcaster = fn
+// SetSender registra la consegna push di una notifica al SOLO utente
+// destinatario (Round 27, Task 6: prima era un broadcast a tutti i socket,
+// quindi ogni client riceveva le notifiche di tutti gli utenti).
+func (s *Service) SetSender(fn func(userID string, msg []byte)) {
+	s.sender = fn
 }
 
 func (s *Service) Create(userID, notifType, title, body, link string) error {
@@ -45,13 +48,13 @@ func (s *Service) Create(userID, notifType, title, body, link string) error {
 	if err := s.db.Create(n).Error; err != nil {
 		return err
 	}
-	if s.broadcaster != nil {
+	if s.sender != nil {
 		msg, _ := json.Marshal(map[string]interface{}{
 			"type":    "notification",
 			"user_id": userID,
 			"payload": n,
 		})
-		s.broadcaster(msg)
+		s.sender(userID, msg)
 	}
 	return nil
 }

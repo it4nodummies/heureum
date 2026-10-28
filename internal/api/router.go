@@ -9,6 +9,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/handlers"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
+	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/api/ws"
 	"github.com/it4nodummies/heureum/internal/config"
 	"github.com/it4nodummies/heureum/internal/domain/auth"
@@ -88,10 +89,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	reportH := handlers.NewReportHandler(reportSvc, projectSvc)
 	dashboardSvc := dashboard.NewService(db)
 	dashboardH := handlers.NewDashboardHandler(dashboardSvc, chk)
-	wsHub := ws.NewHub()
-	go wsHub.Run()
+	wsHub := ws.NewHub(cfg.BaseURL)
 	notifSvc := notification.NewService(db)
-	notifSvc.SetBroadcaster(func(msg []byte) { wsHub.Broadcast(msg) })
+	notifSvc.SetSender(wsHub.SendToUser)
 	gitConfigSvc := git.NewConfigService(db, git.KeyFromSecret(cfg.Secret))
 	gitH := handlers.NewGitHandler(gitConfigSvc, issueSvc, projectSvc, commentSvc, cfg.BaseURL)
 	notifH := handlers.NewNotificationHandler(notifSvc)
@@ -396,14 +396,21 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("DELETE /rest/api/3/dashboard/{dashboardId}/gadget/{gadgetId}", authMw(http.HandlerFunc(dashboardH.RemoveGadget)))
 
 	// Autenticata come le altre rotte REST (authMw legge il bearer token
-	// dall'header Authorization). FOLLOW-UP: nessun client browser consuma
-	// ancora questa rotta (i WebSocket browser non possono impostare header
-	// custom sull'handshake), quindi servirà un meccanismo dedicato — token
-	// short-lived in query string o subprotocol — quando un client verrà
-	// implementato.
-	mux.Handle("GET /ws/v1/projects/{key}/board", authMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ws.ServeWs(wsHub, w, r)
-	})))
+	// dall'header Authorization) e gated su BROWSE_PROJECTS di {key} come le
+	// rotte HTTP sorelle (R27 T6); il socket entra nella stanza del solo
+	// progetto {key} e riceve le notifiche del solo utente autenticato.
+	// FOLLOW-UP: nessun client browser consuma ancora questa rotta (i
+	// WebSocket browser non possono impostare header custom sull'handshake),
+	// quindi servirà un meccanismo dedicato — token short-lived in query
+	// string o subprotocol — quando un client verrà implementato.
+	mux.Handle("GET /ws/v1/projects/{key}/board", authMw(chk.Enforce(permission.BrowseProjects, chk.ByKey, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p, err := projectSvc.GetByKey(r.PathValue("key"))
+		if err != nil {
+			v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+			return
+		}
+		ws.ServeWs(wsHub, w, r, middleware.UserIDFromContext(r.Context()), p.Key)
+	}))))
 
 	mux.Handle("GET /rest/api/3/notifications", authMw(http.HandlerFunc(notifH.List)))
 	mux.Handle("GET /rest/api/3/notifications/unread-count", authMw(http.HandlerFunc(notifH.UnreadCount)))
