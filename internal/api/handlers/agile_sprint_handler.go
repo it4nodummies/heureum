@@ -124,12 +124,12 @@ func (h *AgileSprintHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.State != nil {
 		switch *req.State {
 		case "active":
-			if _, err := h.sprintSvc.Start(sp.ID); err != nil {
+			if _, err := h.sprintSvc.Start(sp.ProjectID, sp.ID); err != nil {
 				v3.WriteError(w, http.StatusBadRequest, []string{"cannot start sprint"}, nil)
 				return
 			}
 		case "closed":
-			if _, err := h.sprintSvc.Complete(sp.ID, true, nil); err != nil {
+			if _, err := h.sprintSvc.Complete(sp.ProjectID, sp.ID, true, nil); err != nil {
 				v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
 				return
 			}
@@ -176,7 +176,7 @@ func (h *AgileSprintHandler) CompleteSprint(w http.ResponseWriter, r *http.Reque
 		}
 		target = &ts.ID
 	}
-	updated, err := h.sprintSvc.Complete(sp.ID, req.MoveOpenToBacklog, target)
+	updated, err := h.sprintSvc.Complete(sp.ProjectID, sp.ID, req.MoveOpenToBacklog, target)
 	if err != nil {
 		v3.WriteError(w, http.StatusBadRequest, []string{"cannot complete sprint"}, nil)
 		return

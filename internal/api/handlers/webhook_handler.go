@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
@@ -77,9 +78,21 @@ func (h *WebhookHandler) Create(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusCreated, toOut(*hook))
 }
 
-// Delete: DELETE /rest/api/3/project/{key}/webhooks/{id}.
+// Delete: DELETE /rest/api/3/project/{key}/webhooks/{id}. The webhook is
+// deleted only if it belongs to the project in the path (the one the caller
+// was authorized on); a foreign id is a plain 404.
 func (h *WebhookHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.PathValue("id")); err != nil {
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"project not found"}, nil)
+		return
+	}
+	err = h.svc.Delete(p.ID, r.PathValue("id"))
+	if errors.Is(err, webhook.ErrNotFound) {
+		v3.WriteError(w, http.StatusNotFound, []string{"webhook not found"}, nil)
+		return
+	}
+	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete webhook"}, nil)
 		return
 	}

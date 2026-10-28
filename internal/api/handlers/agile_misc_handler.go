@@ -135,7 +135,7 @@ func (h *AgileMiscHandler) GetIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	// arricchisce fields.sprint se la issue è in uno sprint
 	if iss.SprintID != nil {
-		if sp, err := h.sprintSvc.GetByID(*iss.SprintID); err == nil {
+		if sp, err := h.sprintSvc.GetByID(iss.ProjectID, *iss.SprintID); err == nil {
 			if fields, ok := m["fields"].(map[string]any); ok {
 				fields["sprint"] = sprintToV3(sp, h.baseURL)
 			}

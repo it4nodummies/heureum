@@ -216,7 +216,7 @@ func TestAddAndRemoveStatus(t *testing.T) {
 		t.Errorf("Color = %s", status.Color)
 	}
 
-	err = svc.RemoveStatus(status.ID)
+	err = svc.RemoveStatus(status.WorkflowID, status.ID)
 	if err != nil {
 		t.Fatalf("RemoveStatus() error = %v", err)
 	}
@@ -238,7 +238,7 @@ func TestAddAndRemoveTransition(t *testing.T) {
 		t.Error("transition status IDs mismatch")
 	}
 
-	err = svc.RemoveTransition(tr.ID)
+	err = svc.RemoveTransition(tr.WorkflowID, tr.ID)
 	if err != nil {
 		t.Fatalf("RemoveTransition() error = %v", err)
 	}
@@ -327,7 +327,7 @@ func TestUpdateStatus(t *testing.T) {
 	wf, _ := svc.CreateWorkflow("proj-8", "WF")
 	s, _ := svc.AddStatus(wf.ID, "Old", CategoryTodo, "#111")
 
-	updated, err := svc.UpdateStatus(s.ID, "New", CategoryInProgress, "#222")
+	updated, err := svc.UpdateStatus(s.WorkflowID, s.ID, "New", CategoryInProgress, "#222")
 	if err != nil {
 		t.Fatalf("UpdateStatus() error = %v", err)
 	}

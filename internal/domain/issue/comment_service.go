@@ -1,6 +1,7 @@
 package issue
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 
@@ -91,19 +92,36 @@ func (s *CommentService) GetComments(issueID string) ([]Comment, error) {
 	return comments, err
 }
 
-func (s *CommentService) GetComment(commentID string) (*Comment, error) {
+// ErrCommentNotFound is returned by the issue-scoped comment lookups when the
+// comment does not exist, is deleted, or belongs to a different issue. Callers
+// map it to 404 so a comment id from another issue/project is indistinguishable
+// from a missing one.
+var ErrCommentNotFound = errors.New("comment not found")
+
+// GetComment loads a live comment bound to issueID: a comment id that belongs
+// to another issue is reported as not found, never returned.
+func (s *CommentService) GetComment(issueID, commentID string) (*Comment, error) {
 	var c Comment
-	if err := s.db.Where("id = ? AND is_deleted = ?", commentID, false).First(&c).Error; err != nil {
+	err := s.db.Where("id = ? AND issue_id = ? AND is_deleted = ?", commentID, issueID, false).First(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrCommentNotFound
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &c, nil
 }
 
-func (s *CommentService) UpdateComment(commentID string, bodyJSON string) (*Comment, error) {
-	if err := s.db.Model(&Comment{}).Where("id = ?", commentID).Update("body_json", bodyJSON).Error; err != nil {
-		return nil, err
+// UpdateComment replaces the body of a comment bound to issueID.
+func (s *CommentService) UpdateComment(issueID, commentID string, bodyJSON string) (*Comment, error) {
+	res := s.db.Model(&Comment{}).Where("id = ? AND issue_id = ? AND is_deleted = ?", commentID, issueID, false).Update("body_json", bodyJSON)
+	if res.Error != nil {
+		return nil, res.Error
 	}
-	return s.GetComment(commentID)
+	if res.RowsAffected == 0 {
+		return nil, ErrCommentNotFound
+	}
+	return s.GetComment(issueID, commentID)
 }
 
 func (s *CommentService) GetCommentsByIDs(commentIDs []string) ([]Comment, error) {
@@ -113,8 +131,16 @@ func (s *CommentService) GetCommentsByIDs(commentIDs []string) ([]Comment, error
 	return comments, err
 }
 
-func (s *CommentService) SoftDeleteComment(commentID string) error {
-	return s.db.Model(&Comment{}).Where("id = ?", commentID).Update("is_deleted", true).Error
+// SoftDeleteComment marks a comment bound to issueID as deleted.
+func (s *CommentService) SoftDeleteComment(issueID, commentID string) error {
+	res := s.db.Model(&Comment{}).Where("id = ? AND issue_id = ? AND is_deleted = ?", commentID, issueID, false).Update("is_deleted", true)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrCommentNotFound
+	}
+	return nil
 }
 
 var mentionRe = regexp.MustCompile(`@(\w+)`)

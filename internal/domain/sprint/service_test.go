@@ -58,8 +58,8 @@ func TestGetBySeqID(t *testing.T) {
 func TestComplete_SetsCompleteDate(t *testing.T) {
 	svc := NewService(newDB(t))
 	sp, _ := svc.CreateFull("proj-1", "S1", "", nil, nil, nil)
-	svc.Start(sp.ID)
-	done, err := svc.Complete(sp.ID, false, nil)
+	svc.Start(sp.ProjectID, sp.ID)
+	done, err := svc.Complete(sp.ProjectID, sp.ID, false, nil)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -91,13 +91,13 @@ func TestComplete_MoveIncompleteToAnotherSprint(t *testing.T) {
 
 	s1, _ := svc.CreateFull("proj-1", "S1", "", nil, nil, nil)
 	s2, _ := svc.CreateFull("proj-1", "S2", "", nil, nil, nil)
-	svc.Start(s1.ID)
+	svc.Start(s1.ProjectID, s1.ID)
 
 	// una issue incompleta (todo) e una completata (done) su s1
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-open', ?, 'st-todo')", s1.ID)
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-done', ?, 'st-done')", s1.ID)
 
-	done, err := svc.Complete(s1.ID, false, &s2.ID)
+	done, err := svc.Complete(s1.ProjectID, s1.ID, false, &s2.ID)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -122,11 +122,11 @@ func TestComplete_MoveIncompleteToBacklog(t *testing.T) {
 	seedIssuesTables(t, db)
 
 	s3, _ := svc.CreateFull("proj-1", "S3", "", nil, nil, nil)
-	svc.Start(s3.ID)
+	svc.Start(s3.ProjectID, s3.ID)
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-open2', ?, 'st-todo')", s3.ID)
 	db.Exec("INSERT INTO issues (id, sprint_id, status_id) VALUES ('iss-done2', ?, 'st-done')", s3.ID)
 
-	if _, err := svc.Complete(s3.ID, true, nil); err != nil {
+	if _, err := svc.Complete(s3.ProjectID, s3.ID, true, nil); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 

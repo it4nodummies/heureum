@@ -56,8 +56,25 @@ func (h *SprintHandler) Create(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(sp)
 }
 
+// projectID resolves the project in the path ({key}), i.e. the one the route
+// decorator authorized; the sprint {id} is then looked up bound to it, so a
+// sprint of another project is a 404 and never touched. Writes the 404 and
+// returns "" when the project does not exist.
+func (h *SprintHandler) projectID(w http.ResponseWriter, r *http.Request) string {
+	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
+	if err != nil {
+		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
+		return ""
+	}
+	return p.ID
+}
+
 func (h *SprintHandler) Get(w http.ResponseWriter, r *http.Request) {
-	sp, err := h.svc.GetByID(r.PathValue("id"))
+	pid := h.projectID(w, r)
+	if pid == "" {
+		return
+	}
+	sp, err := h.svc.GetByID(pid, r.PathValue("id"))
 	if err != nil {
 		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
 		return
@@ -67,12 +84,16 @@ func (h *SprintHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SprintHandler) Update(w http.ResponseWriter, r *http.Request) {
+	pid := h.projectID(w, r)
+	if pid == "" {
+		return
+	}
 	var req struct {
 		Name string `json:"name"`
 		Goal string `json:"goal"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
-	sp, err := h.svc.Update(r.PathValue("id"), req.Name, req.Goal)
+	sp, err := h.svc.Update(pid, r.PathValue("id"), req.Name, req.Goal)
 	if err != nil {
 		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
 		return
@@ -82,7 +103,11 @@ func (h *SprintHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SprintHandler) Start(w http.ResponseWriter, r *http.Request) {
-	sp, err := h.svc.Start(r.PathValue("id"))
+	pid := h.projectID(w, r)
+	if pid == "" {
+		return
+	}
+	sp, err := h.svc.Start(pid, r.PathValue("id"))
 	if err != nil {
 		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
 		return
@@ -92,11 +117,15 @@ func (h *SprintHandler) Start(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SprintHandler) Complete(w http.ResponseWriter, r *http.Request) {
+	pid := h.projectID(w, r)
+	if pid == "" {
+		return
+	}
 	var req struct {
 		MoveOpenToBacklog bool `json:"move_open_to_backlog"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
-	sp, err := h.svc.Complete(r.PathValue("id"), req.MoveOpenToBacklog, nil)
+	sp, err := h.svc.Complete(pid, r.PathValue("id"), req.MoveOpenToBacklog, nil)
 	if err != nil {
 		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
 		return

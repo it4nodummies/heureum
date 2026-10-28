@@ -52,10 +52,17 @@ func (s *Service) CreateFull(projectID, name, goal string, originBoardID *int64,
 	return sp, nil
 }
 
-func (s *Service) GetByID(id string) (*Sprint, error) {
+// ErrNotFound is returned by the project-scoped sprint operations when the
+// sprint id does not exist in that project (missing or belonging to another
+// project — indistinguishable by design).
+var ErrNotFound = errors.New("sprint not found")
+
+// GetByID loads the sprint id of projectID; an id from another project is
+// ErrNotFound.
+func (s *Service) GetByID(projectID, id string) (*Sprint, error) {
 	var sp Sprint
-	if err := s.db.First(&sp, "id = ?", id).Error; err != nil {
-		return nil, errors.New("sprint not found")
+	if err := s.db.First(&sp, "id = ? AND project_id = ?", id, projectID).Error; err != nil {
+		return nil, ErrNotFound
 	}
 	return &sp, nil
 }
@@ -68,8 +75,9 @@ func (s *Service) GetBySeqID(seqID int64) (*Sprint, error) {
 	return &sp, nil
 }
 
-func (s *Service) Update(id, name, goal string) (*Sprint, error) {
-	sp, err := s.GetByID(id)
+// Update renames/re-goals the sprint id of projectID.
+func (s *Service) Update(projectID, id, name, goal string) (*Sprint, error) {
+	sp, err := s.GetByID(projectID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -83,10 +91,11 @@ func (s *Service) Update(id, name, goal string) (*Sprint, error) {
 	return sp, nil
 }
 
-func (s *Service) Start(sprintID string) (*Sprint, error) {
+// Start activates the sprint sprintID of projectID.
+func (s *Service) Start(projectID, sprintID string) (*Sprint, error) {
 	var sp Sprint
-	if err := s.db.First(&sp, "id = ?", sprintID).Error; err != nil {
-		return nil, errors.New("sprint not found")
+	if err := s.db.First(&sp, "id = ? AND project_id = ?", sprintID, projectID).Error; err != nil {
+		return nil, ErrNotFound
 	}
 	now := time.Now()
 	sp.State = StateActive
@@ -104,10 +113,12 @@ func (s *Service) Start(sprintID string) (*Sprint, error) {
 //   - moveToSprintID != nil → riassegnate allo sprint target (UUID)
 //   - altrimenti moveOpenToBacklog → sprint_id NULL (backlog)
 //   - altrimenti restano sullo sprint chiuso
-func (s *Service) Complete(sprintID string, moveOpenToBacklog bool, moveToSprintID *string) (*Sprint, error) {
+//
+// sprintID must belong to projectID, otherwise ErrNotFound and nothing changes.
+func (s *Service) Complete(projectID, sprintID string, moveOpenToBacklog bool, moveToSprintID *string) (*Sprint, error) {
 	var sp Sprint
-	if err := s.db.First(&sp, "id = ?", sprintID).Error; err != nil {
-		return nil, errors.New("sprint not found")
+	if err := s.db.First(&sp, "id = ? AND project_id = ?", sprintID, projectID).Error; err != nil {
+		return nil, ErrNotFound
 	}
 	now := time.Now()
 	sp.State = StateClosed
@@ -181,7 +192,7 @@ func (s *Service) UpdateFull(id string, name, goal, state *string, start, end *t
 			return nil, err
 		}
 	}
-	return s.GetByID(id)
+	return s.GetByID(sp.ProjectID, id)
 }
 
 func (s *Service) DB() *gorm.DB { return s.db }

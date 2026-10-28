@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -161,9 +162,20 @@ func (h *WorklogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusCreated, h.toWorklog(*wl))
 }
 
-// Delete rimuove il worklog identificato dal path param "id".
+// Delete rimuove il worklog "id" dell'issue nel path: un id di un'altra issue
+// (anche di un progetto dove il caller non ha EditIssues) è un 404 secco.
 func (h *WorklogHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.PathValue("id")); err != nil {
+	iss := h.resolve(r)
+	if iss == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"issue not found"}, nil)
+		return
+	}
+	err := h.svc.Delete(iss.ID, r.PathValue("id"))
+	if errors.Is(err, issue.ErrWorklogNotFound) {
+		v3.WriteError(w, http.StatusNotFound, []string{"worklog not found"}, nil)
+		return
+	}
+	if err != nil {
 		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to delete worklog"}, nil)
 		return
 	}
