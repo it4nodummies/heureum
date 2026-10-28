@@ -66,21 +66,29 @@ func (s *Service) Register(email, username, displayName, password string) (*user
 }
 
 // RegisterWithPolicy creates a user honoring the instance signup policy, with
-// one exception: when the users table is empty the registration is always
-// accepted and that first user becomes global admin (bootstrap of a fresh
-// instance). Otherwise a closed policy yields ErrSignupClosed.
+// one exception: when the instance has NO ACTIVE ADMIN (fresh install, or an
+// instance whose only admin was deactivated / lost to an earlier race) the
+// registration is always accepted and that user becomes global admin
+// (bootstrap). Otherwise a closed policy yields ErrSignupClosed.
+//
+// The condition is "no active admin", not "no users": a regular user that
+// landed first must never leave the instance without an admin and without a
+// way to get one — and a zero-admin instance self-heals on the next
+// registration, with the same trust model as a fresh one.
 //
 // Race handling: the count+insert is serialized in-process by bootstrapMu
 // (the bcrypt hash is computed before taking it, so registrations are not
 // serialized behind each other's hashing), and after a bootstrap insert the
-// count is re-checked. If another row got in anyway (multi-replica), the
-// bootstrap grant is withdrawn symmetrically for both policies: the row is
-// deleted and ErrSignupClosed (closed) or ErrBootstrapRaced (open, retryable)
-// is returned. Deleting — rather than demoting — the loser matters when both
-// replicas lose (each sees the other's row): demotion would leave two regular
-// users and no admin with no way to re-trigger the bootstrap, whereas deletion
-// brings the table back to empty so the retry bootstraps cleanly. Fail-safe
-// direction: never two admins, never a stranded zero-admin instance.
+// active-admin count is re-checked. If it is not exactly 1 another replica
+// bootstrapped in the same instant: the grant is withdrawn symmetrically for
+// both policies — this row is deleted and ErrSignupClosed (closed) or
+// ErrBootstrapRaced (open, retryable) is returned. Deleting — rather than
+// demoting — the loser matters when both replicas lose (each sees the
+// other's admin): demotion would leave zero admins, whereas deletion brings
+// the active-admin count back to 0 so the retry bootstraps cleanly. A regular
+// user committed by another replica in the window does not touch the admin
+// count, so the bootstrapper keeps its grant. Fail-safe direction: never two
+// admins, never a stranded zero-admin instance.
 func (s *Service) RegisterWithPolicy(email, username, displayName, password string, signupOpen bool) (*user.User, error) {
 	hashed, err := HashPassword(password)
 	if err != nil {
@@ -90,33 +98,33 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 	s.bootstrapMu.Lock()
 	defer s.bootstrapMu.Unlock()
 
-	count, err := s.countUsers()
+	admins, err := s.countActiveAdmins()
 	if err != nil {
 		return nil, err
 	}
 	if s.bootstrapHook != nil {
 		s.bootstrapHook()
 	}
-	if count > 0 {
+	if admins > 0 {
 		if !signupOpen {
 			return nil, ErrSignupClosed
 		}
 		return s.insert(email, username, displayName, hashed, false)
 	}
 
-	// Bootstrap path: first user is admin.
+	// Bootstrap path: no active admin → this user becomes admin.
 	u, err := s.insert(email, username, displayName, hashed, true)
 	if err != nil {
 		return nil, err
 	}
-	after, err := s.countUsers()
+	after, err := s.countActiveAdmins()
 	if err != nil {
 		return nil, err
 	}
 	if after == 1 {
 		return u, nil
 	}
-	// Someone else got in between the count and the insert: withdraw the grant.
+	// Another admin got in between the count and the insert: withdraw the grant.
 	if err := s.DB.Delete(&user.User{}, "id = ?", u.ID).Error; err != nil {
 		return nil, err
 	}
@@ -126,9 +134,11 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 	return nil, ErrBootstrapRaced
 }
 
-func (s *Service) countUsers() (int64, error) {
+// countActiveAdmins is the bootstrap predicate: the instance needs a
+// bootstrap exactly when this is 0.
+func (s *Service) countActiveAdmins() (int64, error) {
 	var n int64
-	if err := s.DB.Model(&user.User{}).Count(&n).Error; err != nil {
+	if err := s.DB.Model(&user.User{}).Where("is_admin = ? AND is_active = ?", true, true).Count(&n).Error; err != nil {
 		return 0, err
 	}
 	return n, nil

@@ -99,13 +99,13 @@ func TestRegisterWithPolicy_RacedBootstrap_ClosedRemovesLoser(t *testing.T) {
 	}
 }
 
-// Under an open policy the loser is removed too (symmetric with the closed
-// case) and a retryable error is returned. Demoting it instead would, when
-// two replicas both lose (each sees the other's row), leave two regular users
-// and zero admins — and with count > 0 the bootstrap could never re-trigger.
-// Deleting both loser rows brings the table back to empty, so the retry
+// Two replicas both bootstrap (each sees no admin, each inserts an admin):
+// the one that re-checks and finds two active admins deletes its OWN row and
+// returns a retryable error, so exactly one admin remains. Deleting — not
+// demoting — the loser matters when both lose: demotion would leave zero
+// admins; deletion brings the active-admin count back to 0 so the retry
 // bootstraps cleanly.
-func TestRegisterWithPolicy_RacedBootstrap_OpenDeletesLoser(t *testing.T) {
+func TestRegisterWithPolicy_TwoBootstrappers_LoserRetriesAndTableKeepsOneAdmin(t *testing.T) {
 	db := newSharedTestDB(t)
 	svc := NewService(db, "s")
 	svc.bootstrapHook = func() {
@@ -202,5 +202,74 @@ func TestRegisterWithPolicy_ConcurrentBootstrapIsSerialized(t *testing.T) {
 	admin := true
 	if a := countUsers(t, db, &admin); a != 1 {
 		t.Errorf("admins = %d, want 1", a)
+	}
+}
+
+// A regular user committed by another replica (open policy) between the
+// admin count and the bootstrap insert must NOT make the bootstrapper
+// withdraw itself: that would leave the instance with users but no admin,
+// and nothing to re-trigger the bootstrap. The admin keeps its grant; the
+// regular user is untouched.
+func TestRegisterWithPolicy_RacedBootstrap_RegularRegistrantDoesNotStrandAdmin(t *testing.T) {
+	db := newSharedTestDB(t)
+	svc := NewService(db, "s")
+	svc.bootstrapHook = func() {
+		if err := db.Create(&user.User{ID: "racer", Email: "r@x.io", Username: "r", IsAdmin: false, IsActive: true}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	u, err := svc.RegisterWithPolicy("a@x.io", "a", "A", "pw", true)
+	if err != nil {
+		t.Fatalf("bootstrap raced by a regular registrant: err = %v, want success", err)
+	}
+	if !u.IsAdmin {
+		t.Error("bootstrapper must keep the admin grant")
+	}
+	if n := countUsers(t, db, nil); n != 2 {
+		t.Errorf("users = %d, want 2 (nothing withdrawn)", n)
+	}
+	admin := true
+	if n := countUsers(t, db, &admin); n != 1 {
+		t.Errorf("active admins = %d, want exactly 1", n)
+	}
+}
+
+// An instance with users but no ACTIVE admin (e.g. the only admin was
+// deactivated, or an earlier raced bootstrap stranded it) is treated like a
+// fresh one: the next registration is accepted regardless of the signup
+// policy and becomes admin. Once an active admin exists the policy applies
+// again.
+func TestRegisterWithPolicy_StrandedInstanceSelfHeals(t *testing.T) {
+	db := newSharedTestDB(t)
+	svc := NewService(db, "s")
+	for _, u := range []*user.User{
+		{ID: "regular", Email: "reg@x.io", Username: "reg", IsAdmin: false, IsActive: true},
+		{ID: "oldadmin", Email: "old@x.io", Username: "old", IsAdmin: true, IsActive: false},
+	} {
+		if err := db.Create(u).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// IsActive carries gorm `default:true`, so Create silently writes true for
+	// the zero value: deactivate the old admin with an explicit update.
+	if err := db.Model(&user.User{}).Where("id = ?", "oldadmin").Update("is_active", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	u, err := svc.RegisterWithPolicy("a@x.io", "a", "A", "pw", false)
+	if err != nil {
+		t.Fatalf("registration on an instance without an active admin (closed policy): err = %v, want success", err)
+	}
+	if !u.IsAdmin {
+		t.Error("the healing registration must become admin")
+	}
+	if _, err := svc.RegisterWithPolicy("b@x.io", "b", "B", "pw", false); !errors.Is(err, ErrSignupClosed) {
+		t.Fatalf("second registration after the heal (closed policy): err = %v, want ErrSignupClosed", err)
+	}
+	var active int64
+	db.Model(&user.User{}).Where("is_admin = ? AND is_active = ?", true, true).Count(&active)
+	if active != 1 {
+		t.Errorf("active admins = %d, want 1", active)
 	}
 }

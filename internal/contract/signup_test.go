@@ -40,10 +40,10 @@ func newTestServerWithSignup(t *testing.T, signupOpen bool) (*httptest.Server, *
 
 func TestRegister_SignupClosed_Returns403AndBlocksLogin(t *testing.T) {
 	srv, authSvc := newTestServerWithSignup(t, false)
-	// On an empty instance the first registration is always accepted and
-	// becomes admin (bootstrap); the closed policy applies from the second
-	// user on, so seed one first.
-	if _, err := authSvc.Register("existing@example.com", "existing", "Existing", "password123"); err != nil {
+	// While the instance has no active admin a registration is always
+	// accepted and becomes admin (bootstrap); the closed policy applies once
+	// an active admin exists, so bootstrap one first.
+	if _, err := authSvc.RegisterWithPolicy("existing@example.com", "existing", "Existing", "password123", false); err != nil {
 		t.Fatal(err)
 	}
 

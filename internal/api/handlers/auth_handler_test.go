@@ -58,9 +58,11 @@ func TestRegisterUser(t *testing.T) {
 func TestRegisterUser_SignupClosedReturns403AndDoesNotCreateUser(t *testing.T) {
 	h, s := setupAuthHandlerWithSignup(t, false)
 	defer s.Close()
-	// The instance must already have a user: on an empty instance the first
-	// registration is always accepted (bootstrap), see TestRegister_FirstUserBecomesAdminEvenWhenClosed.
-	if _, err := h.svc.Register("existing@example.com", "existing", "Existing", "password123"); err != nil {
+	// The instance must already have an ACTIVE ADMIN: while it has none, a
+	// registration is always accepted and becomes admin (bootstrap), see
+	// TestRegister_FirstUserBecomesAdminEvenWhenClosed. A regular user alone
+	// would not make the closed policy apply.
+	if _, err := h.svc.RegisterWithPolicy("existing@example.com", "existing", "Existing", "password123", false); err != nil {
 		t.Fatal(err)
 	}
 	body := map[string]string{"email": "blocked@example.com", "username": "blockeduser", "password": "password123"}
