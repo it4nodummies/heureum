@@ -201,6 +201,21 @@ func (h *GitHandler) processWebhookEvent(cfg *git.GitProviderConfig, event *git.
 	}
 }
 
+// projectIssue resolves an issue key referenced by an inbound event, but only
+// within the provider's own project. The event is authenticated by THAT
+// project's secret, and any authenticated user can create a project and
+// configure a provider: without this scope, correctly signed events could
+// comment on / link to / auto-transition any issue on the instance. A key
+// from another project is treated exactly like an unknown one (nil, skipped
+// silently) so a stray reference never fails the whole webhook.
+func (h *GitHandler) projectIssue(cfg *git.GitProviderConfig, issueKey string) *issue.Issue {
+	iss, err := h.issueSvc.GetByKey(issueKey)
+	if err != nil || iss.ProjectID != cfg.ProjectID {
+		return nil
+	}
+	return iss
+}
+
 func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.WebhookEvent) {
 	branchIssueKeys := git.ExtractIssueKeys(event.Branch)
 
@@ -209,8 +224,8 @@ func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.Web
 		allKeys := uniqueKeys(append(branchIssueKeys, commitKeys...))
 
 		for _, issueKey := range allKeys {
-			iss, err := h.issueSvc.GetByKey(issueKey)
-			if err != nil {
+			iss := h.projectIssue(cfg, issueKey)
+			if iss == nil {
 				continue
 			}
 			created, err := h.gitConfigSvc.LinkCommit(iss.ID, cfg.ID, commit.SHA, commit.Message, commit.Author)
@@ -221,8 +236,8 @@ func (h *GitHandler) processPushEvent(cfg *git.GitProviderConfig, event *git.Web
 	}
 
 	for _, issueKey := range branchIssueKeys {
-		iss, err := h.issueSvc.GetByKey(issueKey)
-		if err != nil {
+		iss := h.projectIssue(cfg, issueKey)
+		if iss == nil {
 			continue
 		}
 		h.gitConfigSvc.LinkBranch(iss.ID, cfg.ID, event.Branch, event.RepoURL)
@@ -240,8 +255,8 @@ func (h *GitHandler) processPullRequestEvent(cfg *git.GitProviderConfig, event *
 	allKeys := uniqueKeys(append(branchKeys, titleKeys...))
 
 	for _, issueKey := range allKeys {
-		iss, err := h.issueSvc.GetByKey(issueKey)
-		if err != nil {
+		iss := h.projectIssue(cfg, issueKey)
+		if iss == nil {
 			continue
 		}
 
@@ -263,7 +278,14 @@ func (h *GitHandler) processPullRequestEvent(cfg *git.GitProviderConfig, event *
 	}
 }
 
+// autoTransitionIssue moves iss to the first "done" status of projectID's
+// workflow. The issue must belong to that project: a status id from another
+// project's workflow would corrupt the issue (callers already scope lookups
+// with projectIssue; this is the last line of defence).
 func (h *GitHandler) autoTransitionIssue(iss *issue.Issue, projectID string) {
+	if iss == nil || iss.ProjectID != projectID {
+		return
+	}
 	db := h.gitConfigSvc.DB()
 	var statuses []struct {
 		ID       string `gorm:"column:id"`

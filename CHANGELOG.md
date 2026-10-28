@@ -105,6 +105,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Multi-replica first-user bootstrap is race-safe**: the losing replica's row is deleted and the
   client gets a retryable 503 (open policy) or 403 (closed), so two concurrent first registrations
   can never yield two admins or zero admins.
+- **Inbound git webhooks only touch issues of the provider's own project.** Issue keys extracted
+  from commit messages, branch names and PR titles are resolved within the project the provider is
+  configured on; a key from another project is skipped like an unknown one. Previously any user
+  able to create a project could configure a provider with their own secret and, with correctly
+  signed events, add commit comments/links to any issue on the instance and — on "PR merged" —
+  move it to a status of the attacker's workflow.
 
 ## [1.2.0] - 2026-09-23
 
