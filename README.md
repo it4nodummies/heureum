@@ -76,20 +76,44 @@ Only the environment variables actually read by the server are listed below.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|--------------|
-| `APP_SECRET` | yes | — | JWT signing secret |
+| `APP_SECRET` | yes | — | JWT signing secret; also derives the key that encrypts git provider tokens at rest. **Must be at least 32 characters when `APP_ENV=production`** (shorter is a startup error) |
 | `DB_DSN` | yes | — | Database connection string / file path |
 | `APP_PORT` | no | `8080` | HTTP port the API server listens on |
-| `APP_ENV` | no | `development` | Environment name (affects logging) |
-| `APP_BASE_URL` | no | `http://localhost:<APP_PORT>` | Base URL used to build absolute links |
+| `APP_ENV` | no | `development` | Environment name (affects logging, the `APP_SIGNUP` default and the `APP_SECRET` length check) |
+| `APP_BASE_URL` | no | `http://localhost:<APP_PORT>` | Base URL used to build absolute links; its origin is the only one accepted on WebSocket connections |
 | `DB_DRIVER` | no | `postgres` | One of `postgres`, `mysql`, `sqlite` |
 | `REDIS_URL` | no | `redis://localhost:6379/0` | Redis connection URL |
 | `APP_UPLOADS_DIR` | no | `./data/uploads` | Local disk directory where issue attachments are stored |
-| `APP_SIGNUP` | no | `open` | `open` or `closed` — set `closed` to disable public registration |
+| `APP_SIGNUP` | no | `closed` when `APP_ENV=production`, `open` otherwise | `open` or `closed` — whether public registration is enabled. An explicit value always wins over the default; **any other value is a startup error**. Regardless of the policy, the first registration on an instance with **no active admin** is accepted and that user becomes global admin (bootstrap, see below) |
+| `APP_TRUSTED_PROXIES` | no | — | Comma-separated IPs/CIDRs of the reverse proxies in front of the API (e.g. `127.0.0.1,10.42.0.0/16`). Only when the connecting peer is one of them is `X-Forwarded-For` believed — the client is the rightmost non-trusted hop — for auth rate limiting; otherwise the header is ignored and the peer address is the client. A malformed entry is a startup error |
+| `APP_WEBHOOK_ALLOW_PRIVATE_HOSTS` | no | — | Comma-separated hosts, IPs or CIDRs that outgoing webhooks may target even though they resolve to private/loopback/link-local ranges (SSRF guard). A **hostname** entry is trusted wherever it resolves; an **IP/CIDR** entry lifts the restriction only for that address range |
 
 SMTP is wired: set `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` to have the
 worker deliver notification emails (respecting each user's `via_email` preference, once per
 notification); leaving `SMTP_HOST` empty disables email. OAuth and S3 object-storage settings
 are still planned and not yet wired.
+
+### Signup policy and first-admin bootstrap
+
+In production (`APP_ENV=production`) public registration is **closed by default**; in any other
+environment it is open. `APP_SIGNUP=open|closed` overrides the default either way. Whatever the
+policy, when the instance has **no active global admin** (fresh install, or the only admin was
+removed) the next registration is accepted and that user becomes global admin, so a production
+instance is never stranded without an administrator. Once an active admin exists, a closed
+instance only grows through invitations.
+
+### API tokens and git providers
+
+Personal API tokens can be created with an optional expiry, listed and revoked from the profile
+page (or via `GET`/`DELETE /rest/api/3/auth/api-tokens[/{id}]`); an expired or revoked token is
+rejected immediately.
+
+Git provider configuration (`/rest/api/3/project/{key}/git/providers`) is readable by project
+admins only and never returns the access token or the HMAC secret (`has_token` says whether one is
+stored; the token is encrypted at rest with a key derived from `APP_SECRET`). The inbound webhook
+URL (`webhook_url` in the response) carries a dedicated random URL token, distinct from the HMAC
+secret. `webhook_secret` is required and must be at least 16 characters; supported providers are
+`github`, `gitlab`, `forgejo` and `gitea` — `bitbucket` is refused (no signature validator).
 
 Attachments are stored on local disk under `APP_UPLOADS_DIR`; when running in Docker, mount a volume (see below) so uploads survive container restarts.
 
@@ -123,9 +147,11 @@ APP_SECRET="$(openssl rand -hex 32)" \
 ```
 
 The API runs its migrations automatically on first start. Open **http://localhost** and
-create the first account via the sign-up screen (public registration is open by default —
-set `APP_SIGNUP=closed` on the `api` service once your users exist). No demo data is seeded
-in this stack; use the SQLite quick start above if you want the sample project.
+create the first account via the sign-up screen: it becomes the global admin, and since this
+stack runs with `APP_ENV=production` registration is closed from then on (invite further users
+from the admin UI, or set `APP_SIGNUP=open` explicitly). `APP_SECRET` must be at least 32
+characters here. No demo data is seeded in this stack; use the SQLite quick start above if you
+want the sample project.
 
 ### Build locally instead
 
@@ -156,8 +182,9 @@ its own database, its own `APP_SECRET`, and its own hostname:
 - **Docker Compose**: use a distinct Compose project name (`-p`/`COMPOSE_PROJECT_NAME`) per
   tenant stack, and set `API_PORT` to avoid host port collisions between stacks.
 
-For any instance exposed to the public internet, set `APP_SIGNUP=closed` once your users are
-provisioned, so registration doesn't leak into a shared instance.
+Run every internet-facing instance with `APP_ENV=production`: registration is then closed by
+default (the first account still bootstraps as admin), so sign-ups can't leak into a shared
+instance. Set `APP_SIGNUP=open` only when you deliberately want public registration.
 
 ## API compatibility & gap report
 
