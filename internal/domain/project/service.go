@@ -369,7 +369,13 @@ func (s *Service) Update(key string, name, description string) (*Project, error)
 		p.Name = name
 	}
 	p.Description = description
-	if err := s.db.Save(p).Error; err != nil {
+	// issue_counter is owned by issue.Service (bumped in place with
+	// "SET issue_counter = issue_counter + 1" inside the create transaction):
+	// writing the value we loaded back would overwrite any bump that landed
+	// since, sending the counter backwards. Omit rather than a <-:create
+	// permission tag so that in-place UPDATEs through GORM elsewhere keep
+	// working.
+	if err := s.db.Omit("issue_counter").Save(p).Error; err != nil {
 		return nil, err
 	}
 	return p, nil

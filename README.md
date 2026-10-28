@@ -30,7 +30,7 @@ endpoints are covered today.
 |-------------|------------|
 | Backend     | Go, standard `net/http`, GORM, `golang-migrate` |
 | Frontend    | Next.js (App Router) + React, served under the `/app` route prefix |
-| Database    | PostgreSQL or MySQL/MariaDB in production, SQLite for local development |
+| Database    | PostgreSQL or MySQL/MariaDB in production, SQLite for local development. MySQL/MariaDB support is currently incomplete — the migrations don't apply on MySQL yet; use Postgres (recommended) or SQLite |
 | Cache/queue | Redis (optional) |
 | Deployment  | Docker, Kubernetes (Helm) |
 
@@ -81,7 +81,7 @@ Only the environment variables actually read by the server are listed below.
 | `APP_PORT` | no | `8080` | HTTP port the API server listens on |
 | `APP_ENV` | no | `development` | Environment name (affects logging, the `APP_SIGNUP` default and the `APP_SECRET` length check) |
 | `APP_BASE_URL` | no | `http://localhost:<APP_PORT>` | Base URL used to build absolute links; its origin is the only one accepted on WebSocket connections |
-| `DB_DRIVER` | no | `postgres` | One of `postgres`, `mysql`, `sqlite` |
+| `DB_DRIVER` | no | `postgres` | One of `postgres`, `mysql`, `sqlite`. MySQL/MariaDB support is currently incomplete — the migrations don't apply on MySQL yet; use Postgres (recommended) or SQLite |
 | `REDIS_URL` | no | `redis://localhost:6379/0` | Redis connection URL |
 | `APP_UPLOADS_DIR` | no | `./data/uploads` | Local disk directory where issue attachments are stored |
 | `APP_SIGNUP` | no | `closed` when `APP_ENV=production`, `open` otherwise | `open` or `closed` — whether public registration is enabled. An explicit value always wins over the default; **any other value is a startup error**. Regardless of the policy, the first registration on an instance whose **users table is empty** is accepted and that user becomes global admin (bootstrap, see below) |

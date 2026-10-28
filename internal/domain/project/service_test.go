@@ -10,6 +10,7 @@ import (
 
 	"github.com/it4nodummies/heureum/internal/domain/group"
 	"github.com/it4nodummies/heureum/internal/domain/user"
+	"github.com/it4nodummies/heureum/internal/storetest"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
@@ -231,5 +232,61 @@ func TestCreateProject_AddsCreatorAsAdmin(t *testing.T) {
 	role, _ := svc.GetRole(p.ID, "creator-1")
 	if role != RoleAdmin {
 		t.Errorf("creator must be admin, got %q", role)
+	}
+}
+
+// TestUpdateProject_DoesNotResetIssueCounter pins that Update never writes
+// projects.issue_counter back. The counter is owned by issue.Service (bumped
+// with "UPDATE ... SET issue_counter = issue_counter + 1" inside the create
+// transaction), so a project rename that Save()s the struct it loaded would
+// overwrite a bump that landed between its load and its save with the stale
+// value — the counter goes backwards and, once the highest key is deleted,
+// that key would be handed out again.
+//
+// The "concurrent create" is injected into exactly that window with a GORM
+// update callback: it fires after Update has read the project and before its
+// UPDATE statement runs, and bumps the counter through a second pool
+// connection (the test DB is a file, so both connections see the same rows).
+// Real schema (storetest) so issue_counter is the migrated column of 000026.
+func TestUpdateProject_DoesNotResetIssueCounter(t *testing.T) {
+	db := storetest.New(t)
+	svc := NewService(db, nil)
+	p, err := svc.Create("Counter", "CNTR", "", TypeScrum)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	bumped := false
+	err = db.Callback().Update().Before("gorm:update").Register("test:concurrent_issue_create", func(tx *gorm.DB) {
+		if tx.Statement.Table != "projects" || bumped {
+			return
+		}
+		bumped = true
+		// NewDB: a fresh session on the pool, outside Update's transaction.
+		if err := db.Session(&gorm.Session{NewDB: true}).
+			Exec("UPDATE projects SET issue_counter = 5 WHERE id = ?", p.ID).Error; err != nil {
+			t.Errorf("concurrent bump: %v", err)
+		}
+	})
+	if err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+	if _, err := svc.Update("CNTR", "Counter renamed", "desc"); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if !bumped {
+		t.Fatal("test harness: the update callback never fired, the race window was not exercised")
+	}
+
+	var n int64
+	if err := db.Raw("SELECT issue_counter FROM projects WHERE id = ?", p.ID).Scan(&n).Error; err != nil {
+		t.Fatalf("read counter: %v", err)
+	}
+	if n != 5 {
+		t.Fatalf("issue_counter after Update = %d, want 5 (Update wrote the stale counter back)", n)
+	}
+	got, err := svc.GetByKey("CNTR")
+	if err != nil || got.Name != "Counter renamed" || got.Description != "desc" {
+		t.Fatalf("rename not applied: %+v, err=%v", got, err)
 	}
 }
