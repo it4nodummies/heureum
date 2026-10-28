@@ -8,6 +8,7 @@ import (
 	"github.com/it4nodummies/heureum/internal/api"
 	"github.com/it4nodummies/heureum/internal/config"
 	"github.com/it4nodummies/heureum/internal/domain/git"
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 	applog "github.com/it4nodummies/heureum/internal/log"
 	"github.com/it4nodummies/heureum/internal/store"
 )
@@ -40,6 +41,15 @@ func main() {
 	if gitStats.EmptyWebhookSecrets > 0 {
 		logger.Warn("git providers with an empty webhook_secret: their inbound webhooks are rejected until the provider is re-saved with a secret", "count", gitStats.EmptyWebhookSecrets)
 	}
+	// Issue-key counters (R24, migration 000026): projects created before the
+	// per-project counter existed still have issue_counter = 0; derive it once
+	// from the highest existing key number so their sequence continues.
+	backfilled, err := issue.NewService(s.DB).BackfillCounters()
+	if err != nil {
+		logger.Error("issue counter backfill failed", "error", err)
+		log.Fatal(err)
+	}
+	logger.Info("issue counter backfill", "projects_updated", backfilled)
 	router := api.NewRouter(cfg, s.DB)
 	logger.Info("starting server", "port", cfg.Port, "env", cfg.Env)
 	if err := http.ListenAndServe(":"+strconv.Itoa(cfg.Port), router); err != nil {

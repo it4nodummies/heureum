@@ -2,7 +2,10 @@ package issue
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -318,5 +321,245 @@ func TestCreate_EmptyDescriptionStaysEmpty(t *testing.T) {
 	}
 	if stored != "{}" {
 		t.Fatalf("stored description_json = %q, want {}", stored)
+	}
+}
+
+// insertRawIssueKey mimics a fixture (or a pre-counter row) that writes an
+// issue with a hand-picked key, bypassing Service.Create and therefore the
+// per-project counter.
+func insertRawIssueKey(t *testing.T, db *gorm.DB, projectID, key string) {
+	t.Helper()
+	if err := db.Create(&Issue{
+		ID:        "raw-" + key,
+		ProjectID: projectID,
+		Key:       key,
+		Title:     key,
+		SeqID:     nextTestSeqID(),
+	}).Error; err != nil {
+		t.Fatalf("insertRawIssueKey(%q): %v", key, err)
+	}
+}
+
+func readIssueCounter(t *testing.T, db *gorm.DB, projectID string) int64 {
+	t.Helper()
+	var n int64
+	if err := db.Raw("SELECT issue_counter FROM projects WHERE id = ?", projectID).Scan(&n).Error; err != nil {
+		t.Fatalf("read issue_counter: %v", err)
+	}
+	return n
+}
+
+// TestCreate_AssignsSequentialKeysAtomically pins the per-project counter:
+// N concurrent creates in one project yield exactly the keys P-1..P-N, N
+// distinct seq_ids, and leave projects.issue_counter == N. On SQLite the
+// single-writer lock serializes the transactions, so the race proper is
+// only exercised on the Postgres CI leg; the counter column and its final
+// value are asserted on every driver so the test is RED without the
+// migration regardless of scheduling luck.
+func TestCreate_AssignsSequentialKeysAtomically(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "p-atomic")
+	if !db.Migrator().HasColumn("projects", "issue_counter") {
+		t.Fatal("projects.issue_counter missing: migration 000026 not applied")
+	}
+	svc := NewService(db)
+
+	const n = 20
+	keys := make(chan string, n)
+	seqIDs := make(chan int64, n)
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			iss, err := svc.Create("P", "p-atomic", fmt.Sprintf("issue %d", i), "", PriorityMedium, nil, nil)
+			if err != nil {
+				errs <- err
+				return
+			}
+			keys <- iss.Key
+			seqIDs <- iss.SeqID
+		}(i)
+	}
+	wg.Wait()
+	close(keys)
+	close(seqIDs)
+	close(errs)
+	for err := range errs {
+		t.Errorf("Create: %v", err)
+	}
+
+	seenKeys := map[string]bool{}
+	for k := range keys {
+		if seenKeys[k] {
+			t.Errorf("duplicate key %q", k)
+		}
+		seenKeys[k] = true
+	}
+	for i := 1; i <= n; i++ {
+		if k := fmt.Sprintf("P-%d", i); !seenKeys[k] {
+			t.Errorf("key %q never allocated (got %v)", k, seenKeys)
+		}
+	}
+	seenSeq := map[int64]bool{}
+	for s := range seqIDs {
+		if seenSeq[s] {
+			t.Errorf("duplicate seq_id %d", s)
+		}
+		seenSeq[s] = true
+	}
+	if len(seenSeq) != n {
+		t.Errorf("distinct seq_ids = %d, want %d", len(seenSeq), n)
+	}
+	if got := readIssueCounter(t, db, "p-atomic"); got != n {
+		t.Errorf("projects.issue_counter = %d, want %d", got, n)
+	}
+	var rows int64
+	if err := db.Model(&Issue{}).Where("project_id = ?", "p-atomic").Count(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rows != n {
+		t.Errorf("issue rows = %d, want %d", rows, n)
+	}
+}
+
+// TestCreate_PropagatesCounterError: a key cannot be allocated for a project
+// that does not exist. Create must fail with the domain sentinel (not raw DB
+// text from a later FK violation) and must not leave any issue row behind.
+func TestCreate_PropagatesCounterError(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+
+	iss, err := svc.Create("NOPE", "no-such-project", "orphan", "", PriorityMedium, nil, nil)
+	if err == nil {
+		t.Fatalf("Create for a missing project succeeded: %+v", iss)
+	}
+	if !errors.Is(err, ErrProjectNotFound) {
+		t.Errorf("err = %v, want ErrProjectNotFound", err)
+	}
+	var rows int64
+	if err := db.Model(&Issue{}).Count(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Errorf("issue rows after failed Create = %d, want 0 (transaction must roll back)", rows)
+	}
+}
+
+// TestCreate_RollsBackCounterWhenInsertFails: the counter increment and the
+// issue insert live in ONE transaction, so a failed insert (here: a parent_id
+// that violates the FK to issues(id)) must leave the counter untouched and
+// the next successful create must reuse the number.
+func TestCreate_RollsBackCounterWhenInsertFails(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "p-rb")
+	svc := NewService(db)
+
+	bogusParent := "no-such-issue"
+	if _, err := svc.Create("RB", "p-rb", "child of nothing", "", PriorityMedium, &bogusParent, nil); err == nil {
+		t.Fatal("Create with a dangling parent_id succeeded; the real schema enforces the FK")
+	}
+	if got := readIssueCounter(t, db, "p-rb"); got != 0 {
+		t.Errorf("issue_counter after rolled-back create = %d, want 0", got)
+	}
+	iss, err := svc.Create("RB", "p-rb", "first real one", "", PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iss.Key != "RB-1" {
+		t.Errorf("key = %q, want RB-1 (number from the rolled-back attempt must be reused)", iss.Key)
+	}
+}
+
+// TestCreate_ResyncsCounterAfterRawInserts: rows written without going
+// through Create (fixtures, cmd/seed-style raw inserts, pre-000026 data not
+// yet backfilled) leave the counter behind the real max key number. Create
+// must notice the collision inside its transaction, re-sync the counter from
+// the existing keys and still hand out a unique key — never a duplicate.
+func TestCreate_ResyncsCounterAfterRawInserts(t *testing.T) {
+	db := newIssueTestDB(t)
+	createTestProject(t, db, "p-raw")
+	for _, k := range []string{"RAW-1", "RAW-2", "RAW-7"} {
+		insertRawIssueKey(t, db, "p-raw", k)
+	}
+	// A key with a non-numeric suffix must be ignored by the re-sync.
+	insertRawIssueKey(t, db, "p-raw", "RAW-legacy")
+	if got := readIssueCounter(t, db, "p-raw"); got != 0 {
+		t.Fatalf("precondition: counter = %d, want 0", got)
+	}
+	svc := NewService(db)
+
+	iss, err := svc.Create("RAW", "p-raw", "after raw rows", "", PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iss.Key != "RAW-8" {
+		t.Errorf("key = %q, want RAW-8", iss.Key)
+	}
+	if got := readIssueCounter(t, db, "p-raw"); got != 8 {
+		t.Errorf("issue_counter = %d, want 8", got)
+	}
+	next, err := svc.Create("RAW", "p-raw", "and one more", "", PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Key != "RAW-9" {
+		t.Errorf("second key = %q, want RAW-9", next.Key)
+	}
+}
+
+// TestBackfillCounters_FromExistingKeys: the startup backfill (cmd/server)
+// sets issue_counter from the highest numeric key suffix of each project
+// whose counter is still 0, skips projects without issues, is idempotent and
+// never lowers a counter that is already set.
+func TestBackfillCounters_FromExistingKeys(t *testing.T) {
+	db := newIssueTestDB(t)
+	// The backfill derives each project's key prefix from projects.key (unlike
+	// Create, which receives it), so these projects need their real keys.
+	for _, p := range [][2]string{{"p-bf", "BF"}, {"p-empty", "EMPTY"}, {"p-set", "SET"}} {
+		if err := db.Exec(`INSERT INTO projects (id, name, key) VALUES (?, ?, ?)`, p[0], p[0], p[1]).Error; err != nil {
+			t.Fatalf("insert project %s: %v", p[0], err)
+		}
+	}
+	for _, k := range []string{"BF-1", "BF-12", "BF-3"} {
+		insertRawIssueKey(t, db, "p-bf", k)
+	}
+	insertRawIssueKey(t, db, "p-set", "SET-2")
+	if err := db.Exec("UPDATE projects SET issue_counter = 40 WHERE id = ?", "p-set").Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(db)
+
+	updated, err := svc.BackfillCounters()
+	if err != nil {
+		t.Fatalf("BackfillCounters: %v", err)
+	}
+	if updated != 1 {
+		t.Errorf("updated projects = %d, want 1", updated)
+	}
+	if got := readIssueCounter(t, db, "p-bf"); got != 12 {
+		t.Errorf("p-bf counter = %d, want 12", got)
+	}
+	if got := readIssueCounter(t, db, "p-empty"); got != 0 {
+		t.Errorf("p-empty counter = %d, want 0", got)
+	}
+	if got := readIssueCounter(t, db, "p-set"); got != 40 {
+		t.Errorf("p-set counter = %d, want 40 (must not be lowered)", got)
+	}
+
+	again, err := svc.BackfillCounters()
+	if err != nil {
+		t.Fatalf("second BackfillCounters: %v", err)
+	}
+	if again != 0 {
+		t.Errorf("second run updated %d projects, want 0 (idempotent)", again)
+	}
+	iss, err := svc.Create("BF", "p-bf", "after backfill", "", PriorityMedium, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iss.Key != "BF-13" {
+		t.Errorf("key after backfill = %q, want BF-13", iss.Key)
 	}
 }
