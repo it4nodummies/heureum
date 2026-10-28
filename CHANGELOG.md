@@ -104,6 +104,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Automation "add comment" actions write valid ADF.** The comment body was built by formatting
   the text into a JSON literal by hand, which broke on the first quote or newline.
 - The project-create scaffold logs (instead of discarding) a failed rollback delete.
+- **Unknown issue type on create is a 400** with `errors.issuetype` (it surfaced as a 500 after the follow-ups were made transactional); the type must exist and belong to the project.
+- **Removing a workflow status checks the parent first**: a status id from another workflow/project is a 404 before any in-use count, so the 409 guard cannot leak another project's status or issue count.
 
 ### Security
 
