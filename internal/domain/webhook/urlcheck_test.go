@@ -58,6 +58,8 @@ func TestValidateTargetURL(t *testing.T) {
 		{"ipv4-mapped v6 literal", "http://[::ffff:127.0.0.1]", nil, ErrPrivateTarget},
 		{"ipv4-mapped v6 via dns", "http://mapped.example", nil, ErrPrivateTarget},
 		{"cgnat 100.64/10", "http://100.64.0.1", nil, ErrPrivateTarget},
+		{"ipv4-translated v6 (::ffff:0:0/96) embedding loopback", "http://[::ffff:0:7f00:1]/", nil, ErrPrivateTarget},
+		{"this-network 0.0.0.0/8 (not just 0.0.0.0)", "http://0.0.0.1/", nil, ErrPrivateTarget},
 		{"localhost by name", "http://localhost:9000", nil, ErrPrivateTarget},
 		{"localhost subdomain", "http://api.localhost", nil, ErrPrivateTarget},
 		{"any private among resolved", "http://mixed.example.com", nil, ErrPrivateTarget},

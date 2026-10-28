@@ -1,9 +1,7 @@
 package integration
 
 import (
-	"net/http"
 	"testing"
-	"time"
 
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
@@ -35,7 +33,7 @@ func TestDispatcher_EnqueuesPendingDelivery(t *testing.T) {
 	whSvc := webhook.NewService(db)
 	whSvc.Create("proj-1", "https://example.com/hook", "s", []string{"issue_created"})
 
-	d := NewDispatcher(whSvc, nil, &http.Client{Timeout: 5 * time.Second})
+	d := NewDispatcher(whSvc, nil)
 	d.IssueEvent("issue_created", &issue.Issue{ID: "i1", Key: "P-1", Title: "Hello", ProjectID: "proj-1"})
 
 	// La dispatcher NON esegue HTTP: accoda una riga pending nel DB.
@@ -66,7 +64,7 @@ func TestDispatcher_SkipsNonMatchingEvent(t *testing.T) {
 	whSvc := webhook.NewService(db)
 	whSvc.Create("proj-1", "https://b", "", []string{"issue_updated"})
 
-	d := NewDispatcher(whSvc, nil, &http.Client{Timeout: 2 * time.Second})
+	d := NewDispatcher(whSvc, nil)
 	d.IssueEvent("issue_created", &issue.Issue{ID: "i1", Key: "P-1", ProjectID: "proj-1"})
 
 	var cnt int64

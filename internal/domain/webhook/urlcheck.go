@@ -115,15 +115,24 @@ func resolveAllowed(ctx context.Context, host string, allow allowlist) ([]net.IP
 }
 
 // extraDisallowed covers non-public ranges that net.IP's predicates do not:
-// CGNAT, IETF protocol assignments, benchmarking, reserved/broadcast, and the
-// NAT64 well-known prefix (which embeds an IPv4 address and could reach
-// 127.0.0.1 through a translator).
+// "this network" 0/8 (only 0.0.0.0 itself is IsUnspecified), CGNAT, IETF
+// protocol assignments, benchmarking, reserved/broadcast, and every IPv6
+// range that embeds an IPv4 address and could reach 127.0.0.1 through a
+// translator or relay: NAT64 well-known + local-use prefixes, IPv4-translated
+// (SIIT ::ffff:0:0:0/96 — unlike IPv4-mapped ::ffff:0:0/96 it is NOT
+// normalised by To4; the mapped prefix itself must not be listed, since
+// net.ParseCIDR turns it into the IPv4 network 0.0.0.0/0), 6to4 and Teredo.
 var extraDisallowed = mustCIDRs(
+	"0.0.0.0/8",
 	"100.64.0.0/10",
 	"192.0.0.0/24",
 	"198.18.0.0/15",
 	"240.0.0.0/4",
 	"64:ff9b::/96",
+	"64:ff9b:1::/48",
+	"::ffff:0:0:0/96",
+	"2002::/16",
+	"2001::/32",
 )
 
 // isDisallowedIP reports whether ip is loopback, private, link-local,

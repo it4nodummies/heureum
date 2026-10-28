@@ -104,9 +104,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	autoH := handlers.NewAutomationHandler(autoSvc, projectSvc)
 	webhookSvc := webhook.NewService(db)
 	webhookH := handlers.NewWebhookHandler(webhookSvc, projectSvc, cfg.WebhookAllowPrivateHosts)
-	// The dispatcher only enqueues (the worker delivers); it still gets the
-	// hardened client so no code path ever holds a redirect-following one.
-	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc, webhook.NewDeliveryClient(cfg.WebhookAllowPrivateHosts))
+	// The dispatcher only enqueues; the worker (cmd/worker) delivers with the
+	// hardened client, so the API process never holds an outgoing-webhook one.
+	dispatcher := integration.NewDispatcher(webhookSvc, autoSvc)
 	issueSvc.SetEventSink(dispatcher)
 	timelineSvc := timeline.NewService(db)
 	timelineH := handlers.NewTimelineHandler(timelineSvc, projectSvc)
