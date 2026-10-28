@@ -19,6 +19,10 @@ var (
 	// email or username is already in use. Every other create failure is
 	// propagated as-is (an internal error for the handler to log, not echo).
 	ErrAlreadyTaken = errors.New("email or username already taken")
+	// ErrBootstrapRaced is returned when the first-user bootstrap lost a race
+	// against another replica: the registration was undone and the client
+	// should simply retry (it will then follow the normal signup policy).
+	ErrBootstrapRaced = errors.New("registration raced the instance bootstrap, retry")
 	// ErrInvalidCredentials is returned by Login for an unknown email or a
 	// wrong password (indistinguishable on purpose).
 	ErrInvalidCredentials = errors.New("invalid credentials")
@@ -54,7 +58,11 @@ func generateID() string {
 // It is the primitive used by seeding and tests; the HTTP register endpoint
 // goes through RegisterWithPolicy.
 func (s *Service) Register(email, username, displayName, password string) (*user.User, error) {
-	return s.create(email, username, displayName, password, false)
+	hashed, err := HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+	return s.insert(email, username, displayName, hashed, false)
 }
 
 // RegisterWithPolicy creates a user honoring the instance signup policy, with
@@ -62,12 +70,23 @@ func (s *Service) Register(email, username, displayName, password string) (*user
 // accepted and that first user becomes global admin (bootstrap of a fresh
 // instance). Otherwise a closed policy yields ErrSignupClosed.
 //
-// Race handling: the count+insert is serialized in-process by bootstrapMu, and
-// after a bootstrap insert the count is re-checked — if another row got in
-// anyway (multi-replica), the bootstrap grant is withdrawn: the row is deleted
-// and ErrSignupClosed returned when the policy is closed, or demoted to a
-// regular user when it is open. Fail-safe direction: never two admins.
+// Race handling: the count+insert is serialized in-process by bootstrapMu
+// (the bcrypt hash is computed before taking it, so registrations are not
+// serialized behind each other's hashing), and after a bootstrap insert the
+// count is re-checked. If another row got in anyway (multi-replica), the
+// bootstrap grant is withdrawn symmetrically for both policies: the row is
+// deleted and ErrSignupClosed (closed) or ErrBootstrapRaced (open, retryable)
+// is returned. Deleting — rather than demoting — the loser matters when both
+// replicas lose (each sees the other's row): demotion would leave two regular
+// users and no admin with no way to re-trigger the bootstrap, whereas deletion
+// brings the table back to empty so the retry bootstraps cleanly. Fail-safe
+// direction: never two admins, never a stranded zero-admin instance.
 func (s *Service) RegisterWithPolicy(email, username, displayName, password string, signupOpen bool) (*user.User, error) {
+	hashed, err := HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
 	s.bootstrapMu.Lock()
 	defer s.bootstrapMu.Unlock()
 
@@ -82,11 +101,11 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 		if !signupOpen {
 			return nil, ErrSignupClosed
 		}
-		return s.create(email, username, displayName, password, false)
+		return s.insert(email, username, displayName, hashed, false)
 	}
 
 	// Bootstrap path: first user is admin.
-	u, err := s.create(email, username, displayName, password, true)
+	u, err := s.insert(email, username, displayName, hashed, true)
 	if err != nil {
 		return nil, err
 	}
@@ -98,17 +117,13 @@ func (s *Service) RegisterWithPolicy(email, username, displayName, password stri
 		return u, nil
 	}
 	// Someone else got in between the count and the insert: withdraw the grant.
-	if !signupOpen {
-		if err := s.DB.Delete(&user.User{}, "id = ?", u.ID).Error; err != nil {
-			return nil, err
-		}
-		return nil, ErrSignupClosed
-	}
-	if err := s.DB.Model(&user.User{}).Where("id = ?", u.ID).Update("is_admin", false).Error; err != nil {
+	if err := s.DB.Delete(&user.User{}, "id = ?", u.ID).Error; err != nil {
 		return nil, err
 	}
-	u.IsAdmin = false
-	return u, nil
+	if !signupOpen {
+		return nil, ErrSignupClosed
+	}
+	return nil, ErrBootstrapRaced
 }
 
 func (s *Service) countUsers() (int64, error) {
@@ -119,11 +134,8 @@ func (s *Service) countUsers() (int64, error) {
 	return n, nil
 }
 
-func (s *Service) create(email, username, displayName, password string, isAdmin bool) (*user.User, error) {
-	hashed, err := HashPassword(password)
-	if err != nil {
-		return nil, err
-	}
+// insert writes the users row for an already-hashed password.
+func (s *Service) insert(email, username, displayName, hashed string, isAdmin bool) (*user.User, error) {
 	u := &user.User{
 		Email: email, Username: username, DisplayName: displayName,
 		PasswordHash: hashed, IsActive: true, IsAdmin: isAdmin,

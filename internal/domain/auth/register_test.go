@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -98,7 +99,13 @@ func TestRegisterWithPolicy_RacedBootstrap_ClosedRemovesLoser(t *testing.T) {
 	}
 }
 
-func TestRegisterWithPolicy_RacedBootstrap_OpenDemotesLoser(t *testing.T) {
+// Under an open policy the loser is removed too (symmetric with the closed
+// case) and a retryable error is returned. Demoting it instead would, when
+// two replicas both lose (each sees the other's row), leave two regular users
+// and zero admins — and with count > 0 the bootstrap could never re-trigger.
+// Deleting both loser rows brings the table back to empty, so the retry
+// bootstraps cleanly.
+func TestRegisterWithPolicy_RacedBootstrap_OpenDeletesLoser(t *testing.T) {
 	db := newSharedTestDB(t)
 	svc := NewService(db, "s")
 	svc.bootstrapHook = func() {
@@ -108,22 +115,51 @@ func TestRegisterWithPolicy_RacedBootstrap_OpenDemotesLoser(t *testing.T) {
 	}
 
 	u, err := svc.RegisterWithPolicy("a@x.io", "a", "A", "pw", true)
-	if err != nil {
-		t.Fatalf("open policy: the loser is kept as a regular user, got err %v", err)
+	if !errors.Is(err, ErrBootstrapRaced) {
+		t.Fatalf("err = %v (user %v), want ErrBootstrapRaced", err, u)
 	}
-	if u.IsAdmin {
-		t.Error("returned user still flagged admin after demotion")
+	if n := countUsers(t, db, nil); n != 1 {
+		t.Errorf("users = %d, want 1 (the loser's row must be removed, not demoted)", n)
 	}
-	var stored user.User
-	if err := db.First(&stored, "id = ?", u.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if stored.IsAdmin {
-		t.Error("stored user still admin after demotion")
+	var loser int64
+	db.Model(&user.User{}).Where("email = ?", "a@x.io").Count(&loser)
+	if loser != 0 {
+		t.Errorf("loser row still present")
 	}
 	admin := true
 	if n := countUsers(t, db, &admin); n != 1 {
 		t.Errorf("admins = %d, want 1", n)
+	}
+
+	// The retry follows the normal policy: open → regular user.
+	svc.bootstrapHook = nil
+	u, err = svc.RegisterWithPolicy("a@x.io", "a", "A", "pw", true)
+	if err != nil {
+		t.Fatalf("retry after a raced bootstrap: %v", err)
+	}
+	if u.IsAdmin {
+		t.Error("retried registration must not be admin (another admin exists)")
+	}
+}
+
+// The bcrypt hash is computed before bootstrapMu is taken: a password bcrypt
+// refuses (> 72 bytes) fails before the count, so the hook (which runs under
+// the lock, after the count) is never reached and nothing is written.
+func TestRegisterWithPolicy_HashesBeforeBootstrapLock(t *testing.T) {
+	db := newSharedTestDB(t)
+	svc := NewService(db, "s")
+	hookCalled := false
+	svc.bootstrapHook = func() { hookCalled = true }
+
+	tooLong := strings.Repeat("x", 73)
+	if _, err := svc.RegisterWithPolicy("a@x.io", "a", "A", tooLong, true); err == nil {
+		t.Fatal("bcrypt must refuse a 73-byte password")
+	}
+	if hookCalled {
+		t.Error("count/insert section entered although hashing failed: the hash must be computed before the lock")
+	}
+	if n := countUsers(t, db, nil); n != 0 {
+		t.Errorf("users = %d, want 0", n)
 	}
 }
 

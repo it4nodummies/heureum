@@ -48,6 +48,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusConflict, []string{auth.ErrAlreadyTaken.Error()}, nil)
 		return
 	}
+	if errors.Is(err, auth.ErrBootstrapRaced) {
+		// Another replica bootstrapped in the same instant and this row was
+		// withdrawn; the client just retries (then under the normal policy).
+		w.Header().Set("Retry-After", "1")
+		v3.WriteError(w, http.StatusServiceUnavailable, []string{"Registration raced the instance setup, please retry."}, nil)
+		return
+	}
 	if err != nil {
 		// Anything else is an internal failure (DB down, schema drift, ...):
 		// log the detail, never echo it to the client.
