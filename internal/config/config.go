@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type DBConfig struct {
@@ -33,6 +34,11 @@ type Config struct {
 	// AuthRateLimit is the number of auth requests (login+register, shared)
 	// allowed per client IP in a fixed 5-minute window. 0 disables limiting.
 	AuthRateLimit int
+	// WebhookAllowPrivateHosts lists hostnames, IPs and/or CIDRs that outgoing
+	// webhooks may target even though they are private/loopback/link-local
+	// (APP_WEBHOOK_ALLOW_PRIVATE_HOSTS, comma-separated). Empty by default:
+	// every non-public target is refused at create and at delivery (SSRF).
+	WebhookAllowPrivateHosts []string
 }
 
 // minProductionSecretLen is the minimum APP_SECRET length accepted when
@@ -90,6 +96,8 @@ func Load() (*Config, error) {
 		SMTPPass:      os.Getenv("SMTP_PASS"),
 		SMTPFrom:      os.Getenv("SMTP_FROM"),
 		AuthRateLimit: getEnvInt("APP_AUTH_RATELIMIT", 10),
+
+		WebhookAllowPrivateHosts: getEnvList("APP_WEBHOOK_ALLOW_PRIVATE_HOSTS"),
 	}
 
 	if cfg.Secret == "" {
@@ -113,6 +121,18 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+// getEnvList reads a comma-separated env var into a slice: entries are
+// trimmed and empty ones dropped, so "" and " , " both yield nil.
+func getEnvList(key string) []string {
+	var out []string
+	for _, v := range strings.Split(os.Getenv(key), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // getEnvInt reads an integer env var, returning fallback when unset or empty.

@@ -287,3 +287,37 @@ func TestLoad_NonProductionAcceptsShortSecret(t *testing.T) {
 		t.Errorf("Load() in development with APP_SECRET=dev: unexpected error %v", err)
 	}
 }
+
+func TestLoad_WebhookAllowPrivateHosts(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_WEBHOOK_ALLOW_PRIVATE_HOSTS", " forgejo.home.arpa, 192.168.1.0/24 ,,10.0.0.5 ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []string{"forgejo.home.arpa", "192.168.1.0/24", "10.0.0.5"}
+	if len(cfg.WebhookAllowPrivateHosts) != len(want) {
+		t.Fatalf("WebhookAllowPrivateHosts = %v, want %v", cfg.WebhookAllowPrivateHosts, want)
+	}
+	for i := range want {
+		if cfg.WebhookAllowPrivateHosts[i] != want[i] {
+			t.Errorf("WebhookAllowPrivateHosts[%d] = %q, want %q", i, cfg.WebhookAllowPrivateHosts[i], want[i])
+		}
+	}
+}
+
+func TestLoad_WebhookAllowPrivateHostsDefaultEmpty(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret-min-32-chars-long!!")
+	t.Setenv("DB_DSN", "file::memory:?cache=shared")
+	t.Setenv("APP_WEBHOOK_ALLOW_PRIVATE_HOSTS", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.WebhookAllowPrivateHosts) != 0 {
+		t.Errorf("default WebhookAllowPrivateHosts = %v, want empty (no private target allowed)", cfg.WebhookAllowPrivateHosts)
+	}
+}

@@ -126,7 +126,7 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	const baseURL = "http://localhost:8080"
 	commentH := NewCommentHandler(f.commentSvc, f.issueSvc, f.chk, baseURL)
 	worklogH := NewWorklogHandler(f.worklogSvc, f.issueSvc, baseURL)
-	webhookH := NewWebhookHandler(f.webhookSvc, projSvc)
+	webhookH := NewWebhookHandler(f.webhookSvc, projSvc, nil)
 	wfH := NewWorkflowHandler(f.wfSvc, f.issueSvc, projSvc, baseURL)
 	sprintH := NewSprintHandler(f.sprintSvc, projSvc)
 	agileSprintH := NewAgileSprintHandler(f.sprintSvc, nil, f.issueSvc, nil, f.chk, baseURL)

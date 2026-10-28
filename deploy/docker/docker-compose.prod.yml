@@ -37,6 +37,8 @@ services:
       APP_BASE_URL: "${APP_BASE_URL:-http://localhost}"
       # open | closed — the first user of an empty instance can always register (becomes admin)
       APP_SIGNUP: "${APP_SIGNUP:-closed}"
+      # hosts/IPs/CIDRs outgoing webhooks may target although private (SSRF policy escape hatch)
+      APP_WEBHOOK_ALLOW_PRIVATE_HOSTS: "${APP_WEBHOOK_ALLOW_PRIVATE_HOSTS:-}"
       DB_DRIVER: postgres
       DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
       REDIS_URL: "redis://redis:6379/0"
@@ -56,6 +58,8 @@ services:
       DB_DRIVER: postgres
       DB_DSN: "postgres://openjira:openjira@postgres:5432/openjira?sslmode=disable"
       REDIS_URL: "redis://redis:6379/0"
+      # the worker delivers the webhooks: same allowlist as the api
+      APP_WEBHOOK_ALLOW_PRIVATE_HOSTS: "${APP_WEBHOOK_ALLOW_PRIVATE_HOSTS:-}"
     restart: unless-stopped
 
   frontend:

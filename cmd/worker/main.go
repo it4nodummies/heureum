@@ -4,15 +4,14 @@ import (
 	"errors"
 	"log"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/it4nodummies/heureum/internal/config"
-	applog "github.com/it4nodummies/heureum/internal/log"
 	"github.com/it4nodummies/heureum/internal/domain/webhook"
+	applog "github.com/it4nodummies/heureum/internal/log"
 	"github.com/it4nodummies/heureum/internal/mailer"
 	"github.com/it4nodummies/heureum/internal/store"
 	"gorm.io/gorm"
@@ -40,14 +39,16 @@ func main() {
 	defer ticker.Stop()
 
 	mail := mailer.NewFromConfig(*cfg)
-	// Client condiviso per la consegna dei webhook (timeout per non bloccare il tick).
-	whClient := &http.Client{Timeout: 10 * time.Second}
+	// Deliverer condiviso per la consegna dei webhook: client indurito (no
+	// redirect, timeout 10s, dial pinned agli indirizzi validati) + allowlist
+	// APP_WEBHOOK_ALLOW_PRIVATE_HOSTS, la stessa usata dalla create.
+	deliverer := webhook.NewDeliverer(cfg.WebhookAllowPrivateHosts)
 
 	for {
 		select {
 		case <-ticker.C:
 			processNotificationQueue(logger, s.DB, mail)
-			processWebhookDeliveries(logger, s.DB, whClient)
+			processWebhookDeliveries(logger, s.DB, deliverer)
 		case <-quit:
 			logger.Info("worker shutting down gracefully")
 			return
@@ -123,7 +124,11 @@ func nextDelivery(attempts int, success bool, now time.Time) (status string, new
 // processWebhookDeliveries consegna le consegne retryable dalla coda persistente
 // con backoff esponenziale. Sostituisce il vecchio stub log-only e la consegna
 // fire-and-forget della dispatcher: lo stato vive nel DB e sopravvive a un crash.
-func processWebhookDeliveries(logger *slog.Logger, db *gorm.DB, client *http.Client) {
+//
+// Ogni tentativo rivalida l'URL (policy SSRF) prima di inviare: un hook che
+// oggi risolve a un indirizzo privato è un tentativo fallito come gli altri
+// (stesso backoff, poi 'dead'), senza alcuna richiesta HTTP.
+func processWebhookDeliveries(logger *slog.Logger, db *gorm.DB, deliverer *webhook.Deliverer) {
 	svc := webhook.NewService(db)
 	deliveries, err := svc.ListRetryable(time.Now(), 50)
 	if err != nil {
@@ -136,7 +141,7 @@ func processWebhookDeliveries(logger *slog.Logger, db *gorm.DB, client *http.Cli
 			logger.Error("webhook lookup for delivery", "delivery_id", d.ID, "webhook_id", d.WebhookID, "error", err)
 			continue
 		}
-		res := webhook.Deliver(client, *hook, d.EventType, []byte(d.Payload))
+		res := deliverer.Deliver(*hook, d.EventType, []byte(d.Payload))
 		status, attempts, next := nextDelivery(d.Attempts, res.Success, time.Now())
 		if err := svc.MarkDeliveryResult(d.ID, res.StatusCode, res.Success, res.Error, status, attempts, next); err != nil {
 			logger.Error("mark webhook delivery result", "delivery_id", d.ID, "error", err)

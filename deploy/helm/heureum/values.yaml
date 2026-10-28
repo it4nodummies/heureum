@@ -12,6 +12,9 @@ config:
   # Public registration policy: "closed" (default — only the first user of an
   # empty instance can register and becomes admin) or "open".
   signup: "closed"
+  # Outgoing webhooks refuse private/loopback/link-local targets (SSRF). Comma-
+  # separated hosts, IPs or CIDRs to allow anyway, e.g. "forgejo.home.arpa,10.42.0.0/16".
+  webhookAllowPrivateHosts: ""
   smtpHost: ""
 ingress:
   enabled: false

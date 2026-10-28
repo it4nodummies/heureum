@@ -13,10 +13,14 @@ import (
 type WebhookHandler struct {
 	svc        *webhook.Service
 	projectSvc *project.Service
+	// allowPrivateHosts is APP_WEBHOOK_ALLOW_PRIVATE_HOSTS: hosts/CIDRs a
+	// webhook may target even though they are private (self-hosted escape
+	// hatch). Everything else private/loopback/link-local is refused (SSRF).
+	allowPrivateHosts []string
 }
 
-func NewWebhookHandler(svc *webhook.Service, projectSvc *project.Service) *WebhookHandler {
-	return &WebhookHandler{svc: svc, projectSvc: projectSvc}
+func NewWebhookHandler(svc *webhook.Service, projectSvc *project.Service, allowPrivateHosts []string) *WebhookHandler {
+	return &WebhookHandler{svc: svc, projectSvc: projectSvc, allowPrivateHosts: allowPrivateHosts}
 }
 
 // webhookOut è la rappresentazione di risposta (events come array, secret nascosto).
@@ -65,6 +69,13 @@ func (h *WebhookHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
 		v3.WriteError(w, http.StatusBadRequest, []string{"url is required"}, nil)
+		return
+	}
+	// SSRF policy (http/https, no userinfo, no private/loopback/link-local
+	// target unless allowlisted). The reason is deliberately not echoed: it
+	// would leak what the server can resolve/reach. Re-checked at delivery.
+	if err := webhook.ValidateTargetURL(req.URL, h.allowPrivateHosts); err != nil {
+		v3.WriteError(w, http.StatusBadRequest, []string{"invalid webhook URL"}, nil)
 		return
 	}
 	if len(req.Events) == 0 {
