@@ -158,6 +158,10 @@ that demonstrates the hole and FAILS on current `main`.
   - `internal/integration/dispatcher.go:23-27`: the `client *http.Client` field is dead (dispatcher only enqueues) — drop the parameter and the plain `http.Client{}` in `dispatcher_test.go`, and the `NewDeliveryClient` built only to fill it in `router.go`.
   - `.env.example` / `values.yaml`: one sentence making explicit that a **hostname** allow-entry lifts the loopback/link-local restriction too (trusted wherever it resolves), whereas an IP/CIDR entry lifts it only for that range.
   - `cmd/worker/main.go`: a deterministic `ErrInvalidTargetURL` (bad scheme/userinfo) could short-circuit to `dead` instead of 5 retries (optional, noise only).
+- Follow-ups from the Task 6 review (ws test strength — both verified by mutation: the tests pass with the guarded code removed):
+  - `internal/api/ws/hub_test.go` `TestHub_UnregistersOnWriteError` doesn't exercise the write pump (the FIN makes readPump unregister first) → add a unit-level test: register a `Client` whose conn is closed server-side after register, push a message, assert unregister via the write path.
+  - Add a deterministic full-buffer test: `&Client{send: make(chan []byte, sendBufferSize)}` with no pumps, `hub.register` it, send `sendBufferSize+1` messages via `SendToUser`, assert the call returns promptly and `ClientCount` drops to 0 (pins "full buffer drops the client instead of blocking the hub").
+  - `gofmt -w` the 9 pre-existing unformatted files (`attachment_handler.go`, `dashboard_handler.go`, `v3/issue.go`, `board/model.go`, `git/{forgejo,github,gitlab,provider,provider_test}.go`) in a separate `style:` commit.
 - Test: `ratelimit_test.go`, handler tests
 
 - [ ] **Step 1: Failing tests** — `TestClientIP_IgnoresXFFFromUntrustedPeer`, `TestClientIP_UsesRightmostHopFromTrustedProxy`, `TestAttachmentUpload_RejectsOver10MB`, `TestMarkRead_OtherUsersNotificationIs404`, `TestRegister_DoesNotLeakInternalError`.
