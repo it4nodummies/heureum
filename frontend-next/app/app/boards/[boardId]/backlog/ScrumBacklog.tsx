@@ -329,6 +329,10 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
     if (!sourceContainer || !over) return;
 
     const overId = String(over.id);
+    // A handle click released without movement drops the row on itself: no
+    // rank/sprint change (otherwise insertIndex would be computed against a
+    // list without the row and fire a rank-to-end). Kanban does the same.
+    if (overId === activeKey) return;
     // Dropped on the epic panel: assign the epic, no sprint/rank change. The
     // sync effect below re-reads `items` from the server once the drag ends,
     // undoing any cross-container preview onDragOver may have made.

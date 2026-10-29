@@ -8,8 +8,11 @@
 //
 // Search goes through POST /rest/api/3/search/jql scoped to the project
 // (`project = KEY AND summary ~ "…"`, or `key = KEY` when the text looks like
-// an issue key). JQL has no hierarchyLevel field, so candidates are filtered
-// CLIENT-SIDE on `issuetype.hierarchyLevel === childLevel + 1` (with the
+// an issue key). JQL has no hierarchyLevel field: when the parent is an epic
+// the query also narrows on `issuetype = Epic` (otherwise, in a project with
+// more than one page of issues, the default list could miss the epics), and
+// candidates are ALWAYS filtered client-side on
+// `issuetype.hierarchyLevel === childLevel + 1` as a safety net (with the
 // name/subtask fallback of hierarchyLevelOf for older payloads).
 
 import { useEffect, useRef, useState } from "react";
@@ -47,12 +50,15 @@ interface Props {
 
 const KEY_RE = /^[A-Z][A-Z0-9_]*-\d+$/i;
 
-// Builds the project-scoped JQL for a free-text query.
-export function parentSearchJql(projectKey: string, query: string): string {
+// Builds the project-scoped JQL for a free-text query. parentLevel 1 (an
+// epic is being picked) adds `issuetype = Epic` so the server-side page holds
+// only epics; level 0 has no JQL-expressible type set, so it stays open.
+export function parentSearchJql(projectKey: string, query: string, parentLevel: number): string {
   const q = query.trim().replace(/["\\]/g, "");
-  if (!q) return `project = ${projectKey} ORDER BY updated DESC`;
-  if (KEY_RE.test(q)) return `project = ${projectKey} AND key = "${q.toUpperCase()}"`;
-  return `project = ${projectKey} AND summary ~ "${q}" ORDER BY updated DESC`;
+  const scope = parentLevel === 1 ? `project = ${projectKey} AND issuetype = Epic` : `project = ${projectKey}`;
+  if (!q) return `${scope} ORDER BY updated DESC`;
+  if (KEY_RE.test(q)) return `${scope} AND key = "${q.toUpperCase()}"`;
+  return `${scope} AND summary ~ "${q}" ORDER BY updated DESC`;
 }
 
 export function ParentPicker({
@@ -109,7 +115,7 @@ export function ParentPicker({
   const { data, isFetching } = useQuery({
     queryKey: ["parentSearch", projectKey, parentLevel, debouncedQuery],
     queryFn: () =>
-      search.jql(parentSearchJql(projectKey, debouncedQuery), {
+      search.jql(parentSearchJql(projectKey, debouncedQuery, parentLevel), {
         fields: ["summary", "status", "issuetype"],
         maxResults: 100,
       }),

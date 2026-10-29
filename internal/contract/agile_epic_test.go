@@ -206,6 +206,17 @@ func TestAgileEpic_GetAndUpdate(t *testing.T) {
 		t.Errorf("colour changed by a rejected POST: %v", c)
 	}
 
+	// done is idempotent: done:false on an epic already in a todo-category
+	// status is a no-op 200 (nothing transitions, the other fields still
+	// apply), exactly like done:true on one already done (asserted below).
+	e = mustEpicPost(t, srv, jwt, epic, map[string]any{"done": false, "name": "Epic still todo"})
+	if e["done"] != false || e["name"] != "Epic still todo" {
+		t.Errorf("POST done:false on a TO DO epic: done/name = %v/%v, want false/'Epic still todo'", e["done"], e["name"])
+	}
+	if cat := statusCategoryOf(t, srv, jwt, epic); cat != "new" {
+		t.Errorf("status category after no-op done:false = %q, want new", cat)
+	}
+
 	// done:true from TO DO: the default workflow only reaches IN PROGRESS in
 	// one transition → 409, status untouched.
 	expectStatus(t, "POST done:true unreachable", epicPost(t, srv, jwt, epic, map[string]any{"done": true}), http.StatusConflict)
@@ -222,9 +233,12 @@ func TestAgileEpic_GetAndUpdate(t *testing.T) {
 	if cat := statusCategoryOf(t, srv, jwt, epic); cat != "done" {
 		t.Errorf("status category after done:true = %q, want done", cat)
 	}
-	// Already done: no-op 200.
+	// Already done: no-op 200, the status stays in the done category.
 	if e := mustEpicPost(t, srv, jwt, epic, map[string]any{"done": true}); e["done"] != true {
 		t.Errorf("POST done:true twice: done = %v", e["done"])
+	}
+	if cat := statusCategoryOf(t, srv, jwt, epic); cat != "done" {
+		t.Errorf("status category after no-op done:true = %q, want done", cat)
 	}
 	// DONE has no outgoing transition: done:false → 409.
 	expectStatus(t, "POST done:false from DONE", epicPost(t, srv, jwt, epic, map[string]any{"done": false}), http.StatusConflict)
@@ -452,4 +466,41 @@ func TestAgileEpic_RankAndBoard(t *testing.T) {
 	}
 	expectStatus(t, "board epic of another project", doJSON(t, srv, http.MethodGet, jwt, boardPath+"/epic/"+otherEpicID+"/issue", nil), http.StatusNotFound)
 	expectStatus(t, "board epic that is a story", doJSON(t, srv, http.MethodGet, jwt, boardPath+"/epic/"+s1+"/issue", nil), http.StatusNotFound)
+}
+
+// TestAgileEpicNone_ScopedToMemberProjects: GET /epic/none/issue has no path
+// context, so its scope is the caller's project memberships (the same as
+// /search/jql): a plain user sees only the orphan level-0 issues of projects
+// they belong to — never another project's, never an epic, never a story that
+// already has an epic — while a global admin sees every project.
+func TestAgileEpicNone_ScopedToMemberProjects(t *testing.T) {
+	srv, authSvc, db := newTestServerDB(t)
+	alice := registerAndLogin(t, authSvc)
+	bob := registerUserAndLogin(t, authSvc, "bob@example.com", "bob")
+	createProjectViaAPI(t, srv, alice, "EPA", "Alice epics")
+	createProjectViaAPI(t, srv, bob, "EPB", "Bob epics")
+
+	epicA, _ := mustCreateTypedIssue(t, srv, alice, "EPA", "Epic A", "Epic", nil)
+	childA, _ := mustCreateTypedIssue(t, srv, alice, "EPA", "Child A", "Story", map[string]any{"parent": map[string]any{"key": epicA}})
+	orphanA, _ := mustCreateTypedIssue(t, srv, alice, "EPA", "Orphan A", "Story", nil)
+	orphanB, _ := mustCreateTypedIssue(t, srv, bob, "EPB", "Orphan B", "Task", nil)
+
+	const path = "/rest/agile/1.0/epic/none/issue"
+	const spec = "/rest/agile/1.0/epic/none/issue"
+
+	keys, total := issuePage(t, srv, alice, path, spec)
+	if !contains(keys, orphanA) || contains(keys, orphanB) || contains(keys, epicA) || contains(keys, childA) || total != 1 {
+		t.Errorf("alice (member of EPA only) sees %v (total %d), want only %s", keys, total, orphanA)
+	}
+	keys, total = issuePage(t, srv, bob, path, spec)
+	if !contains(keys, orphanB) || contains(keys, orphanA) || total != 1 {
+		t.Errorf("bob (member of EPB only) sees %v (total %d), want only %s", keys, total, orphanB)
+	}
+
+	// A global admin is unscoped: both orphans, still no epic / parented story.
+	promoteAdmin(t, db, "alice@example.com")
+	keys, total = issuePage(t, srv, alice, path, spec)
+	if !contains(keys, orphanA) || !contains(keys, orphanB) || contains(keys, epicA) || contains(keys, childA) || total != 2 {
+		t.Errorf("global admin sees %v (total %d), want exactly %s and %s", keys, total, orphanA, orphanB)
+	}
 }

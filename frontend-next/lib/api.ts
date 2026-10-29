@@ -947,10 +947,16 @@ export interface AgileEpic {
 export const boards = {
   list: () => apiFetch<{ values: AgileBoard[] }>("/rest/agile/1.0/board"),
   // Epics of the board's project (level-1 issues). `done` keeps only epics
-  // whose status category is (true) / is not (false) done.
+  // whose status category is (true) / is not (false) done. The backlog panel
+  // and the board filter show the page as-is (no pagination), so ask for the
+  // handler's cap (100; its default is 50) — a project with more epics than
+  // that is a follow-up.
   epics: (boardId: number, opts: { done?: boolean } = {}) =>
     apiFetch<PagedResponse<AgileEpic>>(
-      `/rest/agile/1.0/board/${boardId}/epic${buildQuery({ done: opts.done === undefined ? undefined : String(opts.done) })}`,
+      `/rest/agile/1.0/board/${boardId}/epic${buildQuery({
+        maxResults: 100,
+        done: opts.done === undefined ? undefined : String(opts.done),
+      })}`,
     ),
   create: (name: string, projectKeyOrId: string, type = "scrum") =>
     apiFetch<AgileBoard>("/rest/agile/1.0/board", {

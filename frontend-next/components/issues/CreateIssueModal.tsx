@@ -100,6 +100,14 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
 
   const [parent, setParent] = useState<ParentOption | null>(null);
   const [epicKey, setEpicKey] = useState("");
+  // Switching project (topbar "Create" with the project picker) must not carry
+  // over the parent/epic chosen for the previous project: the request would
+  // send a stale `parent: {key}` of another project (400 errors.parent at
+  // best) and the Epic select would hold a key its new option list lacks.
+  useEffect(() => {
+    setParent(null);
+    setEpicKey("");
+  }, [effectiveProjectKey]);
 
   // Epics of the project for the optional Epic select: one project-scoped
   // search (issuetype resolves per project), filtered client-side on
