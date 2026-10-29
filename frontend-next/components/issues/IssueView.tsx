@@ -12,6 +12,7 @@ import {
   formatSeconds,
   customFields,
   versions,
+  hierarchyLevelOf,
   type ADFNode,
   type CustomField,
   type IssueCustomValue,
@@ -22,7 +23,9 @@ import { Activity } from "./Activity";
 import { Attachments } from "./Attachments";
 import { DevelopmentPanel } from "./DevelopmentPanel";
 import { LinkedWorkItems } from "./LinkedWorkItems";
-import { Subtasks } from "./Subtasks";
+import { ChildIssues } from "./Subtasks";
+import { EpicColorPicker } from "./EpicColorPicker";
+import { ParentField } from "./ParentField";
 import { TimeTracking } from "./TimeTracking";
 import { UserPicker } from "@/components/common/UserPicker";
 
@@ -255,6 +258,10 @@ export function IssueView({ issueKey }: Props) {
 
   const projectKey = f.project?.key ?? issue.key.split("-")[0];
   const projectName = f.project?.name ?? projectKey;
+  // Jira hierarchy level of this issue (1 epic / 0 story-task-bug / -1
+  // subtask): drives the Epic/Parent field, the colour picker and the
+  // children section.
+  const level = hierarchyLevelOf(f.issuetype);
 
   return (
     <div className="max-w-5xl px-8 py-8">
@@ -341,6 +348,16 @@ export function IssueView({ issueKey }: Props) {
           </button>
           <Field label="Status" value={f.status?.name} />
           <Field label="Type" value={f.issuetype?.name} />
+          {level === 1 ? (
+            <EpicColorPicker epicKey={issue.key} />
+          ) : (
+            <ParentField
+              issueKey={issue.key}
+              projectKey={projectKey}
+              childLevel={level}
+              parent={f.parent ?? null}
+            />
+          )}
 
           {editMode ? (
             <div>
@@ -547,7 +564,7 @@ export function IssueView({ issueKey }: Props) {
 
       <DevelopmentPanel issueKey={issue.key} />
 
-      <Subtasks issueKey={issue.key} projectKey={projectKey} />
+      <ChildIssues issueKey={issue.key} projectKey={projectKey} parentLevel={level} />
 
       <LinkedWorkItems issueKey={issue.key} />
 
