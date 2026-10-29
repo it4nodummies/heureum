@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -715,5 +716,368 @@ func TestCreate_IssueTypeOfOtherProjectIsError(t *testing.T) {
 	own, _ := svc.TypeIDByName("p1", "Bug")
 	if _, err := svc.Create("P1", "p1", "ok", "", PriorityMedium, nil, &own); err != nil {
 		t.Errorf("Create with the project's own type: %v", err)
+	}
+}
+
+// ---- Round 28: hierarchy level, parent validation, SetParent, epic colour ----
+
+// seedHierarchyProject creates a software project with the standard type set
+// and returns the type ids by name (lower-cased), so tests can create issues
+// of a given hierarchy level without hard-coding ids.
+func seedHierarchyProject(t *testing.T, db *gorm.DB, svc *Service, projectID string, names []string) map[string]string {
+	t.Helper()
+	createTestProject(t, db, projectID)
+	if err := svc.SeedStandardTypes(projectID, names); err != nil {
+		t.Fatalf("SeedStandardTypes(%q): %v", projectID, err)
+	}
+	ids := map[string]string{}
+	for _, n := range names {
+		id, err := svc.TypeIDByName(projectID, n)
+		if err != nil {
+			t.Fatalf("TypeIDByName(%q): %v", n, err)
+		}
+		ids[strings.ToLower(n)] = id
+	}
+	return ids
+}
+
+func mustCreate(t *testing.T, svc *Service, projectID, title string, parentID *string, typeID string) *Issue {
+	t.Helper()
+	iss, err := svc.Create(projectID, projectID, title, "", PriorityMedium, parentID, &typeID)
+	if err != nil {
+		t.Fatalf("Create(%q): %v", title, err)
+	}
+	return iss
+}
+
+func typeLevelByName(t *testing.T, db *gorm.DB, projectID, name string) int {
+	t.Helper()
+	var it IssueType
+	if err := db.Where("project_id = ? AND name = ?", projectID, name).First(&it).Error; err != nil {
+		t.Fatalf("load type %q: %v", name, err)
+	}
+	return it.HierarchyLevel
+}
+
+func TestSeedStandardTypes_SetsHierarchyLevels(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+	seedHierarchyProject(t, db, svc, "sw", []string{"Epic", "Story", "Task", "Bug", "Subtask"})
+	seedHierarchyProject(t, db, svc, "biz", []string{"Task", "Bug", "Subtask"})
+
+	want := map[string]map[string]int{
+		"sw":  {"Epic": 1, "Story": 0, "Task": 0, "Bug": 0, "Subtask": -1},
+		"biz": {"Task": 0, "Bug": 0, "Subtask": -1},
+	}
+	for proj, types := range want {
+		for name, level := range types {
+			if got := typeLevelByName(t, db, proj, name); got != level {
+				t.Errorf("%s/%s hierarchy_level = %d, want %d", proj, name, got, level)
+			}
+		}
+	}
+	// The business project never gets an Epic row.
+	var n int64
+	db.Model(&IssueType{}).Where("project_id = ? AND LOWER(name) = 'epic'", "biz").Count(&n)
+	if n != 0 {
+		t.Errorf("business project has %d Epic types, want 0", n)
+	}
+}
+
+func TestCreate_RejectsInvalidParent(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+	types := seedHierarchyProject(t, db, svc, "p1", []string{"Epic", "Story", "Task", "Bug", "Subtask"})
+	other := seedHierarchyProject(t, db, svc, "p2", []string{"Epic", "Story", "Task", "Bug", "Subtask"})
+
+	epic := mustCreate(t, svc, "p1", "Epic A", nil, types["epic"])
+	story := mustCreate(t, svc, "p1", "Story A", &epic.ID, types["story"])
+	otherEpic := mustCreate(t, svc, "p2", "Epic in p2", nil, other["epic"])
+	archived := mustCreate(t, svc, "p1", "Archived epic", nil, types["epic"])
+	if err := svc.Delete(archived.Key); err != nil {
+		t.Fatal(err)
+	}
+	ghost := "no-such-issue"
+
+	var issuesBefore int64
+	db.Model(&Issue{}).Count(&issuesBefore)
+	counterBefore := readIssueCounter(t, db, "p1")
+
+	cases := []struct {
+		name     string
+		childTyp string
+		parent   *string
+		want     error
+	}{
+		{"story under story", "story", &story.ID, ErrParentInvalid},
+		{"subtask under epic", "subtask", &epic.ID, ErrParentInvalid},
+		{"epic with a parent", "epic", &epic.ID, ErrParentInvalid},
+		{"parent in another project", "story", &otherEpic.ID, ErrParentInvalid},
+		{"unknown parent id", "story", &ghost, ErrParentNotFound},
+		{"archived parent", "story", &archived.ID, ErrParentNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			typ := types[tc.childTyp]
+			_, err := svc.Create("p1", "p1", "child", "", PriorityMedium, tc.parent, &typ)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("Create = %v, want %v", err, tc.want)
+			}
+		})
+	}
+	// Untyped child (typeID nil) counts as level 0: it may only hang off an epic.
+	if _, err := svc.Create("p1", "p1", "untyped", "", PriorityMedium, &story.ID, nil); !errors.Is(err, ErrParentInvalid) {
+		t.Errorf("untyped child under a story = %v, want ErrParentInvalid", err)
+	}
+
+	var issuesAfter int64
+	db.Model(&Issue{}).Count(&issuesAfter)
+	if issuesAfter != issuesBefore {
+		t.Errorf("issue rows = %d after rejected creates, want %d (nothing written)", issuesAfter, issuesBefore)
+	}
+	if got := readIssueCounter(t, db, "p1"); got != counterBefore {
+		t.Errorf("issue_counter = %d after rejected creates, want %d (rolled back)", got, counterBefore)
+	}
+}
+
+func TestCreate_AcceptsValidParent(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+	types := seedHierarchyProject(t, db, svc, "p1", []string{"Epic", "Story", "Task", "Bug", "Subtask"})
+
+	epic := mustCreate(t, svc, "p1", "Epic A", nil, types["epic"])
+	story := mustCreate(t, svc, "p1", "Story A", &epic.ID, types["story"])
+	if story.ParentID == nil || *story.ParentID != epic.ID {
+		t.Fatalf("story.ParentID = %v, want %q", story.ParentID, epic.ID)
+	}
+	sub := mustCreate(t, svc, "p1", "Subtask A", &story.ID, types["subtask"])
+	if sub.ParentID == nil || *sub.ParentID != story.ID {
+		t.Fatalf("subtask.ParentID = %v, want %q", sub.ParentID, story.ID)
+	}
+	// An untyped child (level 0) under an epic is fine too.
+	untyped, err := svc.Create("p1", "p1", "untyped", "", PriorityMedium, &epic.ID, nil)
+	if err != nil {
+		t.Fatalf("untyped child under epic: %v", err)
+	}
+	if untyped.ParentID == nil || *untyped.ParentID != epic.ID {
+		t.Errorf("untyped.ParentID = %v, want %q", untyped.ParentID, epic.ID)
+	}
+	children, err := svc.GetChildren(epic.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 2 {
+		t.Errorf("epic children = %d, want 2", len(children))
+	}
+}
+
+func TestSetParent_MovesClearsAndRejectsCycle(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+	types := seedHierarchyProject(t, db, svc, "p1", []string{"Epic", "Story", "Task", "Bug", "Subtask"})
+
+	epic1 := mustCreate(t, svc, "p1", "Epic 1", nil, types["epic"])
+	epic2 := mustCreate(t, svc, "p1", "Epic 2", nil, types["epic"])
+	story := mustCreate(t, svc, "p1", "Story", &epic1.ID, types["story"])
+
+	// Move: epic1 → epic2, with a history row "parent" old→new (keys).
+	if err := svc.SetParent(story.Key, &epic2.ID); err != nil {
+		t.Fatalf("SetParent(move): %v", err)
+	}
+	got, _ := svc.GetByKey(story.Key)
+	if got.ParentID == nil || *got.ParentID != epic2.ID {
+		t.Fatalf("after move ParentID = %v, want %q", got.ParentID, epic2.ID)
+	}
+	var hist []IssueHistory
+	db.Where("issue_id = ? AND field_name = ?", story.ID, "parent").Find(&hist)
+	if len(hist) != 1 {
+		t.Fatalf("parent history rows = %d, want 1", len(hist))
+	}
+	if hist[0].OldValue != epic1.Key || hist[0].NewValue != epic2.Key {
+		t.Errorf("history = %q → %q, want %q → %q", hist[0].OldValue, hist[0].NewValue, epic1.Key, epic2.Key)
+	}
+
+	// Clear: nil → NULL, history new value empty.
+	if err := svc.SetParent(story.Key, nil); err != nil {
+		t.Fatalf("SetParent(clear): %v", err)
+	}
+	var parentIsNull bool
+	db.Raw("SELECT parent_id IS NULL FROM issues WHERE id = ?", story.ID).Scan(&parentIsNull)
+	if !parentIsNull {
+		t.Errorf("parent_id not NULL after clear")
+	}
+	db.Where("issue_id = ? AND field_name = ?", story.ID, "parent").Order("created_at ASC").Find(&hist)
+	if len(hist) != 2 || hist[1].OldValue != epic2.Key || hist[1].NewValue != "" {
+		t.Errorf("clear history = %+v, want second row %q → \"\"", hist, epic2.Key)
+	}
+
+	// Invalid moves through SetParent hit the same rules as Create.
+	if err := svc.SetParent(story.Key, &story.ID); !errors.Is(err, ErrParentInvalid) {
+		t.Errorf("SetParent(self) = %v, want ErrParentInvalid", err)
+	}
+	if err := svc.SetParent(epic1.Key, &epic2.ID); !errors.Is(err, ErrParentInvalid) {
+		t.Errorf("SetParent(epic under epic) = %v, want ErrParentInvalid", err)
+	}
+	ghost := "nope"
+	if err := svc.SetParent(story.Key, &ghost); !errors.Is(err, ErrParentNotFound) {
+		t.Errorf("SetParent(unknown) = %v, want ErrParentNotFound", err)
+	}
+	if err := svc.SetParent("NO-SUCH-KEY", nil); err == nil {
+		t.Errorf("SetParent on a missing issue should fail")
+	}
+
+	// Cycle: story → sub (its own subtask). With consistent levels the level
+	// rule already rejects it, so the chain is made level-consistent on
+	// purpose (the subtask type raised to level 1, as if types were edited
+	// after linking) to prove the walk up parent_id catches the loop.
+	if err := svc.SetParent(story.Key, &epic1.ID); err != nil {
+		t.Fatal(err)
+	}
+	sub := mustCreate(t, svc, "p1", "Sub", &story.ID, types["subtask"])
+	if err := db.Exec("UPDATE issue_types SET hierarchy_level = 1 WHERE id = ?", types["subtask"]).Error; err != nil {
+		t.Fatal(err)
+	}
+	err := svc.SetParent(story.Key, &sub.ID)
+	if !errors.Is(err, ErrParentInvalid) {
+		t.Fatalf("SetParent(cycle) = %v, want ErrParentInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "cycle") {
+		t.Errorf("cycle error should say why: %v", err)
+	}
+	got, _ = svc.GetByKey(story.Key)
+	if got.ParentID == nil || *got.ParentID != epic1.ID {
+		t.Errorf("rejected move changed the parent: %v", got.ParentID)
+	}
+}
+
+func TestCreateEpic_AssignsColor(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+	types := seedHierarchyProject(t, db, svc, "p1", []string{"Epic", "Story"})
+	seedHierarchyProject(t, db, svc, "p2", []string{"Epic"})
+
+	if len(EpicColorKeys) != 14 || EpicColorKeys[0] != "color_1" || EpicColorKeys[13] != "color_14" {
+		t.Fatalf("EpicColorKeys = %v", EpicColorKeys)
+	}
+	for i := 1; i <= 15; i++ {
+		e := mustCreate(t, svc, "p1", fmt.Sprintf("Epic %d", i), nil, types["epic"])
+		want := fmt.Sprintf("color_%d", (i-1)%14+1)
+		if e.EpicColor == nil || *e.EpicColor != want {
+			t.Errorf("epic %d colour = %v, want %q", i, e.EpicColor, want)
+		}
+	}
+	// Non-epics get no colour; another project's round-robin is independent.
+	story := mustCreate(t, svc, "p1", "Story", nil, types["story"])
+	if story.EpicColor != nil {
+		t.Errorf("story colour = %q, want nil", *story.EpicColor)
+	}
+	p2Types, _ := svc.TypeIDByName("p2", "Epic")
+	e := mustCreate(t, svc, "p2", "Epic p2", nil, p2Types)
+	if e.EpicColor == nil || *e.EpicColor != "color_1" {
+		t.Errorf("first epic of p2 colour = %v, want color_1", e.EpicColor)
+	}
+}
+
+func TestBackfillEpicColors_Idempotent(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+	types := seedHierarchyProject(t, db, svc, "p1", []string{"Epic", "Story"})
+
+	// Legacy rows: epics written before the colour existed (NULL), plus one
+	// that already has a colour and a story that must stay untouched.
+	for i, id := range []string{"legacy-e1", "legacy-e2"} {
+		typ := types["epic"]
+		if err := db.Create(&Issue{ID: id, ProjectID: "p1", Key: id, Title: id, TypeID: &typ, SeqID: nextTestSeqID() + int64(i)}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	coloured := mustCreate(t, svc, "p1", "Coloured", nil, types["epic"])
+	story := mustCreate(t, svc, "p1", "Story", nil, types["story"])
+
+	n, err := svc.BackfillEpicColors()
+	if err != nil {
+		t.Fatalf("BackfillEpicColors: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("backfilled = %d, want 2", n)
+	}
+	var rows []Issue
+	db.Where("id IN ?", []string{"legacy-e1", "legacy-e2"}).Order("seq_id ASC").Find(&rows)
+	for _, r := range rows {
+		if r.EpicColor == nil || !strings.HasPrefix(*r.EpicColor, "color_") {
+			t.Errorf("%s colour = %v after backfill", r.ID, r.EpicColor)
+		}
+	}
+	if len(rows) == 2 && rows[0].EpicColor != nil && rows[1].EpicColor != nil && *rows[0].EpicColor == *rows[1].EpicColor {
+		t.Errorf("both legacy epics got %q: round-robin not applied", *rows[0].EpicColor)
+	}
+	after, _ := svc.GetByKey(coloured.Key)
+	if after.EpicColor == nil || *after.EpicColor != *coloured.EpicColor {
+		t.Errorf("already-coloured epic changed: %v → %v", coloured.EpicColor, after.EpicColor)
+	}
+	s, _ := svc.GetByKey(story.Key)
+	if s.EpicColor != nil {
+		t.Errorf("story got a colour: %q", *s.EpicColor)
+	}
+
+	// Second run: nothing to do.
+	n, err = svc.BackfillEpicColors()
+	if err != nil || n != 0 {
+		t.Errorf("second run = (%d, %v), want (0, nil)", n, err)
+	}
+}
+
+func TestEpicProgress_CountsDoneChildren(t *testing.T) {
+	db := newIssueTestDB(t)
+	svc := NewService(db)
+	types := seedHierarchyProject(t, db, svc, "p1", []string{"Epic", "Story", "Subtask"})
+
+	// A minimal workflow with a todo and a done status (raw rows: the
+	// workflow domain is not a dependency of this package).
+	if err := db.Exec(`INSERT INTO workflows (id, project_id, name) VALUES ('wf1', 'p1', 'wf')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range [][2]string{{"st-todo", "todo"}, {"st-done", "done"}} {
+		if err := db.Exec(`INSERT INTO workflow_statuses (id, workflow_id, name, category) VALUES (?, 'wf1', ?, ?)`, st[0], st[0], st[1]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	todo, done := "st-todo", "st-done"
+
+	epic := mustCreate(t, svc, "p1", "Epic", nil, types["epic"])
+	create := func(title string, status *string) *Issue {
+		typ := types["story"]
+		iss, err := svc.CreateWithOptions("p1", "p1", title, "", PriorityMedium, &epic.ID, &typ, CreateOptions{StatusID: status})
+		if err != nil {
+			t.Fatalf("create %q: %v", title, err)
+		}
+		return iss
+	}
+	create("done 1", &done)
+	create("done 2", &done)
+	create("todo", &todo)
+	create("no status", nil)
+	archived := create("archived done", &done)
+	if err := svc.Delete(archived.Key); err != nil {
+		t.Fatal(err)
+	}
+	// A grandchild (subtask of a story) is not a direct child of the epic.
+	stories, _ := svc.GetChildren(epic.ID)
+	sub := types["subtask"]
+	if _, err := svc.CreateWithOptions("p1", "p1", "sub", "", PriorityMedium, &stories[0].ID, &sub, CreateOptions{StatusID: &done}); err != nil {
+		t.Fatal(err)
+	}
+
+	gotDone, gotTotal, err := svc.EpicProgress(epic.ID)
+	if err != nil {
+		t.Fatalf("EpicProgress: %v", err)
+	}
+	if gotDone != 2 || gotTotal != 4 {
+		t.Errorf("EpicProgress = %d/%d, want 2/4", gotDone, gotTotal)
+	}
+	// No children at all → 0/0, no error.
+	lonely := mustCreate(t, svc, "p1", "Lonely epic", nil, types["epic"])
+	if d, tot, err := svc.EpicProgress(lonely.ID); err != nil || d != 0 || tot != 0 {
+		t.Errorf("EpicProgress(lonely) = %d/%d, %v; want 0/0, nil", d, tot, err)
 	}
 }

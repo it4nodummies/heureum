@@ -138,14 +138,33 @@ func (s *Service) CreateWithOptions(projectKey, projectID, title, description st
 func (s *Service) createOnce(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string, opts CreateOptions) (*Issue, error) {
 	var issue *Issue
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// The type must belong to the project; its hierarchy level decides
+		// which parent is acceptable and whether the issue is an epic (no
+		// type = a plain level-0 issue).
+		childLevel := 0
 		if typeID != nil {
-			var n int64
-			if err := tx.Model(&IssueType{}).Where("id = ? AND project_id = ?", *typeID, projectID).Count(&n).Error; err != nil {
-				return err
-			}
-			if n == 0 {
+			var it IssueType
+			err := tx.Where("id = ? AND project_id = ?", *typeID, projectID).First(&it).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrIssueTypeNotFound
 			}
+			if err != nil {
+				return err
+			}
+			childLevel = it.HierarchyLevel
+		}
+		if parentID != nil {
+			if err := validateParent(tx, projectID, childLevel, "", *parentID); err != nil {
+				return err
+			}
+		}
+		var epicColor *string
+		if childLevel == 1 {
+			c, err := nextEpicColor(tx, projectID)
+			if err != nil {
+				return err
+			}
+			epicColor = &c
 		}
 		if opts.AssigneeID != nil {
 			var n int64
@@ -172,6 +191,7 @@ func (s *Service) createOnce(projectKey, projectID, title, description string, p
 			DescriptionJSON: descriptionJSONForStorage(description),
 			Priority:        priority,
 			ParentID:        parentID,
+			EpicColor:       epicColor,
 			TypeID:          typeID,
 			StatusID:        opts.StatusID,
 			AssigneeID:      opts.AssigneeID,
@@ -602,9 +622,13 @@ func (s *Service) ListByProject(projectID string, opts ...ListOption) ([]Issue, 
 	return issues, nil
 }
 
+// GetChildren returns the direct, non-archived children of an issue (the
+// stories of an epic, the subtasks of a story), by position.
 func (s *Service) GetChildren(parentID string) ([]Issue, error) {
 	var issues []Issue
-	s.db.Where("parent_id = ? AND is_archived = ?", parentID, false).Order("position ASC").Find(&issues)
+	if err := s.db.Where("parent_id = ? AND is_archived = ?", parentID, false).Order("position ASC").Find(&issues).Error; err != nil {
+		return nil, err
+	}
 	return issues, nil
 }
 
@@ -720,7 +744,7 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 	case "epic":
 		icon = "epic"
 	}
-	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: icon, IsSubtask: isSubtask}
+	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: icon, IsSubtask: isSubtask, HierarchyLevel: levelForTypeName(name)}
 	if err := s.db.Create(&it).Error; err != nil {
 		return "", err
 	}
@@ -729,7 +753,7 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 
 // SeedStandardTypes crea (idempotente) un tipo issue per ciascun nome nel
 // progetto, delegando a TypeIDByName — che fa get-or-create per nome e inferisce
-// icon/isSubtask. Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
+// icon/isSubtask/hierarchyLevel (levelForTypeName). Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
 // errore incontrato.
 func (s *Service) SeedStandardTypes(projectID string, names []string) error {
 	for _, name := range names {

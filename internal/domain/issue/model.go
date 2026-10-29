@@ -22,6 +22,10 @@ type IssueType struct {
 	Icon        string `gorm:"type:text;default:'task'" json:"icon"`
 	Color       string `gorm:"type:text;default:'#6B7280'" json:"color"`
 	IsSubtask   bool   `gorm:"default:false" json:"is_subtask"`
+	// HierarchyLevel is the type's level in the strict issue hierarchy
+	// (Jira's hierarchyLevel): 1 = Epic, 0 = Story/Task/Bug, -1 = Subtask. A
+	// child's parent must be exactly one level above it (see validateParent).
+	HierarchyLevel int `gorm:"column:hierarchy_level;not null;default:0" json:"hierarchy_level"`
 }
 
 type Issue struct {
@@ -37,6 +41,7 @@ type Issue struct {
 	ReporterID        *string    `gorm:"type:text" json:"reporter_id,omitempty"`
 	ResolutionID      *string    `gorm:"type:text" json:"resolution_id,omitempty"`
 	ParentID          *string    `gorm:"type:text;index" json:"parent_id,omitempty"`
+	EpicColor         *string    `gorm:"column:epic_color" json:"epic_color,omitempty"`
 	SprintID          *string    `gorm:"type:text;index" json:"sprint_id,omitempty"`
 	VersionID         *string    `gorm:"type:text" json:"version_id,omitempty"`
 	StoryPoints       int        `gorm:"default:0" json:"story_points"`

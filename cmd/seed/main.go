@@ -236,7 +236,14 @@ func main() {
 			log.Fatalf("count DEMO-1 subtasks: %v", err)
 		}
 		if childCount == 0 {
-			if _, err := issueSvc.Create(demo.Key, demo.ID, "Investigate flaky assertion", "Sottotask demo per DEMO-1.", issue.PriorityLow, &demo1.ID, nil); err != nil {
+			// The child must be a real Subtask (hierarchy level -1): since
+			// R28 a parent is validated against the child's type level, and
+			// an untyped issue is level 0 — the same as DEMO-1 (a Task).
+			subtaskType, err := issueSvc.TypeIDByName(demo.ID, "Subtask")
+			if err != nil {
+				log.Fatalf("resolve Subtask type: %v", err)
+			}
+			if _, err := issueSvc.Create(demo.Key, demo.ID, "Investigate flaky assertion", "Sottotask demo per DEMO-1.", issue.PriorityLow, &demo1.ID, &subtaskType); err != nil {
 				log.Fatalf("create DEMO-1 subtask: %v", err)
 			}
 			fmt.Println("created demo subtask on DEMO-1")
