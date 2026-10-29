@@ -198,6 +198,14 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
     },
     onSuccess: ({ res, failed }) => {
       qc.invalidateQueries({ queryKey: ["projectIssues", effectiveProjectKey] });
+      if (level === 1) {
+        // A new epic must be offered at once by this modal's Epic select
+        // (["epics", "project", key]), the backlog epic panel and the board
+        // epic filter (["board", id, "epics"]): with the 30s staleTime those
+        // lists would otherwise keep showing the pre-creation page.
+        qc.invalidateQueries({ queryKey: ["epics"] });
+        qc.invalidateQueries({ queryKey: ["board"] });
+      }
       if (failed.length) setCfWarnings(failed);
       if (createAnother) {
         // Real Jira Cloud's "Create another" keeps project/type/priority/
