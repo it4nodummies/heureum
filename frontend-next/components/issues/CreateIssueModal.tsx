@@ -1,10 +1,22 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { issues, meta, projects as projectsApi, customFields, versions, type CustomField } from "@/lib/api";
+import { useEffect, useState } from "react";
+import {
+  issues,
+  meta,
+  projects as projectsApi,
+  customFields,
+  versions,
+  search,
+  fieldError,
+  hierarchyLevelOf,
+  type CustomField,
+  type IssueTypeRef,
+} from "@/lib/api";
 import { textToAdf } from "./adf";
 import { UserPicker } from "@/components/common/UserPicker";
+import { ParentPicker, type ParentOption } from "./ParentPicker";
 
 interface Props {
   projectKey?: string;
@@ -14,10 +26,6 @@ interface Props {
 
 export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
   const qc = useQueryClient();
-  const { data: types } = useQuery({
-    queryKey: ["issuetypes"],
-    queryFn: () => meta.issueTypes(),
-  });
   const { data: priorities } = useQuery({
     queryKey: ["priorities"],
     queryFn: () => meta.priorities(),
@@ -40,7 +48,6 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
   const [priorityId, setPriorityId] = useState("");
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [assigneeLabel, setAssigneeLabel] = useState<string | null>(null);
-  const [parentKey, setParentKey] = useState("");
   const [fixVersionIds, setFixVersionIds] = useState<string[]>([]);
   const [createAnother, setCreateAnother] = useState(false);
   const [justCreatedKey, setJustCreatedKey] = useState<string | null>(null);
@@ -57,7 +64,65 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
   const [cfWarnings, setCfWarnings] = useState<string[]>([]);
 
   const effectiveProjectKey = projectKey ?? selectedProjectKey;
-  const isSubtask = typeName === "Subtask";
+
+  // Issue types come from the PROJECT (Project.issueTypes, Round 28) so a
+  // business project never offers Epic; the global list is only a fallback
+  // while no project is chosen yet (topbar "Create" before picking one).
+  const { data: project } = useQuery({
+    queryKey: ["project", effectiveProjectKey],
+    queryFn: () => projectsApi.get(effectiveProjectKey),
+    enabled: !!effectiveProjectKey,
+  });
+  const { data: globalTypes } = useQuery({
+    queryKey: ["issuetypes"],
+    queryFn: () => meta.issueTypes(),
+    enabled: !effectiveProjectKey,
+  });
+  const types: IssueTypeRef[] = effectiveProjectKey ? project?.issueTypes ?? [] : globalTypes ?? [];
+  // Keep the selected type valid for the project: when the list changes and
+  // the current name isn't in it, fall back to Task (or the first level-0
+  // type, or the first type).
+  useEffect(() => {
+    if (types.length === 0 || types.some((t) => t.name === typeName)) return;
+    const fallback =
+      types.find((t) => t.name === "Task") ?? types.find((t) => hierarchyLevelOf(t) === 0) ?? types[0];
+    setTypeName(fallback.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [types.map((t) => t.name).join("|")]);
+
+  const selectedType = types.find((t) => t.name === typeName);
+  // Level of the type being created: -1 → pick a parent story, 0 → optional
+  // epic, 1 → an epic has no parent. Falls back by name when the project's
+  // types haven't loaded yet.
+  const level = selectedType ? hierarchyLevelOf(selectedType) : hierarchyLevelOf({ name: typeName });
+  const isSubtask = level === -1;
+  const isStandard = level === 0;
+
+  const [parent, setParent] = useState<ParentOption | null>(null);
+  const [epicKey, setEpicKey] = useState("");
+  // Switching project (topbar "Create" with the project picker) must not carry
+  // over the parent/epic chosen for the previous project: the request would
+  // send a stale `parent: {key}` of another project (400 errors.parent at
+  // best) and the Epic select would hold a key its new option list lacks.
+  useEffect(() => {
+    setParent(null);
+    setEpicKey("");
+  }, [effectiveProjectKey]);
+
+  // Epics of the project for the optional Epic select: one project-scoped
+  // search (issuetype resolves per project), filtered client-side on
+  // hierarchyLevel === 1 so a renamed/odd level-1 type is still accepted and a
+  // business project (no Epic type) simply yields an empty list.
+  const { data: epicSearch } = useQuery({
+    queryKey: ["epics", "project", effectiveProjectKey],
+    queryFn: () =>
+      search.jql(`project = ${effectiveProjectKey} AND issuetype = Epic ORDER BY created DESC`, {
+        fields: ["summary", "issuetype", "status"],
+        maxResults: 100,
+      }),
+    enabled: !!effectiveProjectKey && isStandard,
+  });
+  const projectEpics = (epicSearch?.issues ?? []).filter((i) => hierarchyLevelOf(i.fields.issuetype) === 1);
 
   const { data: customFieldDefs } = useQuery({
     queryKey: ["customFields", effectiveProjectKey],
@@ -122,7 +187,8 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
         ...(description.trim() ? { description: textToAdf(description) } : {}),
         ...(priorityId ? { priorityId } : {}),
         ...(assigneeId ? { assigneeId } : {}),
-        ...(isSubtask && parentKey.trim() ? { parentKey: parentKey.trim() } : {}),
+        ...(isSubtask && parent ? { parentKey: parent.key } : {}),
+        ...(isStandard && epicKey ? { parentKey: epicKey } : {}),
         ...(fixVersionIds.length ? { fixVersions: fixVersionIds.map((id) => ({ id })) } : {}),
       });
       // Custom-field values require the freshly-created issue key. Failures here
@@ -132,6 +198,14 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
     },
     onSuccess: ({ res, failed }) => {
       qc.invalidateQueries({ queryKey: ["projectIssues", effectiveProjectKey] });
+      if (level === 1) {
+        // A new epic must be offered at once by this modal's Epic select
+        // (["epics", "project", key]), the backlog epic panel and the board
+        // epic filter (["board", id, "epics"]): with the 30s staleTime those
+        // lists would otherwise keep showing the pre-creation page.
+        qc.invalidateQueries({ queryKey: ["epics"] });
+        qc.invalidateQueries({ queryKey: ["board"] });
+      }
       if (failed.length) setCfWarnings(failed);
       if (createAnother) {
         // Real Jira Cloud's "Create another" keeps project/type/priority/
@@ -139,7 +213,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
         // batch) and only clears the per-issue summary/description/parent.
         setSummary("");
         setDescription("");
-        setParentKey("");
+        setParent(null);
         setFixVersionIds([]);
         setCfValues({});
         setCfMulti({});
@@ -150,7 +224,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
         // clear the per-issue inputs so a re-click can't create a duplicate.
         setSummary("");
         setDescription("");
-        setParentKey("");
+        setParent(null);
         setFixVersionIds([]);
         setCfValues({});
         setCfMulti({});
@@ -169,7 +243,12 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
     create.mutate();
   }
 
-  const canSubmit = !!effectiveProjectKey && !!summary && !requiredMissing && !create.isPending;
+  const canSubmit =
+    !!effectiveProjectKey && !!summary && !requiredMissing && !create.isPending && (!isSubtask || !!parent);
+  // The backend's errors.parent reason (hierarchy violation / unknown parent)
+  // is shown next to the Epic select / Parent picker rather than in the
+  // generic error line.
+  const parentError = create.isError ? fieldError(create.error, "parent") : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -212,7 +291,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           onChange={(e) => setTypeName(e.target.value)}
           className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
         >
-          {(types ?? [{ id: "0", name: "Task", subtask: false }]).map((t) => (
+          {(types.length ? types : [{ id: "0", name: "Task", subtask: false }]).map((t) => (
             <option key={t.id} value={t.name}>
               {t.name}
             </option>
@@ -287,22 +366,50 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           </div>
         </div>
 
-        {isSubtask && (
-          <>
+        {isStandard && (
+          <div className="mb-3">
             <label
-              htmlFor="issue-parent"
+              htmlFor="issue-epic"
               className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
             >
-              Parent issue key
+              Epic
             </label>
-            <input
-              id="issue-parent"
-              value={parentKey}
-              onChange={(e) => setParentKey(e.target.value)}
-              placeholder="e.g. DEMO-1"
-              className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
+            <select
+              id="issue-epic"
+              data-testid="create-modal-epic-select"
+              value={epicKey}
+              onChange={(e) => setEpicKey(e.target.value)}
+              disabled={!effectiveProjectKey}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] disabled:opacity-60"
+            >
+              <option value="">No epic</option>
+              {projectEpics.map((e) => (
+                <option key={e.key} value={e.key}>
+                  {e.key} · {e.fields.summary}
+                </option>
+              ))}
+            </select>
+            {parentError && <p className="mt-1 text-xs text-red-600">{parentError}</p>}
+          </div>
+        )}
+
+        {isSubtask && (
+          <div className="mb-3">
+            <div className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Parent issue
+            </div>
+            <ParentPicker
+              projectKey={effectiveProjectKey}
+              childLevel={-1}
+              value={parent}
+              onChange={setParent}
+              disabled={!effectiveProjectKey}
+              label="Parent issue"
+              inputTestId="create-modal-parent-input"
+              clearTestId="create-modal-parent-clear"
             />
-          </>
+            {parentError && <p className="mt-1 text-xs text-red-600">{parentError}</p>}
+          </div>
         )}
 
         <label
@@ -372,7 +479,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           </p>
         )}
 
-        {create.isError && (
+        {create.isError && !parentError && (
           <p className="mb-3 text-sm text-red-600">
             {create.error instanceof Error ? create.error.message : "Failed to create issue"}
           </p>

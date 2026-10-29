@@ -28,9 +28,42 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   expired or revoked token is rejected with 401 on the next request. Migration `000025` adds
   `api_tokens.expires_at`; the profile page gains an "API tokens" section (create with optional
   expiry, plaintext shown once, list, confirm-guarded revoke).
+- **Epics with a real hierarchy.** Issue types carry a hierarchy level (Epic 1, Story/Task/Bug 0,
+  Subtask −1; migration `000027` adds `issue_types.hierarchy_level`, backfilled from the type name /
+  subtask flag, and `issues.epic_color`). `POST /rest/api/3/issue` accepts `fields.parent {key|id}`
+  and `PUT /rest/api/3/issue/{key}` accepts `fields.parent {key|id}` or `null` to move/clear the
+  parent (the change is logged in the changelog). `fields.parent` now carries the parent's own
+  `fields` (summary, status, issuetype, priority), `issuetype` exposes `hierarchyLevel`, and
+  `GET /rest/api/3/project/{key}` returns the project's `issueTypes`.
+- **Epic colour.** Every epic gets one of Jira's 14 colour keys (`color_1`…`color_14`, round-robin
+  per project) at creation; existing epics are coloured by an idempotent startup backfill. The
+  epic's detail page has a 14-swatch picker.
+- **Agile Epic API** (`/rest/agile/1.0`): `POST /epic/{id}` (name/summary, `color {key}`, `done` —
+  moves the epic through one available workflow transition to the first done / to-do status,
+  validators and post-functions included; a no-op when it is already in that category, 409 when no
+  such transition exists), `GET/POST /epic/{id}/issue` (move stories/tasks/bugs of the same project
+  into the epic, all-or-nothing), `GET/POST /epic/none/issue` (orphans; remove from epic),
+  `PUT /epic/{id}/rank`, `GET /board/{id}/epic` (with `done` filter, `color`, `self`),
+  `GET /board/{id}/epic/{id}/issue` and `GET /board/{id}/epic/none/issue`.
+- **JQL `parent`** (alias `"Epic Link"`): `parent = KEY`, `!=`, `in`, `not in`, `is empty`,
+  `is not empty`, by key or id.
+- **Epic experience in the UI.** Issue detail: an Epic (on stories/tasks/bugs) or Parent (on
+  subtasks) field with a same-project picker and a clear action, a child-issues section with a
+  progress bar on epics; create modal: Epic select for standard types, parent picker for subtasks,
+  issue types taken from the project (business projects offer no Epic). Backlog (scrum and kanban):
+  an epic panel with "All issues" / "Issues without epic" / per-epic filters, done/total progress,
+  drag a row onto an epic to assign it, inline "Create epic"; epic lozenge on backlog rows and board
+  cards; board: epic quick filter and epic swimlanes with the epic's name and colour. The demo seed
+  now includes an epic with two children.
 
 ### Changed
 
+- **Parent links are validated.** Creating or updating an issue with a `parent` that does not exist,
+  is archived, belongs to another project, sits at the wrong hierarchy level (a story under a story,
+  a subtask under an epic, an epic with any parent) or would create a cycle is now a **400** with
+  `errors.parent`. Previously an unknown parent was silently dropped and no level/project check
+  existed. The same rules apply to the agile epic routes (`POST /epic/{id}/issue` rejects the whole
+  batch if one issue is invalid).
 - **Signup is closed by default in production.** With `APP_ENV=production` and `APP_SIGNUP` unset,
   public registration is disabled; outside production it stays open. An explicit
   `APP_SIGNUP=open|closed` always wins, and **any other value is now a startup error**.

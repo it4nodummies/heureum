@@ -308,3 +308,66 @@ func TestFilters_CRUDConformsToContract(t *testing.T) {
 		t.Fatalf("DELETE /filter/%s status = %d, want 204: %s", id, resD.StatusCode, b)
 	}
 }
+
+// searchKeys runs GET /search/jql with the given JQL, validates the response
+// against the spec and returns the keys of the matched issues.
+func searchKeys(t *testing.T, srv *httptest.Server, jwt, jql string) []string {
+	t.Helper()
+	q := url.Values{"jql": {jql}}
+	res := doJSON(t, srv, http.MethodGet, jwt, "/rest/api/3/search/jql?"+q.Encode(), nil)
+	body, raw := decodeBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /search/jql %q: status %d body %s", jql, res.StatusCode, raw)
+	}
+	v := MustLoad(t, specPath)
+	if err := v.ValidateResponse(http.MethodGet, "/rest/api/3/search/jql", res.StatusCode, res.Header, strings.NewReader(string(raw))); err != nil {
+		t.Errorf("GET /search/jql %q non conforme: %v", jql, err)
+	}
+	issues, _ := body["issues"].([]any)
+	keys := make([]string, 0, len(issues))
+	for _, it := range issues {
+		m, _ := it.(map[string]any)
+		k, _ := m["key"].(string)
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// Round 28 — JQL `parent` (and the Jira-classic "Epic Link" alias) over the
+// real search endpoint: an epic with two stories plus an orphan story.
+func TestSearchJQL_Parent(t *testing.T) {
+	srv, authSvc := newTestServer(t)
+	jwt := registerAndLogin(t, authSvc)
+	createProjectViaAPI(t, srv, jwt, "JPQ", "JQL Parent Proj")
+
+	epic, epicID := mustCreateTypedIssue(t, srv, jwt, "JPQ", "Epic", "Epic", nil)
+	s1, _ := mustCreateTypedIssue(t, srv, jwt, "JPQ", "Story one", "Story", map[string]any{"parent": map[string]any{"key": epic}})
+	s2, _ := mustCreateTypedIssue(t, srv, jwt, "JPQ", "Story two", "Story", map[string]any{"parent": map[string]any{"key": epic}})
+	orphan, _ := mustCreateTypedIssue(t, srv, jwt, "JPQ", "Orphan story", "Story", nil)
+
+	want := []string{s1, s2}
+	cases := map[string][]string{
+		`parent = ` + epic:                             want,
+		`parent = ` + epicID:                           want,
+		`parent in (` + epic + `)`:                     want,
+		`"Epic Link" = ` + epic:                        want,
+		`parent is empty AND issuetype = Story`:        {orphan},
+		`parent is not empty`:                          want,
+		`parent != ` + epic + ` AND issuetype = Story`: {},
+		`parent = JPQ-9999`:                            {},
+	}
+	for jql, wantKeys := range cases {
+		got := searchKeys(t, srv, jwt, jql)
+		if strings.Join(got, ",") != strings.Join(wantKeys, ",") {
+			t.Errorf("%s: got %v, want %v", jql, got, wantKeys)
+		}
+	}
+
+	// Unsupported hierarchy function stays a 400, not a silent empty result.
+	q := url.Values{"jql": {"parentEpic = " + epic}}
+	res := doJSON(t, srv, http.MethodGet, jwt, "/rest/api/3/search/jql?"+q.Encode(), nil)
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("parentEpic: status %d, want 400", res.StatusCode)
+	}
+}

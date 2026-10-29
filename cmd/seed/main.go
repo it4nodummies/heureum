@@ -164,6 +164,49 @@ func main() {
 	if err := s.DB.Model(&issue.Issue{}).Where("project_id = ? AND (type_id IS NULL OR type_id = '')", demo.ID).Update("type_id", taskType.ID).Error; err != nil {
 		log.Fatalf("assign issue type: %v", err)
 	}
+
+	// Hierarchy demo (R28, idempotent): DEMO gets an Epic (level 1) and a Story
+	// (level 0) type — SeedStandardTypes is get-or-create by name and sets
+	// hierarchy_level — plus one epic with two level-0 children, so the epic
+	// experience (parent field, backlog epic panel, board epic filter) has data
+	// out of the box. Guarded on the epic's title like the DEMO-1 subtask block;
+	// the issues are created before the workflow block below, so the "assign
+	// status" update gives them the initial TO DO like every other demo issue.
+	if err := issueSvc.SeedStandardTypes(demo.ID, []string{"Epic", "Story"}); err != nil {
+		log.Fatalf("seed hierarchy issue types: %v", err)
+	}
+	const demoEpicTitle = "Onboarding revamp"
+	var epicCount int64
+	if err := s.DB.Model(&issue.Issue{}).Where("project_id = ? AND title = ?", demo.ID, demoEpicTitle).Count(&epicCount).Error; err != nil {
+		log.Fatalf("count demo epic: %v", err)
+	}
+	if epicCount == 0 {
+		epicType, err := issueSvc.TypeIDByName(demo.ID, "Epic")
+		if err != nil {
+			log.Fatalf("resolve Epic type: %v", err)
+		}
+		storyType, err := issueSvc.TypeIDByName(demo.ID, "Story")
+		if err != nil {
+			log.Fatalf("resolve Story type: %v", err)
+		}
+		epic, err := issueSvc.Create(demo.Key, demo.ID, demoEpicTitle, "Rifacimento del percorso di onboarding dei nuovi utenti.", issue.PriorityHigh, nil, &epicType)
+		if err != nil {
+			log.Fatalf("create demo epic: %v", err)
+		}
+		children := []struct {
+			title, desc, typeID string
+		}{
+			{"Welcome e-mail", "E-mail di benvenuto inviata alla registrazione.", storyType},
+			{"Profile wizard", "Procedura guidata per completare il profilo.", taskType.ID},
+		}
+		for _, c := range children {
+			typeID := c.typeID
+			if _, err := issueSvc.Create(demo.Key, demo.ID, c.title, c.desc, issue.PriorityMedium, &epic.ID, &typeID); err != nil {
+				log.Fatalf("create demo epic child %q: %v", c.title, err)
+			}
+		}
+		fmt.Printf("created demo epic %s with %d children\n", epic.Key, len(children))
+	}
 	// Workflow di default per DEMO (idempotente). project.Service.Create non
 	// crea un workflow (lo fa solo l'handler HTTP di creazione progetto), quindi
 	// il seed deve garantirlo esplicitamente: senza workflow/status la board
@@ -236,7 +279,14 @@ func main() {
 			log.Fatalf("count DEMO-1 subtasks: %v", err)
 		}
 		if childCount == 0 {
-			if _, err := issueSvc.Create(demo.Key, demo.ID, "Investigate flaky assertion", "Sottotask demo per DEMO-1.", issue.PriorityLow, &demo1.ID, nil); err != nil {
+			// The child must be a real Subtask (hierarchy level -1): since
+			// R28 a parent is validated against the child's type level, and
+			// an untyped issue is level 0 — the same as DEMO-1 (a Task).
+			subtaskType, err := issueSvc.TypeIDByName(demo.ID, "Subtask")
+			if err != nil {
+				log.Fatalf("resolve Subtask type: %v", err)
+			}
+			if _, err := issueSvc.Create(demo.Key, demo.ID, "Investigate flaky assertion", "Sottotask demo per DEMO-1.", issue.PriorityLow, &demo1.ID, &subtaskType); err != nil {
 				log.Fatalf("create DEMO-1 subtask: %v", err)
 			}
 			fmt.Println("created demo subtask on DEMO-1")

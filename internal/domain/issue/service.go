@@ -138,14 +138,33 @@ func (s *Service) CreateWithOptions(projectKey, projectID, title, description st
 func (s *Service) createOnce(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string, opts CreateOptions) (*Issue, error) {
 	var issue *Issue
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// The type must belong to the project; its hierarchy level decides
+		// which parent is acceptable and whether the issue is an epic (no
+		// type = a plain level-0 issue).
+		childLevel := 0
 		if typeID != nil {
-			var n int64
-			if err := tx.Model(&IssueType{}).Where("id = ? AND project_id = ?", *typeID, projectID).Count(&n).Error; err != nil {
-				return err
-			}
-			if n == 0 {
+			var it IssueType
+			err := tx.Where("id = ? AND project_id = ?", *typeID, projectID).First(&it).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrIssueTypeNotFound
 			}
+			if err != nil {
+				return err
+			}
+			childLevel = it.HierarchyLevel
+		}
+		if parentID != nil {
+			if err := validateParent(tx, projectID, childLevel, "", *parentID); err != nil {
+				return err
+			}
+		}
+		var epicColor *string
+		if childLevel == 1 {
+			c, err := nextEpicColor(tx, projectID)
+			if err != nil {
+				return err
+			}
+			epicColor = &c
 		}
 		if opts.AssigneeID != nil {
 			var n int64
@@ -172,6 +191,7 @@ func (s *Service) createOnce(projectKey, projectID, title, description string, p
 			DescriptionJSON: descriptionJSONForStorage(description),
 			Priority:        priority,
 			ParentID:        parentID,
+			EpicColor:       epicColor,
 			TypeID:          typeID,
 			StatusID:        opts.StatusID,
 			AssigneeID:      opts.AssigneeID,
@@ -602,9 +622,13 @@ func (s *Service) ListByProject(projectID string, opts ...ListOption) ([]Issue, 
 	return issues, nil
 }
 
+// GetChildren returns the direct, non-archived children of an issue (the
+// stories of an epic, the subtasks of a story), by position.
 func (s *Service) GetChildren(parentID string) ([]Issue, error) {
 	var issues []Issue
-	s.db.Where("parent_id = ? AND is_archived = ?", parentID, false).Order("position ASC").Find(&issues)
+	if err := s.db.Where("parent_id = ? AND is_archived = ?", parentID, false).Order("position ASC").Find(&issues).Error; err != nil {
+		return nil, err
+	}
 	return issues, nil
 }
 
@@ -720,7 +744,7 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 	case "epic":
 		icon = "epic"
 	}
-	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: icon, IsSubtask: isSubtask}
+	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: icon, IsSubtask: isSubtask, HierarchyLevel: levelForTypeName(name)}
 	if err := s.db.Create(&it).Error; err != nil {
 		return "", err
 	}
@@ -729,7 +753,7 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 
 // SeedStandardTypes crea (idempotente) un tipo issue per ciascun nome nel
 // progetto, delegando a TypeIDByName — che fa get-or-create per nome e inferisce
-// icon/isSubtask. Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
+// icon/isSubtask/hierarchyLevel (levelForTypeName). Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
 // errore incontrato.
 func (s *Service) SeedStandardTypes(projectID string, names []string) error {
 	for _, name := range names {
@@ -800,6 +824,84 @@ func WithSprint(sprintID string) ListOption {
 
 func WithNotArchived() ListOption {
 	return func(db *gorm.DB) *gorm.DB { return db.Where("is_archived = ?", false) }
+}
+
+// WithParent restricts to the direct children of parentID.
+func WithParent(parentID string) ListOption {
+	return func(db *gorm.DB) *gorm.DB { return db.Where("parent_id = ?", parentID) }
+}
+
+// WithNoParent restricts to issues without a parent (not in any epic, for a
+// level-0 issue).
+func WithNoParent() ListOption {
+	return func(db *gorm.DB) *gorm.DB { return db.Where("parent_id IS NULL") }
+}
+
+// WithHierarchyLevel restricts to issues whose type sits at the given
+// hierarchy level (1 epic, 0 story/task/bug, -1 subtask). An issue without a
+// type is a plain level-0 issue, so level 0 includes NULL type_id. Expressed
+// as a subquery (no JOIN) so it composes with the other options and with a
+// compiled JQL clause without column ambiguity.
+func WithHierarchyLevel(level int) ListOption {
+	return func(db *gorm.DB) *gorm.DB {
+		sub := db.Session(&gorm.Session{NewDB: true}).Model(&IssueType{}).Select("id").Where("hierarchy_level = ?", level)
+		if level == 0 {
+			return db.Where("(type_id IS NULL OR type_id IN (?))", sub)
+		}
+		return db.Where("type_id IN (?)", sub)
+	}
+}
+
+// WithProjectScope restricts to the projects returned by scope (e.g.
+// project.Service.MembershipSubquery); a nil scope means no restriction
+// (global admin).
+func WithProjectScope(scope *gorm.DB) ListOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if scope == nil {
+			return db
+		}
+		return db.Where("issues.project_id IN (?)", scope)
+	}
+}
+
+// WithWhere adds a raw clause with placeholders (a compiled JQL WHERE).
+// An empty clause is a no-op.
+func WithWhere(where string, args ...any) ListOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if where == "" {
+			return db
+		}
+		return db.Where(where, args...)
+	}
+}
+
+// ListPage returns one page of non-archived issues matching opts, ordered by
+// order ("position ASC" when empty), plus the total count before paging.
+// limit <= 0 returns no rows (count only). Used by the agile epic issue lists,
+// whose scope is not a single project.
+func (s *Service) ListPage(offset, limit int, order string, opts ...ListOption) ([]Issue, int, error) {
+	base := s.db.Model(&Issue{}).Where("is_archived = ?", false)
+	for _, o := range opts {
+		base = o(base)
+	}
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	issues := []Issue{}
+	if limit <= 0 {
+		return issues, int(total), nil
+	}
+	if order == "" {
+		order = "position ASC"
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if err := base.Order(order).Offset(offset).Limit(limit).Find(&issues).Error; err != nil {
+		return nil, 0, err
+	}
+	return issues, int(total), nil
 }
 
 // ExportRow is a flattened, human-readable issue row for CSV export: the

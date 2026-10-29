@@ -50,6 +50,14 @@ func main() {
 		log.Fatal(err)
 	}
 	logger.Info("issue counter backfill", "projects_updated", backfilled)
+	// Epic colours (R28, migration 000027): epics created before the colour
+	// existed get one round-robin per project; coloured epics are untouched.
+	coloured, err := issue.NewService(s.DB).BackfillEpicColors()
+	if err != nil {
+		logger.Error("epic colour backfill failed", "error", err)
+		log.Fatal(err)
+	}
+	logger.Info("epic colour backfill", "epics_updated", coloured)
 	router := api.NewRouter(cfg, s.DB)
 	logger.Info("starting server", "port", cfg.Port, "env", cfg.Env)
 	if err := http.ListenAndServe(":"+strconv.Itoa(cfg.Port), router); err != nil {

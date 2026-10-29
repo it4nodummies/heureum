@@ -18,11 +18,25 @@ type ProjectRef struct {
 	Name string `json:"name"`
 }
 
-// ParentRef è la rappresentazione v3 minimale dell'issue padre.
+// ParentRef è la rappresentazione v3 dell'issue padre (fields.parent). In
+// Jira il parent porta anche un sottoinsieme dei propri fields (summary,
+// status, issuetype, priority) così liste e card mostrano il nome dell'epic
+// senza una chiamata per riga. IssueBean.fields è free-form nel contratto
+// (additionalProperties: {}), quindi la forma non è vincolata dallo schema.
 type ParentRef struct {
-	ID   string `json:"id"`
-	Key  string `json:"key"`
-	Self string `json:"self"`
+	ID     string        `json:"id"`
+	Key    string        `json:"key"`
+	Self   string        `json:"self"`
+	Fields *ParentFields `json:"fields,omitempty"`
+}
+
+// ParentFields è il sottoinsieme di fields del parent emesso dentro
+// fields.parent (Round 28).
+type ParentFields struct {
+	Summary   string        `json:"summary"`
+	Status    *StatusRef    `json:"status,omitempty"`
+	IssueType *IssueTypeRef `json:"issuetype,omitempty"`
+	Priority  *PriorityRef  `json:"priority,omitempty"`
 }
 
 // TimeTracking modella il campo timetracking di IssueFields.
@@ -128,10 +142,10 @@ func JiraIssue(in IssueInput) IssueBean {
 	}
 
 	if in.IssueType != nil {
-		it := JiraIssueType(in.IssueType.ID, in.IssueType.Name, in.BaseURL+"/static/issuetype-"+in.IssueType.Icon+".svg", in.IssueType.IsSubtask, in.BaseURL)
+		it := JiraIssueTypeFrom(*in.IssueType, in.BaseURL)
 		fields.IssueType = &it
 	} else {
-		it := JiraIssueType("0", "Task", in.BaseURL+"/static/issuetype-task.svg", false, in.BaseURL)
+		it := JiraIssueType("0", "Task", in.BaseURL+"/static/issuetype-task.svg", false, 0, in.BaseURL)
 		fields.IssueType = &it
 	}
 

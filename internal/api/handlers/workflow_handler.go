@@ -369,31 +369,46 @@ func (h *WorkflowHandler) DoTransition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validator: require_assignee.
+	if status, msg := transitionIssue(h.issueSvc, wf, iss, tr); status != 0 {
+		v3.WriteError(w, status, []string{msg}, nil)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// transitionBlocked returns the reason tr cannot be applied to iss (the
+// require_assignee validator), or "" when it can. Checked before any write
+// by callers that batch the transition with other updates.
+func transitionBlocked(iss *issue.Issue, tr *workflow.WorkflowTransition) string {
 	if tr.RequireAssignee && (iss.AssigneeID == nil || *iss.AssigneeID == "") {
-		v3.WriteError(w, http.StatusBadRequest, []string{"assignee is required for this transition"}, nil)
-		return
+		return "assignee is required for this transition"
 	}
+	return ""
+}
 
-	// Applica il cambio di stato.
-	if _, err := h.issueSvc.Update(iss.Key, nil, nil, nil, nil, &tr.ToStatusID, nil); err != nil {
-		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to update issue"}, nil)
-		return
+// transitionIssue applies tr to iss: the require_assignee validator (400),
+// the status change (500 on failure) and the set_resolution post-function.
+// Shared by DoTransition and the agile epic update (done:true/false). Returns
+// the HTTP status and message to write on failure, or 0.
+func transitionIssue(issueSvc *issue.Service, wf *workflow.Workflow, iss *issue.Issue, tr *workflow.WorkflowTransition) (int, string) {
+	if msg := transitionBlocked(iss, tr); msg != "" {
+		return http.StatusBadRequest, msg
 	}
-
+	if _, err := issueSvc.Update(iss.Key, nil, nil, nil, nil, &tr.ToStatusID, nil); err != nil {
+		return http.StatusInternalServerError, "failed to update issue"
+	}
 	// Post-function: set_resolution in base alla categoria dello stato destinazione.
 	if tr.SetResolution {
 		toStatus := statusByID(wf, tr.ToStatusID)
 		if toStatus != nil && toStatus.Category == workflow.CategoryDone {
-			if resID, ok := h.issueSvc.ResolutionIDByName("Done"); ok {
-				_ = h.issueSvc.SetResolution(iss.Key, &resID)
+			if resID, ok := issueSvc.ResolutionIDByName("Done"); ok {
+				_ = issueSvc.SetResolution(iss.Key, &resID)
 			}
 		} else {
-			_ = h.issueSvc.SetResolution(iss.Key, nil)
+			_ = issueSvc.SetResolution(iss.Key, nil)
 		}
 	}
-
-	w.WriteHeader(http.StatusNoContent)
+	return 0, ""
 }
 
 func (h *WorkflowHandler) ListStatuses(w http.ResponseWriter, r *http.Request) {

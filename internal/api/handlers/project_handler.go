@@ -185,7 +185,28 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 		v3.WriteError(w, http.StatusNotFound, []string{"No project could be found with key '" + idOrKey + "'."}, nil)
 		return
 	}
-	v3.WriteJSON(w, http.StatusOK, v3.JiraProject(*p, h.leadOf(p), h.categoryOf(p), h.baseURL))
+	jp := v3.JiraProject(*p, h.leadOf(p), h.categoryOf(p), h.baseURL)
+	jp.IssueTypes = h.issueTypesOf(p)
+	v3.WriteJSON(w, http.StatusOK, jp)
+}
+
+// issueTypesOf returns the project's issue types as v3 IssueTypeDetails
+// (with hierarchyLevel), epics first then by name, for Project.issueTypes.
+// A read failure or a nil issueSvc yields no list (the field is omitted).
+func (h *ProjectHandler) issueTypesOf(p *project.Project) []v3.IssueTypeRef {
+	if h.issueSvc == nil {
+		return nil
+	}
+	types, err := h.issueSvc.ListTypes(p.ID)
+	if err != nil {
+		log.Printf("project: list issue types of %q failed: %v", p.Key, err)
+		return nil
+	}
+	out := make([]v3.IssueTypeRef, 0, len(types))
+	for _, it := range types {
+		out = append(out, v3.JiraIssueTypeFrom(it, h.baseURL))
+	}
+	return out
 }
 
 // resolveKey maps a {projectIdOrKey} path segment (numeric seq_id or project

@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { SearchIssue } from "@/lib/api";
+import type { EpicRef } from "@/lib/epicHierarchy";
+import { EpicLozenge } from "@/components/issues/EpicLozenge";
 
 export function IssueCard({
   issue,
@@ -15,12 +17,16 @@ export function IssueCard({
   // Optional: a trailing per-row action (e.g. the kanban "Send to board"
   // button), rendered right-aligned after the summary.
   action,
+  // Optional: the epic the issue belongs to (resolved by the page, see
+  // lib/epicHierarchy.ts), shown as a lozenge after the summary.
+  epic,
 }: {
   issue: SearchIssue;
   selected: boolean;
   onToggleSelect: (key: string) => void;
   hideSelect?: boolean;
   action?: ReactNode;
+  epic?: EpicRef | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: issue.key });
   const style = {
@@ -56,6 +62,16 @@ export function IssueCard({
       </button>
       <span className="font-mono text-xs text-slate-500">{issue.key}</span>
       <span className="text-[#1a1f36]">{issue.fields.summary}</span>
+      {epic && (
+        <EpicLozenge
+          name={epic.name}
+          colorKey={epic.colorKey}
+          issueKey={epic.key}
+          href={`/app/browse/${epic.key}`}
+          testId={`epic-lozenge-${issue.key}`}
+          className="shrink-0"
+        />
+      )}
       {action && <span className="ml-auto shrink-0">{action}</span>}
     </div>
   );

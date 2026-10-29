@@ -16,8 +16,8 @@ func newTimelineTestDB(t *testing.T) *gorm.DB {
 	}
 	// Minimal tables the timeline service queries.
 	db.Exec(`CREATE TABLE sprints (id TEXT PRIMARY KEY, project_id TEXT, name TEXT, start_date TIMESTAMP, end_date TIMESTAMP)`)
-	db.Exec(`CREATE TABLE issues (id TEXT PRIMARY KEY, project_id TEXT, title TEXT, type_id TEXT, status_id TEXT, sprint_id TEXT, start_date TIMESTAMP, due_date TIMESTAMP, is_archived BOOLEAN DEFAULT 0)`)
-	db.Exec(`CREATE TABLE issue_types (id TEXT PRIMARY KEY, name TEXT)`)
+	db.Exec(`CREATE TABLE issues (id TEXT PRIMARY KEY, project_id TEXT, title TEXT, type_id TEXT, status_id TEXT, sprint_id TEXT, start_date TIMESTAMP, due_date TIMESTAMP, epic_color TEXT, is_archived BOOLEAN DEFAULT 0)`)
+	db.Exec(`CREATE TABLE issue_types (id TEXT PRIMARY KEY, name TEXT, hierarchy_level INTEGER NOT NULL DEFAULT 0)`)
 	db.Exec(`CREATE TABLE workflow_statuses (id TEXT PRIMARY KEY, name TEXT, category TEXT)`)
 	db.Exec(`CREATE TABLE versions (id TEXT PRIMARY KEY, project_id TEXT, name TEXT, description TEXT, start_date TIMESTAMP, release_date TIMESTAMP, released BOOLEAN DEFAULT 0, archived BOOLEAN DEFAULT 0, created_at TIMESTAMP)`)
 	db.Exec(`CREATE TABLE issue_versions (issue_id TEXT, version_id TEXT, PRIMARY KEY(issue_id, version_id))`)
@@ -72,5 +72,36 @@ func TestGetTimelineDataIncludesVersionBars(t *testing.T) {
 	// 1 of 2 done → 50%.
 	if found.Progress != 50 {
 		t.Errorf("version bar progress = %v, want 50", found.Progress)
+	}
+}
+
+// TestGetTimelineDataEpicBarsByLevelWithColour: epics are the level-1
+// issues (not "whatever is named Epic") and each bar takes the colour of the
+// epic's own colour key; an epic without a key falls back to color_1.
+func TestGetTimelineDataEpicBarsByLevelWithColour(t *testing.T) {
+	db := newTimelineTestDB(t)
+	svc := NewService(db)
+
+	db.Exec(`INSERT INTO issue_types (id, name, hierarchy_level) VALUES ('t-epic','Initiative',1), ('t-story','Epic',0)`)
+	db.Exec(`INSERT INTO issues (id, project_id, title, type_id, epic_color) VALUES ('e-1','proj-1','Blue epic','t-epic','color_2'), ('e-2','proj-1','Legacy epic','t-epic',NULL), ('s-1','proj-1','story named like an epic type','t-story','color_3')`)
+
+	data, err := svc.GetTimelineData("proj-1", "weeks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	colours := map[string]string{}
+	for _, b := range data.Bars {
+		if b.Type == "epic" {
+			colours[b.ID] = b.Color
+		}
+	}
+	if len(colours) != 2 {
+		t.Fatalf("expected 2 epic bars (level 1 only), got %v", colours)
+	}
+	if colours["e-1"] != "#3B82F6" {
+		t.Errorf("e-1 colour = %q, want color_2 blue #3B82F6", colours["e-1"])
+	}
+	if colours["e-2"] != "#8B5CF6" {
+		t.Errorf("e-2 (no colour key) = %q, want color_1 fallback #8B5CF6", colours["e-2"])
 	}
 }

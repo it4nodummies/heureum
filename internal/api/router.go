@@ -119,7 +119,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 
 	agileBoardH := handlers.NewAgileBoardHandler(boardSvc, projectSvc, issueSvc, sprintSvc, wfSvc, issueH, chk, cfg.BaseURL)
 	agileSprintH := handlers.NewAgileSprintHandler(sprintSvc, boardSvc, issueSvc, issueH, chk, cfg.BaseURL)
-	agileMiscH := handlers.NewAgileMiscHandler(issueSvc, sprintSvc, issueH, chk, cfg.BaseURL)
+	agileMiscH := handlers.NewAgileMiscHandler(issueSvc, sprintSvc, wfSvc, projectSvc, issueH, chk, cfg.BaseURL)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -338,6 +338,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardIssues))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/sprint", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardSprints))))
 	mux.Handle("GET /rest/agile/1.0/board/{boardId}/epic", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardEpics))))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/epic/none/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardEpicNoneIssues))))
+	mux.Handle("GET /rest/agile/1.0/board/{boardId}/epic/{epicId}/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByBoardSeq("boardId"), http.HandlerFunc(agileBoardH.BoardEpicIssues))))
 
 	// POST /sprint: project resolved from body (originBoardId -> board.ProjectID) ->
 	// enforced in-handler (AgileSprintHandler.Create) per the Round 11 plan.
@@ -357,6 +359,16 @@ func NewRouter(cfg *config.Config, db *gorm.DB) http.Handler {
 	mux.Handle("GET /rest/agile/1.0/issue/{issueIdOrKey}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(agileMiscH.GetIssue))))
 	mux.Handle("POST /rest/agile/1.0/backlog/issue", authMw(http.HandlerFunc(agileMiscH.MoveToBacklog)))
 	mux.Handle("GET /rest/agile/1.0/epic/{epicIdOrKey}", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.GetEpic))))
+	// Epic writes (Round 28): the path authorizes the epic's project; the
+	// issues of a move come from the body and must belong to that project.
+	// /epic/none/issue has no path context: GET scopes to the caller's
+	// projects, POST authorizes every body issue (EditIssues on its project).
+	mux.Handle("POST /rest/agile/1.0/epic/{epicIdOrKey}", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.UpdateEpic))))
+	mux.Handle("GET /rest/agile/1.0/epic/{epicIdOrKey}/issue", authMw(chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.EpicIssues))))
+	mux.Handle("POST /rest/agile/1.0/epic/{epicIdOrKey}/issue", authMw(chk.Enforce(permission.EditIssues, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.MoveToEpic))))
+	mux.Handle("PUT /rest/agile/1.0/epic/{epicIdOrKey}/rank", authMw(chk.Enforce(permission.ManageSprints, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.RankEpic))))
+	mux.Handle("GET /rest/agile/1.0/epic/none/issue", authMw(http.HandlerFunc(agileMiscH.EpicNoneIssues)))
+	mux.Handle("POST /rest/agile/1.0/epic/none/issue", authMw(http.HandlerFunc(agileMiscH.RemoveFromEpic)))
 
 	// --- Ricerca (Round 4) ---
 	mux.Handle("GET /rest/api/3/search/jql", authMw(http.HandlerFunc(searchH.SearchJQL)))

@@ -20,9 +20,12 @@ func renderIssueList(issueH *IssueHandler, issues []issue.Issue, fields []string
 		fields = []string{"*all"}
 	}
 	f := v3.ParseFieldsFromList(fields)
+	// fields.parent carries the parent's own fields (Round 28): load every
+	// distinct parent of the list once, instead of one lookup per row.
+	parents := issueH.loadParentRefs(parentIDsOf(issues))
 	out := make([]map[string]any, 0, len(issues))
 	for i := range issues {
-		bean := v3.JiraIssue(issueH.buildIssueInput(&issues[i]))
+		bean := v3.JiraIssue(issueH.buildIssueInputWith(&issues[i], parents))
 		m, err := v3.ProjectIssue(bean, f)
 		if err != nil {
 			return nil, err

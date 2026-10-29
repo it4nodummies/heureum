@@ -166,3 +166,136 @@ func TestCompile_LabelsNotIn(t *testing.T) {
 		t.Errorf("args: %v", c.Args)
 	}
 }
+
+// Round 28 — `parent` (and the Jira-classic `"Epic Link"` alias) resolve the
+// parent issue by key or numeric seq id through a parameterized subquery on
+// issues, so user values never touch the SQL text.
+
+func assertArgs(t *testing.T, got []any, want ...any) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("args[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestCompile_ParentEqualsKey(t *testing.T) {
+	c := compile(t, `parent = EPC-1`)
+	want := "issues.parent_id IN (SELECT p.id FROM issues p WHERE p.key = ?)"
+	if c.Where != want {
+		t.Errorf("where = %q, want %q", c.Where, want)
+	}
+	assertArgs(t, c.Args, "EPC-1")
+
+	c2 := compile(t, `parent != "EPC-1"`)
+	want2 := "issues.parent_id NOT IN (SELECT p.id FROM issues p WHERE p.key = ?)"
+	if c2.Where != want2 {
+		t.Errorf("where = %q, want %q", c2.Where, want2)
+	}
+	assertArgs(t, c2.Args, "EPC-1")
+}
+
+func TestCompile_ParentEqualsSeqID(t *testing.T) {
+	c := compile(t, `parent = 10001`)
+	want := "issues.parent_id IN (SELECT p.id FROM issues p WHERE p.seq_id = ?)"
+	if c.Where != want {
+		t.Errorf("where = %q, want %q", c.Where, want)
+	}
+	assertArgs(t, c.Args, int64(10001))
+}
+
+func TestCompile_ParentIn(t *testing.T) {
+	c := compile(t, `parent in (EPC-1, "EPC-2")`)
+	want := "issues.parent_id IN (SELECT p.id FROM issues p WHERE p.key IN (?,?))"
+	if c.Where != want {
+		t.Errorf("where = %q, want %q", c.Where, want)
+	}
+	assertArgs(t, c.Args, "EPC-1", "EPC-2")
+
+	// Keys and seq ids may be mixed in one list: one subquery, two predicates.
+	c2 := compile(t, `parent in (EPC-1, 10002)`)
+	want2 := "issues.parent_id IN (SELECT p.id FROM issues p WHERE p.key IN (?) OR p.seq_id IN (?))"
+	if c2.Where != want2 {
+		t.Errorf("where = %q, want %q", c2.Where, want2)
+	}
+	assertArgs(t, c2.Args, "EPC-1", int64(10002))
+}
+
+func TestCompile_ParentNotIn(t *testing.T) {
+	c := compile(t, `parent not in (EPC-1, EPC-2)`)
+	want := "issues.parent_id NOT IN (SELECT p.id FROM issues p WHERE p.key IN (?,?))"
+	if c.Where != want {
+		t.Errorf("where = %q, want %q", c.Where, want)
+	}
+	assertArgs(t, c.Args, "EPC-1", "EPC-2")
+}
+
+func TestCompile_ParentIsEmpty(t *testing.T) {
+	c := compile(t, `parent is empty`)
+	if c.Where != "issues.parent_id IS NULL" {
+		t.Errorf("where = %q", c.Where)
+	}
+	assertArgs(t, c.Args)
+}
+
+func TestCompile_ParentIsNotEmpty(t *testing.T) {
+	c := compile(t, `parent is not empty`)
+	if c.Where != "issues.parent_id IS NOT NULL" {
+		t.Errorf("where = %q", c.Where)
+	}
+	assertArgs(t, c.Args)
+}
+
+func TestCompile_EpicLinkAlias(t *testing.T) {
+	// Quoted field name, case-insensitive: identical SQL to `parent`.
+	for _, jql := range []string{`"Epic Link" = EPC-1`, `'epic link' = EPC-1`, `"EPIC LINK" = EPC-1`} {
+		c := compile(t, jql)
+		want := "issues.parent_id IN (SELECT p.id FROM issues p WHERE p.key = ?)"
+		if c.Where != want {
+			t.Errorf("%s: where = %q, want %q", jql, c.Where, want)
+		}
+		assertArgs(t, c.Args, "EPC-1")
+	}
+	c := compile(t, `"Epic Link" is empty`)
+	if c.Where != "issues.parent_id IS NULL" {
+		t.Errorf("where = %q", c.Where)
+	}
+	c2 := compile(t, `"Epic Link" in (EPC-1, EPC-2) AND project = DEMO`)
+	if !strings.HasPrefix(c2.Where, "(issues.parent_id IN (SELECT p.id FROM issues p WHERE p.key IN (?,?)) AND ") {
+		t.Errorf("where = %q", c2.Where)
+	}
+	assertArgs(t, c2.Args, "EPC-1", "EPC-2", "proj-1")
+}
+
+func TestCompile_ParentRejectsOtherOperators(t *testing.T) {
+	for _, jql := range []string{`parent ~ EPC`, `parent > 1`} {
+		q, err := Parse(jql)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", jql, err)
+		}
+		if _, err := Compile(q, fakeResolver{}); err == nil {
+			t.Errorf("%s: atteso errore per operatore non valido", jql)
+		}
+	}
+}
+
+func TestCompile_ParentEpicStillUnsupported(t *testing.T) {
+	q, _ := Parse(`parentEpic = EPC-1`)
+	if _, err := Compile(q, fakeResolver{}); err == nil || !strings.Contains(err.Error(), "campo non supportato") {
+		t.Errorf("parentEpic deve restare non supportato, got %v", err)
+	}
+}
+
+func TestCompile_OrderByParentRejected(t *testing.T) {
+	q, err := Parse(`project = DEMO ORDER BY parent`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if _, err := Compile(q, fakeResolver{}); err == nil || !strings.Contains(err.Error(), "campo di ordinamento non supportato") {
+		t.Errorf("ORDER BY parent deve essere rifiutato con messaggio chiaro, got %v", err)
+	}
+}

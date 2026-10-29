@@ -36,6 +36,11 @@ export interface Project {
   avatarUrls: Record<string, string>;
   lead?: JiraUserRef;
   projectCategory?: ProjectCategoryRef;
+  // The project's own issue types (spec-native Project.issueTypes), emitted by
+  // GET /rest/api/3/project/{key} — epics first, then by name. Business
+  // projects carry no Epic; the create modal reads types from here, never from
+  // the global /issuetype list.
+  issueTypes?: IssueTypeRef[];
 }
 
 export type ProjectRole = "admin" | "member" | "viewer";
@@ -66,6 +71,27 @@ export interface IssueTypeRef {
   name: string;
   iconUrl?: string;
   subtask: boolean;
+  // Jira's hierarchy level (Round 28): 1 = Epic, 0 = Story/Task/Bug,
+  // -1 = Subtask. Emitted everywhere an issue type appears; optional here only
+  // so pre-R28 fixtures still type-check (see hierarchyLevelOf for the fallback).
+  hierarchyLevel?: number;
+}
+
+// Subset of the parent's own fields carried inside fields.parent (Round 28),
+// so lists/cards can show the epic name without an extra request.
+export interface ParentFields {
+  summary: string;
+  status?: StatusRef;
+  issuetype?: IssueTypeRef;
+  priority?: PriorityRef;
+}
+
+// fields.parent (v3.ParentRef, internal/api/v3/issue.go).
+export interface ParentRef {
+  id: string;
+  key: string;
+  self?: string;
+  fields?: ParentFields;
 }
 
 export interface StatusRef {
@@ -96,7 +122,7 @@ export interface IssueFields {
   created: string;
   updated: string;
   duedate?: string;
-  parent?: { id: string; key: string };
+  parent?: ParentRef | null;
   project?: { id: string; key: string; name: string };
   customfield_10016?: number | null;
   // Absent (not null) when neither estimate nor logged time has ever been
@@ -113,6 +139,34 @@ export interface Issue {
   id: string;
   key: string;
   fields: IssueFields;
+}
+
+// ── Hierarchy helpers (Round 28) ─────────────────────────────────────────────
+
+// Minimal shape the hierarchy helpers need: anything carrying an issue type
+// (a full Issue, a SearchIssue, a ParentRef with fields, …).
+export interface HasIssueType {
+  fields?: { issuetype?: { hierarchyLevel?: number; subtask?: boolean; name?: string } | null } | null;
+}
+
+// Resolves the hierarchy level of an issue type: hierarchyLevel when the
+// backend emitted it, otherwise a name/subtask fallback (-1 subtask, 1 "Epic",
+// 0 everything else) for payloads that predate Round 28.
+export function hierarchyLevelOf(
+  t?: { hierarchyLevel?: number; subtask?: boolean; name?: string } | null,
+): number {
+  if (!t) return 0;
+  if (typeof t.hierarchyLevel === "number") return t.hierarchyLevel;
+  if (t.subtask) return -1;
+  return t.name?.toLowerCase() === "epic" ? 1 : 0;
+}
+
+export function isEpic(issue: HasIssueType): boolean {
+  return hierarchyLevelOf(issue.fields?.issuetype) === 1;
+}
+
+export function isSubtask(issue: HasIssueType): boolean {
+  return hierarchyLevelOf(issue.fields?.issuetype) === -1;
 }
 
 export interface PagedResponse<T> {
@@ -138,6 +192,26 @@ export interface User {
 }
 
 // ── Core fetch helper ────────────────────────────────────────────────────────
+
+// Error thrown by apiFetch for a non-2xx response. `message` is the readable
+// summary (errorMessages joined, or "field: reason" pairs); `errors` keeps the
+// per-field map of the Jira v3 error shape so a form can show e.g.
+// errors.parent next to the field that caused it (see fieldError).
+export class ApiError extends Error {
+  status: number;
+  errors: Record<string, string>;
+  constructor(message: string, status: number, errors: Record<string, string> = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.errors = errors;
+  }
+}
+
+// The per-field message of a Jira v3 error response, if the error carries one.
+export function fieldError(err: unknown, field: string): string | undefined {
+  return err instanceof ApiError ? err.errors[field] : undefined;
+}
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -177,13 +251,19 @@ async function apiFetch<T>(
   if (!res.ok) {
     const text = await res.text();
     let msg = `HTTP ${res.status}`;
+    let fieldErrors: Record<string, string> = {};
     try {
       const json = JSON.parse(text);
       // Formato Jira v3: { errorMessages: string[], errors: Record<string,string> }
+      if (json.errors && typeof json.errors === "object") {
+        fieldErrors = Object.fromEntries(
+          Object.entries(json.errors).map(([k, v]) => [k, String(v)]),
+        );
+      }
       if (Array.isArray(json.errorMessages) && json.errorMessages.length > 0) {
         msg = json.errorMessages.join(" ");
-      } else if (json.errors && Object.keys(json.errors).length > 0) {
-        msg = Object.entries(json.errors)
+      } else if (Object.keys(fieldErrors).length > 0) {
+        msg = Object.entries(fieldErrors)
           .map(([field, err]) => `${field}: ${err}`)
           .join("; ");
       } else if (json.error) {
@@ -192,7 +272,7 @@ async function apiFetch<T>(
     } catch {
       /* ignore */
     }
-    throw new Error(msg);
+    throw new ApiError(msg, res.status, fieldErrors);
   }
 
   if (res.status === 204) return undefined as unknown as T;
@@ -524,8 +604,24 @@ export const issues = {
   availableTransitions: (idOrKey: string) =>
     apiFetch<{ transitions: AvailableTransition[] }>(`/rest/api/3/issue/${idOrKey}/transitions`),
 
+  // GET /rest/api/3/issue/{key}/subtasks → the DIRECT children of any level
+  // (epic → stories/tasks/bugs, story → subtasks). `children` is the
+  // level-neutral alias used by the ChildIssues section.
   subtasks: (idOrKey: string) =>
     apiFetch<{ values: Issue[]; total: number }>(`/rest/api/3/issue/${idOrKey}/subtasks`),
+  children: (idOrKey: string) =>
+    apiFetch<{ values: Issue[]; total: number }>(`/rest/api/3/issue/${idOrKey}/subtasks`),
+
+  // PUT /rest/api/3/issue/{key} { fields: { parent } } (Round 28): `{ key }`
+  // sets/moves the parent (Story→Epic, Subtask→Story), `null` clears it. The
+  // backend validates the hierarchy (same project, exactly one level up, no
+  // cycle) and answers 400 with errors.parent — read it via fieldError(err,
+  // "parent").
+  setParent: (idOrKey: string, parentKey: string | null) =>
+    apiFetch<void>(`/rest/api/3/issue/${idOrKey}`, {
+      method: "PUT",
+      body: JSON.stringify({ fields: { parent: parentKey ? { key: parentKey } : null } }),
+    }),
 
   changelog: (idOrKey: string) => apiFetch<PageOfChangelogs>(`/rest/api/3/issue/${idOrKey}/changelog`),
 };
@@ -699,8 +795,8 @@ export interface SearchIssue {
     priority?: { id?: string; name: string };
     assignee?: { accountId?: string; displayName: string } | null;
     updated?: string;
-    issuetype?: { name: string; iconUrl?: string };
-    parent?: { key: string } | null;
+    issuetype?: { id?: string; name: string; iconUrl?: string; subtask?: boolean; hierarchyLevel?: number };
+    parent?: ParentRef | null;
     customfield_10016?: number;
   };
 }
@@ -835,8 +931,33 @@ export interface BoardConfigInput {
   quickFilters: { name: string; jql: string }[];
 }
 
+// Agile epic shape (GET /rest/agile/1.0/epic/{id}, GET /board/{id}/epic):
+// `id` is the issue's numeric seq id, `color.key` one of EPIC_COLORS
+// (lib/epicColors.ts), `done` is computed from the epic's status category.
+export interface AgileEpic {
+  id: number;
+  key: string;
+  self: string;
+  name: string;
+  summary: string;
+  color: { key: string };
+  done: boolean;
+}
+
 export const boards = {
   list: () => apiFetch<{ values: AgileBoard[] }>("/rest/agile/1.0/board"),
+  // Epics of the board's project (level-1 issues). `done` keeps only epics
+  // whose status category is (true) / is not (false) done. The backlog panel
+  // and the board filter show the page as-is (no pagination), so ask for the
+  // handler's cap (100; its default is 50) — a project with more epics than
+  // that is a follow-up.
+  epics: (boardId: number, opts: { done?: boolean } = {}) =>
+    apiFetch<PagedResponse<AgileEpic>>(
+      `/rest/agile/1.0/board/${boardId}/epic${buildQuery({
+        maxResults: 100,
+        done: opts.done === undefined ? undefined : String(opts.done),
+      })}`,
+    ),
   create: (name: string, projectKeyOrId: string, type = "scrum") =>
     apiFetch<AgileBoard>("/rest/agile/1.0/board", {
       method: "POST",
@@ -897,6 +1018,42 @@ export const sprints = {
     apiFetch<void>(`/rest/agile/1.0/sprint/${sprintId}/issue`, {
       method: "POST",
       body: JSON.stringify({ issues }),
+    }),
+};
+
+// Agile epic routes (Round 28). `done` is deliberately NOT exposed on update:
+// the backend moves the epic through a single workflow transition (409 when
+// none reaches a done status) — drive the epic's status via normal
+// transitions instead.
+export const epics = {
+  get: (idOrKey: string | number) => apiFetch<AgileEpic>(`/rest/agile/1.0/epic/${idOrKey}`),
+  update: (idOrKey: string | number, body: { name?: string; summary?: string; color?: { key: string } }) =>
+    apiFetch<AgileEpic>(`/rest/agile/1.0/epic/${idOrKey}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  issues: (idOrKey: string | number) =>
+    apiFetch<AgileIssueList>(`/rest/agile/1.0/epic/${idOrKey}/issue`),
+  // Moves the issues (keys) under the epic: all validated first (browsable,
+  // same project, level 0), then applied in one transaction — no partial move.
+  moveIssues: (idOrKey: string | number, issueKeys: string[]) =>
+    apiFetch<void>(`/rest/agile/1.0/epic/${idOrKey}/issue`, {
+      method: "POST",
+      body: JSON.stringify({ issues: issueKeys }),
+    }),
+  // Removes the issues (keys) from whatever epic they belong to.
+  removeIssues: (issueKeys: string[]) =>
+    apiFetch<void>("/rest/agile/1.0/epic/none/issue", {
+      method: "POST",
+      body: JSON.stringify({ issues: issueKeys }),
+    }),
+  rank: (idOrKey: string | number, opts: { before?: string; after?: string }) =>
+    apiFetch<void>(`/rest/agile/1.0/epic/${idOrKey}/rank`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...(opts.before ? { rankBeforeEpic: opts.before } : {}),
+        ...(opts.after ? { rankAfterEpic: opts.after } : {}),
+      }),
     }),
 };
 

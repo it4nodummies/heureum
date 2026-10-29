@@ -47,16 +47,18 @@ func (h *ReferenceHandler) Priorities(w http.ResponseWriter, r *http.Request) {
 }
 
 // defaultIssueTypes: usati quando la tabella issue_types non ha ancora righe
-// (es. nessun progetto creato) così l'array resta comunque non vuoto.
+// (es. nessun progetto creato) così l'array resta comunque non vuoto. Il
+// livello segue la gerarchia stretta (Epic 1, Subtask -1, resto 0).
 var defaultIssueTypes = []struct {
 	id, name, icon string
 	subtask        bool
+	level          int
 }{
-	{"1", "Bug", "bug", false},
-	{"2", "Task", "task", false},
-	{"3", "Story", "story", false},
-	{"4", "Epic", "epic", false},
-	{"5", "Subtask", "subtask", true},
+	{"1", "Bug", "bug", false, 0},
+	{"2", "Task", "task", false, 0},
+	{"3", "Story", "story", false, 0},
+	{"4", "Epic", "epic", false, 1},
+	{"5", "Subtask", "subtask", true, -1},
 }
 
 // IssueTypes → GET /rest/api/3/issuetype.
@@ -74,11 +76,11 @@ func (h *ReferenceHandler) IssueTypes(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		seen[it.Name] = true
-		out = append(out, v3.JiraIssueType(it.ID, it.Name, issueTypeIconURL(it.Icon, h.baseURL), it.IsSubtask, h.baseURL))
+		out = append(out, v3.JiraIssueTypeFrom(it, h.baseURL))
 	}
 	if len(out) == 0 {
 		for _, d := range defaultIssueTypes {
-			out = append(out, v3.JiraIssueType(d.id, d.name, issueTypeIconURL(d.icon, h.baseURL), d.subtask, h.baseURL))
+			out = append(out, v3.JiraIssueType(d.id, d.name, issueTypeIconURL(d.icon, h.baseURL), d.subtask, d.level, h.baseURL))
 		}
 	}
 	v3.WriteJSON(w, http.StatusOK, out)

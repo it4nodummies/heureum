@@ -1,5 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
+// Origin of the backend webServer below. Specs that call the REST API directly
+// (page.request, e.g. e2e/epics.spec.ts) read it from E2E_API_URL; set here so
+// a config copy that moves the ports keeps the specs in step.
+if (!process.env.E2E_API_URL) process.env.E2E_API_URL = "http://localhost:8080";
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,

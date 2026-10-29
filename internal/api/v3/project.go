@@ -34,6 +34,11 @@ type Project struct {
 	AvatarUrls      map[string]string `json:"avatarUrls"`
 	Lead            *User             `json:"lead,omitempty"`
 	ProjectCategory *ProjectCategory  `json:"projectCategory,omitempty"`
+	// IssueTypes è "List of the issue types available in the project"
+	// (Project.issueTypes: IssueTypeDetails[], spec-native). Lo riempie
+	// GET /project/{key} (Round 28) così il create modal offre i tipi del
+	// singolo progetto; le liste lo omettono.
+	IssueTypes []IssueTypeRef `json:"issueTypes,omitempty"`
 }
 
 // DefaultProjectAvatarPath è servito da router.go (SVG inline, non

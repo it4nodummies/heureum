@@ -117,7 +117,9 @@ func (p *parser) parsePrimary() (Node, error) {
 }
 
 func (p *parser) parseClause() (Node, error) {
-	if !p.at(TokIdent) {
+	// Il nome campo è un identificatore oppure una stringa quotata (es. la
+	// forma classica Jira "Epic Link"); in entrambi i casi è case-insensitive.
+	if !p.at(TokIdent) && !p.at(TokString) {
 		return nil, fmt.Errorf("atteso nome campo, got %q", p.cur().Val)
 	}
 	field := strings.ToLower(p.next().Val)

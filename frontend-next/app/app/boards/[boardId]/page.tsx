@@ -3,9 +3,10 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { boards, issues as issuesApi, search } from "@/lib/api";
+import { boards, issues as issuesApi, search, type SearchIssue } from "@/lib/api";
 import { BoardColumns } from "@/components/board/BoardColumns";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
+import { epicOf, indexEpics, indexIssues, matchesEpicFilter, type EpicFilter } from "@/lib/epicHierarchy";
 
 export default function BoardPage({ params }: { params: Promise<{ boardId: string }> }) {
   const { boardId } = use(params);
@@ -14,10 +15,14 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
   const [moveError, setMoveError] = useState<string | null>(null);
   // Quick-filter attivi (per id). Più filtri attivi → INTERSEZIONE delle chiavi.
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  // Epic quick filter (Round 28): "all" | "none" | epic key, intersected with
+  // the JQL quick filters above. Component state, not URL.
+  const [epicFilter, setEpicFilter] = useState<EpicFilter>("all");
 
   useEffect(() => {
     setMoveError(null);
     setActiveFilters([]);
+    setEpicFilter("all");
   }, [id]);
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
@@ -31,7 +36,17 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
   });
   const config = useQuery({ queryKey: ["board", id, "config"], queryFn: () => boards.config(id) });
   const issueList = useQuery({ queryKey: ["board", id, "issues"], queryFn: () => boards.issues(id) });
+  const epicList = useQuery({ queryKey: ["board", id, "epics"], queryFn: () => boards.epics(id) });
   const projectKey = board.data?.location?.projectKey;
+
+  // Epic membership is resolved over ALL loaded issues (a subtask's epic goes
+  // through its story, which may be filtered out of view), not the visible set.
+  const issueIndex = useMemo(() => indexIssues(issueList.data?.issues ?? []), [issueList.data]);
+  const epicsByKey = useMemo(() => indexEpics(epicList.data?.values), [epicList.data]);
+  const resolveEpic = useMemo(
+    () => (iss: SearchIssue) => epicOf(iss, issueIndex, epicsByKey),
+    [issueIndex, epicsByKey],
+  );
 
   // Colonne dal contract configuration: ogni colonna è un SET di status. `id` =
   // status primario (statuses[0]) = target di transizione al drop.
@@ -78,11 +93,12 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
   // filtri è in volo mostriamo tutto (nessun flash a vuoto).
   const visibleIssues = useMemo(() => {
     const all = issueList.data?.issues ?? [];
-    if (activeJqls.length === 0) return all;
+    const byEpic = epicFilter === "all" ? all : all.filter((iss) => matchesEpicFilter(iss, epicFilter, issueIndex));
+    if (activeJqls.length === 0) return byEpic;
     const allowed = filterKeys.data;
-    if (!allowed) return all;
-    return all.filter((iss) => allowed.has(iss.key));
-  }, [issueList.data, activeJqls, filterKeys.data]);
+    if (!allowed) return byEpic;
+    return byEpic.filter((iss) => allowed.has(iss.key));
+  }, [issueList.data, activeJqls, filterKeys.data, epicFilter, issueIndex]);
 
   // Lo status non è un campo "fields" libero su PUT /rest/api/3/issue/{key}
   // (vedi lib/api.ts issues.update): il backend richiede una transizione
@@ -133,6 +149,21 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
               })}
             </div>
           )}
+          <select
+            aria-label="Epic filter"
+            value={epicFilter}
+            onChange={(e) => setEpicFilter(e.target.value)}
+            data-testid="board-epic-filter"
+            className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
+          >
+            <option value="all">All epics</option>
+            <option value="none">No epic</option>
+            {(epicList.data?.values ?? []).map((epic) => (
+              <option key={epic.key} value={epic.key}>
+                {epic.name}
+              </option>
+            ))}
+          </select>
           <Link
             href={`/app/boards/${id}/settings`}
             data-testid="board-settings-link"
@@ -162,6 +193,7 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
             columns={columns}
             issues={visibleIssues}
             swimlane={swimlane}
+            resolveEpic={resolveEpic}
             onMove={(issueKey, toStatusId) => move.mutate({ issueKey, toStatusId })}
           />
         )}
