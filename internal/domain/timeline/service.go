@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"github.com/it4nodummies/heureum/internal/domain/issue"
 )
 
 type Service struct {
@@ -69,17 +71,33 @@ func (s *Service) GetTimelineData(projectID, zoom string) (*TimelineData, error)
 		}
 	}
 
-	var epicBars []TimelineBar
+	// Epics are the level-1 issues (Round 28: by hierarchy level, not by
+	// type name) and each carries its own colour key, mapped through the
+	// shared palette so the timeline matches the backlog/board lozenges.
+	var epicRows []struct {
+		ID        string
+		Name      string
+		StartDate *time.Time
+		DueDate   *time.Time
+		EpicColor *string
+	}
 	s.db.Raw(`
-		SELECT i.id, i.title AS name, i.start_date, i.due_date
+		SELECT i.id, i.title AS name, i.start_date, i.due_date, i.epic_color
 		FROM issues i
 		JOIN issue_types it ON i.type_id = it.id
-		WHERE i.project_id = ? AND lower(it.name) = 'epic' AND i.is_archived = false
-	`, projectID).Scan(&epicBars)
+		WHERE i.project_id = ? AND it.hierarchy_level = 1 AND i.is_archived = false
+	`, projectID).Scan(&epicRows)
 
-	for i := range epicBars {
-		epicBars[i].Type = "epic"
-		epicBars[i].Color = "#8B5CF6"
+	epicBars := make([]TimelineBar, 0, len(epicRows))
+	for _, e := range epicRows {
+		epicBars = append(epicBars, TimelineBar{
+			ID:        e.ID,
+			Name:      e.Name,
+			Type:      "epic",
+			StartDate: e.StartDate,
+			EndDate:   e.DueDate,
+			Color:     issue.EpicColorHex(e.EpicColor),
+		})
 	}
 
 	var versions []VersionProgress

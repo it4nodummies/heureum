@@ -1,6 +1,10 @@
 package v3
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/it4nodummies/heureum/internal/domain/issue"
+)
 
 // PriorityRef è la rappresentazione v3 di una priorità (schema Priority).
 type PriorityRef struct {
@@ -93,25 +97,40 @@ func JiraStatus(id, name, internalCategory, baseURL string) StatusRef {
 	}
 }
 
-// IssueTypeRef modella un issue type v3 (schema IssueTypeDetails, campi essenziali).
+// IssueTypeRef modella un issue type v3 (schema IssueTypeDetails, campi
+// essenziali). Lo schema è chiuso (additionalProperties:false): ogni campo
+// qui esiste in IssueTypeDetails. hierarchyLevel (spec-native, int32) è il
+// livello nella gerarchia Jira: 1 = Epic, 0 = Story/Task/Bug, -1 = Subtask.
 type IssueTypeRef struct {
-	Self        string `json:"self"`
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	IconURL     string `json:"iconUrl,omitempty"`
-	Subtask     bool   `json:"subtask"`
+	Self           string `json:"self"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Description    string `json:"description,omitempty"`
+	IconURL        string `json:"iconUrl,omitempty"`
+	Subtask        bool   `json:"subtask"`
+	HierarchyLevel int    `json:"hierarchyLevel"`
 }
 
 // JiraIssueType costruisce un IssueTypeRef v3.
-func JiraIssueType(id, name, iconURL string, subtask bool, baseURL string) IssueTypeRef {
+func JiraIssueType(id, name, iconURL string, subtask bool, hierarchyLevel int, baseURL string) IssueTypeRef {
 	return IssueTypeRef{
-		Self:    fmt.Sprintf("%s/rest/api/3/issuetype/%s", baseURL, id),
-		ID:      id,
-		Name:    name,
-		IconURL: iconURL,
-		Subtask: subtask,
+		Self:           fmt.Sprintf("%s/rest/api/3/issuetype/%s", baseURL, id),
+		ID:             id,
+		Name:           name,
+		IconURL:        iconURL,
+		Subtask:        subtask,
+		HierarchyLevel: hierarchyLevel,
 	}
+}
+
+// JiraIssueTypeFrom costruisce l'IssueTypeRef di un issue.IssueType di
+// dominio (icona da /static/issuetype-<icon>.svg, "task" se vuota).
+func JiraIssueTypeFrom(it issue.IssueType, baseURL string) IssueTypeRef {
+	icon := it.Icon
+	if icon == "" {
+		icon = "task"
+	}
+	return JiraIssueType(it.ID, it.Name, baseURL+"/static/issuetype-"+icon+".svg", it.IsSubtask, it.HierarchyLevel, baseURL)
 }
 
 // ResolutionRef modella una resolution v3.
