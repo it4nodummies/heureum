@@ -261,29 +261,37 @@ func (h *AgileBoardHandler) BoardSprints(w http.ResponseWriter, r *http.Request)
 	v3.WritePage(w, http.StatusOK, v3.Page[v3.Sprint]{StartAt: startAt, MaxResults: maxResults, Total: len(values), Values: values})
 }
 
-// BoardEpics: issue di tipo Epic nel progetto (shape values+isLast, minimal).
+// BoardEpics: GET /rest/agile/1.0/board/{boardId}/epic — the project's epics
+// (level-1 issues, one query) in the epic shape, values+isLast; `done=true|false`
+// keeps only the epics whose status category is / is not done.
 func (h *AgileBoardHandler) BoardEpics(w http.ResponseWriter, r *http.Request) {
 	b := h.resolveBoard(r)
 	if b == nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"board not found"}, nil)
 		return
 	}
-	all, err := h.issueSvc.ListByProject(b.ProjectID, issue.WithNotArchived())
+	var wantDone *bool
+	if q := r.URL.Query().Get("done"); q != "" {
+		v, err := strconv.ParseBool(q)
+		if err != nil {
+			v3.WriteError(w, http.StatusBadRequest, []string{"done must be true or false"}, nil)
+			return
+		}
+		wantDone = &v
+	}
+	all, err := h.issueSvc.ListByProject(b.ProjectID, issue.WithHierarchyLevel(1))
 	if err != nil {
-		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list issues"}, nil)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"failed to list epics"}, nil)
 		return
 	}
-	epics := make([]map[string]any, 0)
+	doneSet := doneStatusSet(h.issueSvc.DB(), all)
+	epics := make([]map[string]any, 0, len(all))
 	for i := range all {
-		if h.issueH.isEpic(&all[i]) {
-			epics = append(epics, map[string]any{
-				"id":      all[i].SeqID,
-				"key":     all[i].Key,
-				"name":    all[i].Title,
-				"summary": all[i].Title,
-				"done":    false,
-			})
+		done := all[i].StatusID != nil && doneSet[*all[i].StatusID]
+		if wantDone != nil && done != *wantDone {
+			continue
 		}
+		epics = append(epics, epicBean(h.baseURL, &all[i], done))
 	}
 	startAt, maxResults := v3.ParsePagination(r, 50, 100)
 	lo := startAt
@@ -298,6 +306,37 @@ func (h *AgileBoardHandler) BoardEpics(w http.ResponseWriter, r *http.Request) {
 		"startAt": startAt, "maxResults": maxResults, "total": len(epics),
 		"isLast": hi >= len(epics), "values": epics[lo:hi],
 	})
+}
+
+// BoardEpicIssues: GET /rest/agile/1.0/board/{boardId}/epic/{epicId}/issue —
+// the children of an epic of the board's project (404 for an epic of another
+// project or a non-epic), paginated, optional jql.
+func (h *AgileBoardHandler) BoardEpicIssues(w http.ResponseWriter, r *http.Request) {
+	b := h.resolveBoard(r)
+	if b == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"board not found"}, nil)
+		return
+	}
+	epic := resolveEpicRef(h.issueSvc, r.PathValue("epicId"))
+	if epic == nil || epic.ProjectID != b.ProjectID {
+		v3.WriteError(w, http.StatusNotFound, []string{"epic not found"}, nil)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	writeEpicIssuePage(w, r, h.issueH, h.issueSvc, uid, issue.WithParent(epic.ID))
+}
+
+// BoardEpicNoneIssues: GET /rest/agile/1.0/board/{boardId}/epic/none/issue —
+// the board project's level-0 issues not in any epic, paginated, optional jql.
+func (h *AgileBoardHandler) BoardEpicNoneIssues(w http.ResponseWriter, r *http.Request) {
+	b := h.resolveBoard(r)
+	if b == nil {
+		v3.WriteError(w, http.StatusNotFound, []string{"board not found"}, nil)
+		return
+	}
+	uid := middleware.UserIDFromContext(r.Context())
+	writeEpicIssuePage(w, r, h.issueH, h.issueSvc, uid,
+		issue.WithWhere("issues.project_id = ?", b.ProjectID), issue.WithNoParent(), issue.WithHierarchyLevel(0))
 }
 
 // sprintToV3 mappa uno sprint di dominio nella Sprint agile.

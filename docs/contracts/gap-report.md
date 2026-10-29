@@ -2,8 +2,8 @@
 
 > Generato da `go run ./cmd/gapreport`. Non modificare a mano.
 
-- Nel contratto e implementati (path match): **119**
-- Nel contratto ma mancanti: **602**
+- Nel contratto e implementati (path match): **127**
+- Nel contratto ma mancanti: **594**
 - Implementati ma fuori contratto (estensioni): **99**
 
 ## Mancanti (dal contratto)
@@ -104,8 +104,6 @@
 - `DELETE /rest/security/1.0/linkedWorkspaces/bulk` — Delete linked Security Workspaces
 - `DELETE /rest/security/1.0/vulnerability/{vulnerabilityId}` — Delete a Vulnerability by ID
 - `GET /rest/agile/1.0/board/filter/{filterId}` — Get board by filter id
-- `GET /rest/agile/1.0/board/{boardId}/epic/none/issue` — Get issues without epic for board
-- `GET /rest/agile/1.0/board/{boardId}/epic/{epicId}/issue` — Get board issues for epic
 - `GET /rest/agile/1.0/board/{boardId}/features` — Get features for board
 - `GET /rest/agile/1.0/board/{boardId}/project` — Get projects
 - `GET /rest/agile/1.0/board/{boardId}/project/full` — Get projects full
@@ -116,8 +114,6 @@
 - `GET /rest/agile/1.0/board/{boardId}/reports` — Get reports for board
 - `GET /rest/agile/1.0/board/{boardId}/sprint/{sprintId}/issue` — Get board issues for sprint
 - `GET /rest/agile/1.0/board/{boardId}/version` — Get all versions
-- `GET /rest/agile/1.0/epic/none/issue` — Get issues without epic
-- `GET /rest/agile/1.0/epic/{epicIdOrKey}/issue` — Get issues for epic
 - `GET /rest/agile/1.0/issue/{issueIdOrKey}/estimation` — Get issue estimation for board
 - `GET /rest/agile/1.0/sprint/{sprintId}/properties` — Get properties keys
 - `GET /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Get property
@@ -370,9 +366,6 @@
 - `GET /rest/software/1.0/sprint/{sprintId}/issue` — Get issues for sprint (enhanced)
 - `POST /rest/agile/1.0/backlog/{boardId}/issue` — Move issues to backlog for board
 - `POST /rest/agile/1.0/board/{boardId}/issue` — Move issues to board
-- `POST /rest/agile/1.0/epic/none/issue` — Remove issues from epic
-- `POST /rest/agile/1.0/epic/{epicIdOrKey}` — Partially update epic
-- `POST /rest/agile/1.0/epic/{epicIdOrKey}/issue` — Move issues to epic
 - `POST /rest/agile/1.0/sprint/{sprintId}/swap` — Swap sprint
 - `POST /rest/api/3/app/field/context/configuration/list` — Bulk get custom field configurations
 - `POST /rest/api/3/app/field/value` — Update custom fields
@@ -496,7 +489,6 @@
 - `POST /rest/security/1.0/linkedWorkspaces/bulk` — Submit Security Workspaces to link
 - `PUT /rest/agile/1.0/board/{boardId}/features` — Toggle features
 - `PUT /rest/agile/1.0/board/{boardId}/properties/{propertyKey}` — Set board property
-- `PUT /rest/agile/1.0/epic/{epicIdOrKey}/rank` — Rank epics
 - `PUT /rest/agile/1.0/issue/{issueIdOrKey}/estimation` — Estimate issue for board
 - `PUT /rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}` — Set property
 - `PUT /rest/api/3/announcementBanner` — Update announcement banner configuration

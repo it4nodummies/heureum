@@ -289,3 +289,33 @@ func (s *Service) EpicProgress(epicID string) (done, total int, err error) {
 	}
 	return int(row.Done), int(row.Total), nil
 }
+
+// ErrInvalidEpicColor: the colour key is not one of EpicColorKeys.
+var ErrInvalidEpicColor = errors.New("invalid epic colour")
+
+// SetEpicColor sets the epic colour of the issue identified by key to one of
+// EpicColorKeys (ErrInvalidEpicColor otherwise) and logs the change in
+// issue_history as field "epic_color". The caller has already checked that
+// the issue is an epic (level 1): the colour column exists on every issue,
+// so nothing here depends on the type.
+func (s *Service) SetEpicColor(key, colorKey string) error {
+	if !IsEpicColorKey(colorKey) {
+		return fmt.Errorf("%w: %q", ErrInvalidEpicColor, colorKey)
+	}
+	iss, err := s.GetByKey(key)
+	if err != nil {
+		return err
+	}
+	old := ""
+	if iss.EpicColor != nil {
+		old = *iss.EpicColor
+	}
+	if old == colorKey {
+		return nil
+	}
+	if err := s.db.Model(&Issue{}).Where("id = ?", iss.ID).Update("epic_color", colorKey).Error; err != nil {
+		return err
+	}
+	s.logHistory(iss.ID, "", "epic_color", old, colorKey)
+	return nil
+}

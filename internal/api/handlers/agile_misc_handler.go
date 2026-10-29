@@ -10,32 +10,38 @@ import (
 	v3 "github.com/it4nodummies/heureum/internal/api/v3"
 	"github.com/it4nodummies/heureum/internal/domain/issue"
 	"github.com/it4nodummies/heureum/internal/domain/permission"
+	"github.com/it4nodummies/heureum/internal/domain/project"
 	"github.com/it4nodummies/heureum/internal/domain/sprint"
+	"github.com/it4nodummies/heureum/internal/domain/workflow"
 )
 
 type AgileMiscHandler struct {
-	issueSvc  *issue.Service
-	sprintSvc *sprint.Service
-	issueH    *IssueHandler
-	chk       *authz.Checker
-	baseURL   string
+	issueSvc   *issue.Service
+	sprintSvc  *sprint.Service
+	wfSvc      *workflow.Service
+	projectSvc *project.Service
+	issueH     *IssueHandler
+	chk        *authz.Checker
+	baseURL    string
 }
 
-func NewAgileMiscHandler(issueSvc *issue.Service, sprintSvc *sprint.Service, issueH *IssueHandler, chk *authz.Checker, baseURL string) *AgileMiscHandler {
-	return &AgileMiscHandler{issueSvc: issueSvc, sprintSvc: sprintSvc, issueH: issueH, chk: chk, baseURL: baseURL}
+// NewAgileMiscHandler: wfSvc drives the epic done/undone transitions,
+// projectSvc scopes GET /epic/none/issue to the caller's projects.
+func NewAgileMiscHandler(issueSvc *issue.Service, sprintSvc *sprint.Service, wfSvc *workflow.Service, projectSvc *project.Service, issueH *IssueHandler, chk *authz.Checker, baseURL string) *AgileMiscHandler {
+	return &AgileMiscHandler{issueSvc: issueSvc, sprintSvc: sprintSvc, wfSvc: wfSvc, projectSvc: projectSvc, issueH: issueH, chk: chk, baseURL: baseURL}
 }
 
-// authorizeBodyIssues resolves every issue named in a request body and checks
+// resolveBodyIssues resolves every issue named in a request body and checks
 // that uid holds permKey on EACH issue's project. These routes have no path
 // context, so the body issues are the only thing there is to authorize: an
 // unresolvable key/id and an issue the caller cannot browse look the same
 // (404, Jira's wording) so a guessed key reveals nothing; an issue the caller
-// can browse but not manage is a plain 403. It returns the internal ids in
-// body order, or the status/message to write. Callers must not write anything
+// can browse but not manage is a plain 403. It returns the issues in body
+// order, or the status/message to write. Callers must not write anything
 // before this returns ok: the whole batch is validated first (no partial
 // writes).
-func (h *AgileMiscHandler) authorizeBodyIssues(uid string, keys []string, permKey string) (ids []string, status int, msg string) {
-	ids = make([]string, 0, len(keys))
+func (h *AgileMiscHandler) resolveBodyIssues(uid string, keys []string, permKey string) (issues []*issue.Issue, status int, msg string) {
+	issues = make([]*issue.Issue, 0, len(keys))
 	for _, k := range keys {
 		iss := h.resolveIssue(k)
 		if iss == nil || h.chk.RequireProject(uid, iss.ProjectID, permission.BrowseProjects) != nil {
@@ -44,6 +50,19 @@ func (h *AgileMiscHandler) authorizeBodyIssues(uid string, keys []string, permKe
 		if err := h.chk.RequireProject(uid, iss.ProjectID, permKey); err != nil {
 			return nil, http.StatusForbidden, "you do not have permission to perform this action"
 		}
+		issues = append(issues, iss)
+	}
+	return issues, 0, ""
+}
+
+// authorizeBodyIssues is resolveBodyIssues returning the internal ids.
+func (h *AgileMiscHandler) authorizeBodyIssues(uid string, keys []string, permKey string) (ids []string, status int, msg string) {
+	issues, status, msg := h.resolveBodyIssues(uid, keys, permKey)
+	if status != 0 {
+		return nil, status, msg
+	}
+	ids = make([]string, 0, len(issues))
+	for _, iss := range issues {
 		ids = append(ids, iss.ID)
 	}
 	return ids, 0, ""
@@ -146,31 +165,30 @@ func (h *AgileMiscHandler) GetIssue(w http.ResponseWriter, r *http.Request) {
 	v3.WriteJSON(w, http.StatusOK, m)
 }
 
-// GetEpic: GET /rest/agile/1.0/epic/{epicIdOrKey} — shape epic minimale.
+// GetEpic: GET /rest/agile/1.0/epic/{epicIdOrKey} — the epic shape
+// (see epicBean); an issue that is not an epic is 404 like an unknown key.
 func (h *AgileMiscHandler) GetEpic(w http.ResponseWriter, r *http.Request) {
-	iss := h.resolveIssue(r.PathValue("epicIdOrKey"))
-	if iss == nil {
+	epic := h.resolveEpic(r.PathValue("epicIdOrKey"))
+	if epic == nil {
 		v3.WriteError(w, http.StatusNotFound, []string{"epic not found"}, nil)
 		return
 	}
-	v3.WriteJSON(w, http.StatusOK, map[string]any{
-		"id":      iss.SeqID,
-		"key":     iss.Key,
-		"self":    h.baseURL + "/rest/agile/1.0/epic/" + iss.Key,
-		"name":    iss.Title,
-		"summary": iss.Title,
-		"done":    false,
-	})
+	v3.WriteJSON(w, http.StatusOK, epicBean(h.baseURL, epic, isDoneStatus(h.issueSvc.DB(), epic.StatusID)))
 }
 
 func (h *AgileMiscHandler) resolveIssue(idOrKey string) *issue.Issue {
+	return resolveIssueRef(h.issueSvc, idOrKey)
+}
+
+// resolveIssueRef resolves an issue from its numeric id (seq_id) or key.
+func resolveIssueRef(issueSvc *issue.Service, idOrKey string) *issue.Issue {
 	if n, err := strconv.ParseInt(idOrKey, 10, 64); err == nil {
-		if iss, err := h.issueSvc.GetBySeqID(n); err == nil {
+		if iss, err := issueSvc.GetBySeqID(n); err == nil {
 			return iss
 		}
 		return nil
 	}
-	iss, err := h.issueSvc.GetByKey(idOrKey)
+	iss, err := issueSvc.GetByKey(idOrKey)
 	if err != nil {
 		return nil
 	}

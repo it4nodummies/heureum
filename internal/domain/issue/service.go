@@ -826,6 +826,84 @@ func WithNotArchived() ListOption {
 	return func(db *gorm.DB) *gorm.DB { return db.Where("is_archived = ?", false) }
 }
 
+// WithParent restricts to the direct children of parentID.
+func WithParent(parentID string) ListOption {
+	return func(db *gorm.DB) *gorm.DB { return db.Where("parent_id = ?", parentID) }
+}
+
+// WithNoParent restricts to issues without a parent (not in any epic, for a
+// level-0 issue).
+func WithNoParent() ListOption {
+	return func(db *gorm.DB) *gorm.DB { return db.Where("parent_id IS NULL") }
+}
+
+// WithHierarchyLevel restricts to issues whose type sits at the given
+// hierarchy level (1 epic, 0 story/task/bug, -1 subtask). An issue without a
+// type is a plain level-0 issue, so level 0 includes NULL type_id. Expressed
+// as a subquery (no JOIN) so it composes with the other options and with a
+// compiled JQL clause without column ambiguity.
+func WithHierarchyLevel(level int) ListOption {
+	return func(db *gorm.DB) *gorm.DB {
+		sub := db.Session(&gorm.Session{NewDB: true}).Model(&IssueType{}).Select("id").Where("hierarchy_level = ?", level)
+		if level == 0 {
+			return db.Where("(type_id IS NULL OR type_id IN (?))", sub)
+		}
+		return db.Where("type_id IN (?)", sub)
+	}
+}
+
+// WithProjectScope restricts to the projects returned by scope (e.g.
+// project.Service.MembershipSubquery); a nil scope means no restriction
+// (global admin).
+func WithProjectScope(scope *gorm.DB) ListOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if scope == nil {
+			return db
+		}
+		return db.Where("issues.project_id IN (?)", scope)
+	}
+}
+
+// WithWhere adds a raw clause with placeholders (a compiled JQL WHERE).
+// An empty clause is a no-op.
+func WithWhere(where string, args ...any) ListOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if where == "" {
+			return db
+		}
+		return db.Where(where, args...)
+	}
+}
+
+// ListPage returns one page of non-archived issues matching opts, ordered by
+// order ("position ASC" when empty), plus the total count before paging.
+// limit <= 0 returns no rows (count only). Used by the agile epic issue lists,
+// whose scope is not a single project.
+func (s *Service) ListPage(offset, limit int, order string, opts ...ListOption) ([]Issue, int, error) {
+	base := s.db.Model(&Issue{}).Where("is_archived = ?", false)
+	for _, o := range opts {
+		base = o(base)
+	}
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	issues := []Issue{}
+	if limit <= 0 {
+		return issues, int(total), nil
+	}
+	if order == "" {
+		order = "position ASC"
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if err := base.Order(order).Offset(offset).Limit(limit).Find(&issues).Error; err != nil {
+		return nil, 0, err
+	}
+	return issues, int(total), nil
+}
+
 // ExportRow is a flattened, human-readable issue row for CSV export: the
 // status/type/assignee foreign keys are resolved to their display names here
 // (via LEFT JOINs) so the handler never leaks raw UUIDs. Unassigned or

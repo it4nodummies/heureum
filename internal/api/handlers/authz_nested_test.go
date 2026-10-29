@@ -130,7 +130,7 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	wfH := NewWorkflowHandler(f.wfSvc, f.issueSvc, projSvc, baseURL)
 	sprintH := NewSprintHandler(f.sprintSvc, projSvc)
 	agileSprintH := NewAgileSprintHandler(f.sprintSvc, nil, f.issueSvc, nil, f.chk, baseURL)
-	agileMiscH := NewAgileMiscHandler(f.issueSvc, f.sprintSvc, nil, f.chk, baseURL)
+	agileMiscH := NewAgileMiscHandler(f.issueSvc, f.sprintSvc, f.wfSvc, projSvc, nil, f.chk, baseURL)
 	issueLinkH := NewIssueLinkHandler(f.issueSvc, f.chk, baseURL)
 	chk := f.chk
 
@@ -156,6 +156,12 @@ func setupNestedFixture(t *testing.T) *nestedFixture {
 	mux.Handle("POST /rest/agile/1.0/sprint/{sprintId}/complete", chk.Enforce(permission.ManageSprints, chk.BySprintSeq("sprintId"), http.HandlerFunc(agileSprintH.CompleteSprint)))
 	mux.Handle("PUT /rest/agile/1.0/issue/rank", http.HandlerFunc(agileMiscH.Rank))
 	mux.Handle("POST /rest/agile/1.0/backlog/issue", http.HandlerFunc(agileMiscH.MoveToBacklog))
+	// Epic routes (Round 28): the path authorizes the epic's project, the
+	// moved issues come from the body (or, for /epic/none/issue, only the body).
+	mux.Handle("POST /rest/agile/1.0/epic/{epicIdOrKey}", chk.Enforce(permission.EditIssues, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.UpdateEpic)))
+	mux.Handle("POST /rest/agile/1.0/epic/{epicIdOrKey}/issue", chk.Enforce(permission.EditIssues, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.MoveToEpic)))
+	mux.Handle("POST /rest/agile/1.0/epic/none/issue", http.HandlerFunc(agileMiscH.RemoveFromEpic))
+	mux.Handle("PUT /rest/agile/1.0/epic/{epicIdOrKey}/rank", chk.Enforce(permission.ManageSprints, chk.ByIssueParam("epicIdOrKey"), http.HandlerFunc(agileMiscH.RankEpic)))
 	mux.Handle("GET /rest/api/3/issueLink/{linkId}", chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueLink("linkId"), http.HandlerFunc(issueLinkH.Get)))
 	mux.Handle("GET /rest/api/3/issue/{issueIdOrKey}/issuelinks", chk.EnforceNotFound(permission.BrowseProjects, chk.ByIssueParam("issueIdOrKey"), http.HandlerFunc(issueLinkH.ListForIssue)))
 	mux.Handle("POST /rest/api/3/issueLink", http.HandlerFunc(issueLinkH.Create))
