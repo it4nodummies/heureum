@@ -8,15 +8,25 @@ import {
   DragOverEvent,
   DragStartEvent,
   DragOverlay,
-  closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { boards, sprints, agileIssues, type SearchIssue, type AgileSprint } from "@/lib/api";
+import {
+  boards,
+  sprints,
+  agileIssues,
+  issues as issuesApi,
+  fieldError,
+  hierarchyLevelOf,
+  type SearchIssue,
+  type AgileSprint,
+} from "@/lib/api";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
 import { DroppableList } from "@/components/backlog/DroppableList";
+import { EpicPanel, epicAwareCollision, epicDropTarget } from "@/components/backlog/EpicPanel";
+import { epicOf, indexEpics, indexIssues, matchesEpicFilter, type EpicFilter } from "@/lib/epicHierarchy";
 
 const BACKLOG_ID = "backlog";
 const sprintContainerId = (sprintId: number) => `sprint-${sprintId}`;
@@ -45,6 +55,8 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<Record<string, string[]>>({});
   const [dragError, setDragError] = useState<string | null>(null);
+  // Epic panel filter (component state, not URL): "all" | "none" | epic key.
+  const [epicFilter, setEpicFilter] = useState<EpicFilter>("all");
   const dragStartContainer = useRef<string | null>(null);
   // See the comment above `handleDragOver`'s use of this ref: guards against a real dnd-kit
   // multi-container "thrash" bug where moving an item across containers shifts their measured
@@ -55,6 +67,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   const backlog = useQuery({ queryKey: ["board", id, "backlog"], queryFn: () => boards.backlog(id) });
   const sprintList = useQuery({ queryKey: ["board", id, "sprints"], queryFn: () => boards.sprints(id) });
+  const epicList = useQuery({ queryKey: ["board", id, "epics"], queryFn: () => boards.epics(id) });
   const projectKey = board.data?.location?.projectKey;
 
   const sprintValues = sprintList.data?.values ?? [];
@@ -69,6 +82,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["board", id, "backlog"] }),
       qc.invalidateQueries({ queryKey: ["board", id, "sprints"] }),
+      qc.invalidateQueries({ queryKey: ["board", id, "epics"] }),
       ...sprintValues.map((sp) => qc.invalidateQueries({ queryKey: ["sprint", sp.id, "issues"] })),
     ]);
   };
@@ -81,6 +95,17 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
     serverItems[sprintContainerId(sp.id)] = list.map((i) => i.key);
     for (const iss of list) issuesByKey[iss.key] = iss;
   });
+  // Every loaded issue (backlog + sprints): epic progress, subtask→story→epic
+  // resolution and the panel filter all work off this set.
+  const allIssues = Object.values(issuesByKey);
+  const issueIndex = indexIssues(allIssues);
+  const epicsByKey = indexEpics(epicList.data?.values);
+  const resolveEpic = (iss: SearchIssue) => epicOf(iss, issueIndex, epicsByKey);
+  const visible = (keys: string[]) =>
+    keys.filter((k) => {
+      const iss = issuesByKey[k];
+      return !iss || matchesEpicFilter(iss, epicFilter, issueIndex);
+    });
 
   const createSprint = useMutation({
     mutationFn: () =>
@@ -170,6 +195,27 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
     },
     onError: async (err) => {
       setDragError(err instanceof Error ? err.message : "Failed to move issue(s)");
+      await invalidate();
+    },
+  });
+
+  // Drop onto the epic panel: PUT fields.parent on each dragged level-0 issue
+  // (epics and subtasks can't be moved into an epic — reported, not sent).
+  const setEpic = useMutation({
+    mutationFn: async ({ keys, epicKey }: { keys: string[]; epicKey: string | null }) => {
+      const rejected = keys.filter((k) => hierarchyLevelOf(issuesByKey[k]?.fields.issuetype) !== 0);
+      if (rejected.length > 0) {
+        throw new Error(`Only stories, tasks and bugs can be moved into an epic (${rejected.join(", ")})`);
+      }
+      for (const k of keys) await issuesApi.setParent(k, epicKey);
+    },
+    onSuccess: async (_data, vars) => {
+      if (vars.keys.length > 1) setSelected(new Set());
+      setDragError(null);
+      await invalidate();
+    },
+    onError: async (err) => {
+      setDragError(fieldError(err, "parent") ?? (err instanceof Error ? err.message : "Failed to move issue(s) into epic"));
       await invalidate();
     },
   });
@@ -283,6 +329,14 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
     if (!sourceContainer || !over) return;
 
     const overId = String(over.id);
+    // Dropped on the epic panel: assign the epic, no sprint/rank change. The
+    // sync effect below re-reads `items` from the server once the drag ends,
+    // undoing any cross-container preview onDragOver may have made.
+    const epicTarget = epicDropTarget(overId);
+    if (epicTarget !== undefined) {
+      setEpic.mutate({ keys: draggedKeys, epicKey: epicTarget });
+      return;
+    }
     const draggedSet = new Set(draggedKeys);
     // If onDragOver already moved the block to a different container, `items` reflects that
     // final placement. Otherwise (a same-container drag, which onDragOver deliberately ignores —
@@ -333,7 +387,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
   return (
     <div>
       {projectKey && <ProjectHeader projectKey={projectKey} active="backlog" />}
-      <div className="mx-auto max-w-3xl p-4">
+      <div className="mx-auto max-w-5xl p-4">
         {dragError && (
           <div
             role="alert"
@@ -352,264 +406,277 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
         )}
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={epicAwareCollision}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          {sprintValues.map((sp, idx) => (
-            <DroppableList
-              key={sp.id}
-              containerId={sprintContainerId(sp.id)}
-              items={items[sprintContainerId(sp.id)] ?? []}
-              issuesByKey={issuesByKey}
-              selected={selected}
-              onToggleSelect={toggleSelect}
-              emptyLabel="No issues in this sprint"
-              testId={sprintContainerId(sp.id)}
-              header={
-                <div className="mb-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-[#1a1f36]">
-                      {sp.name} <span className="text-xs font-normal text-slate-400">({sp.state})</span>
-                    </span>
-                    <span className="flex gap-2">
-                      <button
-                        onClick={() => openEdit(sp)}
-                        className="rounded border border-slate-300 px-2 py-0.5 text-xs"
-                      >
-                        Edit sprint
-                      </button>
-                      {sp.state === "future" && (
-                        <button
-                          onClick={() => setState.mutate({ sprintId: sp.id, state: "active" })}
-                          className="rounded border border-slate-300 px-2 py-0.5 text-xs"
-                        >
-                          Start sprint
-                        </button>
-                      )}
-                      {sp.state === "active" && (
-                        <button
-                          onClick={() => openComplete(sp.id)}
-                          className="rounded border border-slate-300 px-2 py-0.5 text-xs"
-                        >
-                          Complete sprint
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                  {(sp.goal || sp.startDate || sp.endDate) && (
-                    <div data-testid="sprint-goal" className="mt-0.5 text-xs text-slate-500">
-                      {sp.goal && <span>{sp.goal}</span>}
-                      {(sp.startDate || sp.endDate) && (
-                        <span className="ml-2 text-slate-400">
-                          {sp.startDate ? sp.startDate.slice(0, 10) : "…"} → {sp.endDate ? sp.endDate.slice(0, 10) : "…"}
+          <div className="flex items-start gap-4">
+            <EpicPanel
+              boardId={id}
+              projectKey={projectKey}
+              issues={allIssues}
+              active={epicFilter}
+              onChange={setEpicFilter}
+            />
+            <div className="min-w-0 max-w-3xl flex-1">
+              {sprintValues.map((sp, idx) => (
+                <DroppableList
+                  key={sp.id}
+                  containerId={sprintContainerId(sp.id)}
+                  items={visible(items[sprintContainerId(sp.id)] ?? [])}
+                  issuesByKey={issuesByKey}
+                  selected={selected}
+                  onToggleSelect={toggleSelect}
+                  resolveEpic={resolveEpic}
+                  emptyLabel="No issues in this sprint"
+                  testId={sprintContainerId(sp.id)}
+                  header={
+                    <div className="mb-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-[#1a1f36]">
+                          {sp.name} <span className="text-xs font-normal text-slate-400">({sp.state})</span>
                         </span>
-                      )}
-                    </div>
-                  )}
-                  {editing === sp.id && (
-                    <div
-                      data-testid="edit-sprint-form"
-                      className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50 p-2"
-                    >
-                      <input
-                        aria-label="Edit sprint name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        placeholder="Sprint name"
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      />
-                      <input
-                        aria-label="Edit sprint goal"
-                        value={editGoal}
-                        onChange={(e) => setEditGoal(e.target.value)}
-                        placeholder="Sprint goal"
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      />
-                      <div className="flex gap-2">
-                        <input
-                          type="date"
-                          aria-label="Edit start date"
-                          value={editStart}
-                          onChange={(e) => setEditStart(e.target.value)}
-                          className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
-                        />
-                        <input
-                          type="date"
-                          aria-label="Edit end date"
-                          value={editEnd}
-                          onChange={(e) => setEditEnd(e.target.value)}
-                          className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            updateSprint.mutate({
-                              sprintId: sp.id,
-                              fields: {
-                                name: editName,
-                                goal: editGoal,
-                                startDate: editStart || undefined,
-                                endDate: editEnd || undefined,
-                              },
-                            })
-                          }
-                          disabled={updateSprint.isPending}
-                          className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditing(null)}
-                          className="rounded border border-slate-300 px-3 py-1 text-xs"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {completing === sp.id &&
-                    (() => {
-                      const spIssues = sprintIssuesQueries[idx]?.data?.issues ?? [];
-                      const incomplete = spIssues.filter(
-                        (i) => i.fields.status?.statusCategory?.key !== "done",
-                      );
-                      const otherSprints = sprintValues.filter(
-                        (o) => o.id !== sp.id && o.state !== "closed",
-                      );
-                      return (
-                        <div
-                          role="dialog"
-                          aria-label="Complete sprint"
-                          data-testid="complete-sprint-dialog"
-                          className="mt-2 space-y-2 rounded border border-slate-200 bg-white p-3 shadow"
-                        >
-                          <div className="text-sm font-semibold text-[#1a1f36]">Complete {sp.name}</div>
-                          <div data-testid="incomplete-count" className="text-xs text-slate-500">
-                            {incomplete.length} incomplete issue{incomplete.length === 1 ? "" : "s"} will be moved.
-                          </div>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="radio"
-                              name={`move-${sp.id}`}
-                              checked={moveMode === "backlog"}
-                              onChange={() => setMoveMode("backlog")}
-                            />
-                            Move to Backlog
-                          </label>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="radio"
-                              name={`move-${sp.id}`}
-                              checked={moveMode === "sprint"}
-                              onChange={() => setMoveMode("sprint")}
-                              disabled={otherSprints.length === 0}
-                            />
-                            Move to sprint
-                            <select
-                              aria-label="Target sprint"
-                              value={moveTarget}
-                              onChange={(e) => setMoveTarget(e.target.value ? Number(e.target.value) : "")}
-                              disabled={moveMode !== "sprint" || otherSprints.length === 0}
-                              className="rounded border border-slate-300 px-2 py-0.5 text-sm"
-                            >
-                              <option value="">Select sprint…</option>
-                              {otherSprints.map((o) => (
-                                <option key={o.id} value={o.id}>
-                                  {o.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <div className="flex gap-2">
+                        <span className="flex gap-2">
+                          <button
+                            onClick={() => openEdit(sp)}
+                            className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                          >
+                            Edit sprint
+                          </button>
+                          {sp.state === "future" && (
                             <button
-                              onClick={() =>
-                                completeSprint.mutate({
-                                  sprintId: sp.id,
-                                  opts:
-                                    moveMode === "sprint" && moveTarget
-                                      ? { moveToSprintId: Number(moveTarget) }
-                                      : { moveOpenToBacklog: true },
-                                })
-                              }
-                              disabled={completeSprint.isPending || (moveMode === "sprint" && !moveTarget)}
-                              className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
+                              onClick={() => setState.mutate({ sprintId: sp.id, state: "active" })}
+                              className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                            >
+                              Start sprint
+                            </button>
+                          )}
+                          {sp.state === "active" && (
+                            <button
+                              onClick={() => openComplete(sp.id)}
+                              className="rounded border border-slate-300 px-2 py-0.5 text-xs"
                             >
                               Complete sprint
                             </button>
+                          )}
+                        </span>
+                      </div>
+                      {(sp.goal || sp.startDate || sp.endDate) && (
+                        <div data-testid="sprint-goal" className="mt-0.5 text-xs text-slate-500">
+                          {sp.goal && <span>{sp.goal}</span>}
+                          {(sp.startDate || sp.endDate) && (
+                            <span className="ml-2 text-slate-400">
+                              {sp.startDate ? sp.startDate.slice(0, 10) : "…"} → {sp.endDate ? sp.endDate.slice(0, 10) : "…"}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {editing === sp.id && (
+                        <div
+                          data-testid="edit-sprint-form"
+                          className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50 p-2"
+                        >
+                          <input
+                            aria-label="Edit sprint name"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Sprint name"
+                            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                          />
+                          <input
+                            aria-label="Edit sprint goal"
+                            value={editGoal}
+                            onChange={(e) => setEditGoal(e.target.value)}
+                            placeholder="Sprint goal"
+                            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="date"
+                              aria-label="Edit start date"
+                              value={editStart}
+                              onChange={(e) => setEditStart(e.target.value)}
+                              className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                            />
+                            <input
+                              type="date"
+                              aria-label="Edit end date"
+                              value={editEnd}
+                              onChange={(e) => setEditEnd(e.target.value)}
+                              className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                            />
+                          </div>
+                          <div className="flex gap-2">
                             <button
-                              onClick={() => setCompleting(null)}
+                              onClick={() =>
+                                updateSprint.mutate({
+                                  sprintId: sp.id,
+                                  fields: {
+                                    name: editName,
+                                    goal: editGoal,
+                                    startDate: editStart || undefined,
+                                    endDate: editEnd || undefined,
+                                  },
+                                })
+                              }
+                              disabled={updateSprint.isPending}
+                              className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditing(null)}
                               className="rounded border border-slate-300 px-3 py-1 text-xs"
                             >
                               Cancel
                             </button>
                           </div>
                         </div>
-                      );
-                    })()}
-                </div>
-              }
-            />
-          ))}
+                      )}
+                      {completing === sp.id &&
+                        (() => {
+                          const spIssues = sprintIssuesQueries[idx]?.data?.issues ?? [];
+                          const incomplete = spIssues.filter(
+                            (i) => i.fields.status?.statusCategory?.key !== "done",
+                          );
+                          const otherSprints = sprintValues.filter(
+                            (o) => o.id !== sp.id && o.state !== "closed",
+                          );
+                          return (
+                            <div
+                              role="dialog"
+                              aria-label="Complete sprint"
+                              data-testid="complete-sprint-dialog"
+                              className="mt-2 space-y-2 rounded border border-slate-200 bg-white p-3 shadow"
+                            >
+                              <div className="text-sm font-semibold text-[#1a1f36]">Complete {sp.name}</div>
+                              <div data-testid="incomplete-count" className="text-xs text-slate-500">
+                                {incomplete.length} incomplete issue{incomplete.length === 1 ? "" : "s"} will be moved.
+                              </div>
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="radio"
+                                  name={`move-${sp.id}`}
+                                  checked={moveMode === "backlog"}
+                                  onChange={() => setMoveMode("backlog")}
+                                />
+                                Move to Backlog
+                              </label>
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="radio"
+                                  name={`move-${sp.id}`}
+                                  checked={moveMode === "sprint"}
+                                  onChange={() => setMoveMode("sprint")}
+                                  disabled={otherSprints.length === 0}
+                                />
+                                Move to sprint
+                                <select
+                                  aria-label="Target sprint"
+                                  value={moveTarget}
+                                  onChange={(e) => setMoveTarget(e.target.value ? Number(e.target.value) : "")}
+                                  disabled={moveMode !== "sprint" || otherSprints.length === 0}
+                                  className="rounded border border-slate-300 px-2 py-0.5 text-sm"
+                                >
+                                  <option value="">Select sprint…</option>
+                                  {otherSprints.map((o) => (
+                                    <option key={o.id} value={o.id}>
+                                      {o.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() =>
+                                    completeSprint.mutate({
+                                      sprintId: sp.id,
+                                      opts:
+                                        moveMode === "sprint" && moveTarget
+                                          ? { moveToSprintId: Number(moveTarget) }
+                                          : { moveOpenToBacklog: true },
+                                    })
+                                  }
+                                  disabled={completeSprint.isPending || (moveMode === "sprint" && !moveTarget)}
+                                  className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
+                                >
+                                  Complete sprint
+                                </button>
+                                <button
+                                  onClick={() => setCompleting(null)}
+                                  className="rounded border border-slate-300 px-3 py-1 text-xs"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                    </div>
+                  }
+                />
+              ))}
 
-          <div className="my-3 space-y-2 rounded border border-slate-200 p-2">
-            <div className="flex gap-2">
-              <input
-                aria-label="New sprint name"
-                value={newSprint}
-                onChange={(e) => setNewSprint(e.target.value)}
-                placeholder="Sprint name"
-                className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
-              />
-              <button
-                onClick={() => newSprint && createSprint.mutate()}
-                className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
-                disabled={createSprint.isPending}
-              >
-                Create sprint
-              </button>
-            </div>
-            <input
-              aria-label="Sprint goal"
-              value={newGoal}
-              onChange={(e) => setNewGoal(e.target.value)}
-              placeholder="Sprint goal (optional)"
-              className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
-            />
-            <div className="flex gap-2">
-              <input
-                type="date"
-                aria-label="Start date"
-                value={newStart}
-                onChange={(e) => setNewStart(e.target.value)}
-                className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
-              />
-              <input
-                type="date"
-                aria-label="End date"
-                value={newEnd}
-                onChange={(e) => setNewEnd(e.target.value)}
-                className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+              <div className="my-3 space-y-2 rounded border border-slate-200 p-2">
+                <div className="flex gap-2">
+                  <input
+                    aria-label="New sprint name"
+                    value={newSprint}
+                    onChange={(e) => setNewSprint(e.target.value)}
+                    placeholder="Sprint name"
+                    className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+                  />
+                  <button
+                    onClick={() => newSprint && createSprint.mutate()}
+                    className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
+                    disabled={createSprint.isPending}
+                  >
+                    Create sprint
+                  </button>
+                </div>
+                <input
+                  aria-label="Sprint goal"
+                  value={newGoal}
+                  onChange={(e) => setNewGoal(e.target.value)}
+                  placeholder="Sprint goal (optional)"
+                  className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    aria-label="Start date"
+                    value={newStart}
+                    onChange={(e) => setNewStart(e.target.value)}
+                    className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+                  />
+                  <input
+                    type="date"
+                    aria-label="End date"
+                    value={newEnd}
+                    onChange={(e) => setNewEnd(e.target.value)}
+                    className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+
+              <DroppableList
+                containerId={BACKLOG_ID}
+                items={visible(items[BACKLOG_ID] ?? [])}
+                issuesByKey={issuesByKey}
+                selected={selected}
+                onToggleSelect={toggleSelect}
+                resolveEpic={resolveEpic}
+                emptyLabel="Backlog is empty"
+                testId="backlog-list"
+                header={
+                  <div className="mb-1 text-sm font-semibold text-slate-500">
+                    Backlog ({visible(items[BACKLOG_ID] ?? []).length})
+                  </div>
+                }
               />
             </div>
           </div>
-
-          <DroppableList
-            containerId={BACKLOG_ID}
-            items={items[BACKLOG_ID] ?? []}
-            issuesByKey={issuesByKey}
-            selected={selected}
-            onToggleSelect={toggleSelect}
-            emptyLabel="Backlog is empty"
-            testId="backlog-list"
-            header={
-              <div className="mb-1 text-sm font-semibold text-slate-500">
-                Backlog ({(items[BACKLOG_ID] ?? []).length})
-              </div>
-            }
-          />
 
           <DragOverlay>
             {activeIssue && (

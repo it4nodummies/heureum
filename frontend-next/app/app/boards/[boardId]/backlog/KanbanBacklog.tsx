@@ -7,15 +7,24 @@ import {
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
-  closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { boards, agileIssues, issues as issuesApi, workflow, type SearchIssue } from "@/lib/api";
+import {
+  boards,
+  agileIssues,
+  issues as issuesApi,
+  workflow,
+  fieldError,
+  hierarchyLevelOf,
+  type SearchIssue,
+} from "@/lib/api";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
 import { DroppableList } from "@/components/backlog/DroppableList";
+import { EpicPanel, epicAwareCollision, epicDropTarget } from "@/components/backlog/EpicPanel";
+import { epicOf, indexEpics, indexIssues, matchesEpicFilter, type EpicFilter } from "@/lib/epicHierarchy";
 
 const BACKLOG_ID = "backlog";
 const EMPTY_SELECTION: Set<string> = new Set();
@@ -35,11 +44,14 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Epic panel filter (component state, not URL): "all" | "none" | epic key.
+  const [epicFilter, setEpicFilter] = useState<EpicFilter>("all");
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   // For a kanban board there are no sprints, so /backlog returns every (not
   // archived) project issue; we keep only the to-do-category ones here.
   const backlog = useQuery({ queryKey: ["board", id, "backlog"], queryFn: () => boards.backlog(id) });
+  const epicList = useQuery({ queryKey: ["board", id, "epics"], queryFn: () => boards.epics(id) });
   const projectKey = board.data?.location?.projectKey;
 
   const wf = useQuery({
@@ -68,6 +80,16 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
   const issuesByKey: Record<string, SearchIssue> = {};
   for (const iss of todoIssues) issuesByKey[iss.key] = iss;
   const serverKeys = todoIssues.map((i) => i.key);
+  // Every (not archived) project issue, not just the to-do ones: epic progress
+  // counts done children too, and a subtask's epic is read through its story.
+  const allIssues = useMemo(() => backlog.data?.issues ?? [], [backlog.data]);
+  const issueIndex = useMemo(() => indexIssues(allIssues), [allIssues]);
+  const epicsByKey = useMemo(() => indexEpics(epicList.data?.values), [epicList.data]);
+  const resolveEpic = (iss: SearchIssue) => epicOf(iss, issueIndex, epicsByKey);
+  const visibleItems = items.filter((k) => {
+    const iss = issuesByKey[k];
+    return !iss || matchesEpicFilter(iss, epicFilter, issueIndex);
+  });
 
   const rankMutation = useMutation({
     mutationFn: (vars: { key: string; before?: string; after?: string }) =>
@@ -99,6 +121,26 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
     },
   });
 
+  // Drop onto the epic panel: PUT fields.parent (level-0 issues only).
+  const setEpic = useMutation({
+    mutationFn: async ({ key, epicKey }: { key: string; epicKey: string | null }) => {
+      if (hierarchyLevelOf(issuesByKey[key]?.fields.issuetype) !== 0) {
+        throw new Error(`Only stories, tasks and bugs can be moved into an epic (${key})`);
+      }
+      await issuesApi.setParent(key, epicKey);
+    },
+    onSuccess: async () => {
+      setActionError(null);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["board", id, "backlog"] }),
+        qc.invalidateQueries({ queryKey: ["board", id, "epics"] }),
+      ]);
+    },
+    onError: (err) => {
+      setActionError(fieldError(err, "parent") ?? (err instanceof Error ? err.message : "Failed to move issue into epic"));
+    },
+  });
+
   // Mirror the server order into local state while nothing is in flight — same
   // guard pattern the scrum backlog uses (don't resync mid-drag or mid-commit).
   useEffect(() => {
@@ -118,6 +160,12 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
     if (!over) return;
     const overId = String(over.id);
     if (overId === activeKey) return;
+    // Dropped on the epic panel: assign the epic, keep the rank.
+    const epicTarget = epicDropTarget(overId);
+    if (epicTarget !== undefined) {
+      setEpic.mutate({ key: activeKey, epicKey: epicTarget });
+      return;
+    }
 
     const withoutDragged = items.filter((k) => k !== activeKey);
     const insertIndex =
@@ -142,7 +190,7 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
   return (
     <div>
       {projectKey && <ProjectHeader projectKey={projectKey} active="backlog" />}
-      <div className="mx-auto max-w-3xl p-4">
+      <div className="mx-auto max-w-5xl p-4">
         {actionError && (
           <div
             role="alert"
@@ -161,35 +209,47 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
         )}
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={epicAwareCollision}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <DroppableList
-            containerId={BACKLOG_ID}
-            items={items}
-            issuesByKey={issuesByKey}
-            selected={EMPTY_SELECTION}
-            onToggleSelect={() => {}}
-            hideSelect
-            emptyLabel="No to-do issues in the backlog"
-            testId="backlog-list"
-            header={
-              <div className="mb-1 text-sm font-semibold text-slate-500">Backlog ({items.length})</div>
-            }
-            renderAction={(issue) => (
-              <button
-                type="button"
-                onClick={() => sendToBoard.mutate(issue.key)}
-                disabled={sendToBoard.isPending || !firstInProgress}
-                title={!firstInProgress ? "No in-progress status configured" : undefined}
-                data-testid={`send-to-board-${issue.key}`}
-                className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Send to board
-              </button>
-            )}
-          />
+          <div className="flex items-start gap-4">
+            <EpicPanel
+              boardId={id}
+              projectKey={projectKey}
+              issues={allIssues}
+              active={epicFilter}
+              onChange={setEpicFilter}
+            />
+            <div className="min-w-0 max-w-3xl flex-1">
+              <DroppableList
+                containerId={BACKLOG_ID}
+                items={visibleItems}
+                issuesByKey={issuesByKey}
+                selected={EMPTY_SELECTION}
+                onToggleSelect={() => {}}
+                hideSelect
+                resolveEpic={resolveEpic}
+                emptyLabel="No to-do issues in the backlog"
+                testId="backlog-list"
+                header={
+                  <div className="mb-1 text-sm font-semibold text-slate-500">Backlog ({visibleItems.length})</div>
+                }
+                renderAction={(issue) => (
+                  <button
+                    type="button"
+                    onClick={() => sendToBoard.mutate(issue.key)}
+                    disabled={sendToBoard.isPending || !firstInProgress}
+                    title={!firstInProgress ? "No in-progress status configured" : undefined}
+                    data-testid={`send-to-board-${issue.key}`}
+                    className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Send to board
+                  </button>
+                )}
+              />
+            </div>
+          </div>
 
           <DragOverlay>
             {activeIssue && (

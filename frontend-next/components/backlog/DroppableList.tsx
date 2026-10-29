@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { SearchIssue } from "@/lib/api";
+import type { EpicRef } from "@/lib/epicHierarchy";
 import { IssueCard } from "./IssueCard";
 
 export function DroppableList({
@@ -17,6 +18,7 @@ export function DroppableList({
   testId,
   hideSelect = false,
   renderAction,
+  resolveEpic,
 }: {
   containerId: string;
   items: string[];
@@ -30,6 +32,8 @@ export function DroppableList({
   hideSelect?: boolean;
   // Optional: a trailing per-row action rendered after the summary.
   renderAction?: (issue: SearchIssue) => ReactNode;
+  // Optional: the issue's epic for the card lozenge (lib/epicHierarchy.ts epicOf).
+  resolveEpic?: (issue: SearchIssue) => EpicRef | null;
 }) {
   const { setNodeRef } = useDroppable({ id: containerId });
   return (
@@ -48,6 +52,7 @@ export function DroppableList({
                 onToggleSelect={onToggleSelect}
                 hideSelect={hideSelect}
                 action={renderAction?.(issue)}
+                epic={resolveEpic?.(issue)}
               />
             );
           })}
