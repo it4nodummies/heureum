@@ -1,7 +1,7 @@
 # Round 28 — Epic experience — Design
 
 **Status:** proposed (2026-10-29)
-**Driver:** the reference team lives by epics (121 epics, 1391 parented Story/Task/Bug; tour of
+**Driver:** the reference team lives by epics (most of its Story/Task/Bug sit under an epic; tour of
 2026-10-27). Heureum today: an epic is just an issue whose type is named "Epic"; `parent_id` is a
 generic pointer set only at create, never validated, never updatable; the agile Epic API is
 read-only (`GET /epic/{id}`, `GET /board/{id}/epic`, no colour, `done` always false); JQL has no
