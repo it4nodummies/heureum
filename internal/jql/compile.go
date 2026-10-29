@@ -2,6 +2,7 @@ package jql
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -124,6 +125,8 @@ func compileClause(c *Clause, r Resolver) (string, []any, error) {
 		return keyClause(c)
 	case "created", "updated":
 		return dateClause(c)
+	case "parent", "epic link":
+		return parentClause(c)
 	default:
 		return "", nil, fmt.Errorf("campo non supportato: %s", c.Field)
 	}
@@ -303,6 +306,64 @@ func keyClause(c *Clause) (string, []any, error) {
 	default:
 		return "", nil, fmt.Errorf("operatore %q non valido per key", c.Op)
 	}
+}
+
+// parentClause gestisce `parent` (e l'alias Jira-classico "Epic Link"): il
+// valore è la chiave (DEMO-1) o il seq id numerico (10001) della issue padre,
+// risolto con una subquery parametrizzata su issues (alias p per non
+// confondersi con la issues esterna). Una lista può mescolare chiavi e id:
+// una sola subquery con un predicato per famiglia. IS [NOT] EMPTY mappa su
+// parent_id IS [NOT] NULL.
+func parentClause(c *Clause) (string, []any, error) {
+	const col = "issues.parent_id"
+	if c.IsEmpty {
+		return nullableClause(col, c)
+	}
+	var values []string
+	switch c.Op {
+	case "=", "!=":
+		values = []string{c.Value}
+	case "IN", "NOT IN":
+		values = c.Values
+	default:
+		return "", nil, fmt.Errorf("operatore %q non valido per %s", c.Op, c.Field)
+	}
+	if c.Func != "" {
+		return "", nil, fmt.Errorf("funzione %s() non supportata per %s", c.Func, c.Field)
+	}
+
+	var keys, seqIDs []any
+	for _, v := range values {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			seqIDs = append(seqIDs, n)
+		} else {
+			keys = append(keys, v)
+		}
+	}
+	single := c.Op == "=" || c.Op == "!="
+	preds := make([]string, 0, 2)
+	args := make([]any, 0, len(values))
+	if len(keys) > 0 {
+		preds = append(preds, parentPredicate("p.key", keys, single))
+		args = append(args, keys...)
+	}
+	if len(seqIDs) > 0 {
+		preds = append(preds, parentPredicate("p.seq_id", seqIDs, single))
+		args = append(args, seqIDs...)
+	}
+	op := "IN"
+	if c.Op == "!=" || c.Op == "NOT IN" {
+		op = "NOT IN"
+	}
+	return col + " " + op + " (SELECT p.id FROM issues p WHERE " + strings.Join(preds, " OR ") + ")", args, nil
+}
+
+// parentPredicate rende `col = ?` per un valore scalare, `col IN (?,…)` per una lista.
+func parentPredicate(col string, vals []any, single bool) string {
+	if single {
+		return col + " = ?"
+	}
+	return inClause(col, "IN", vals)
 }
 
 func dateClause(c *Clause) (string, []any, error) {

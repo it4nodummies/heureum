@@ -125,3 +125,27 @@ func TestParse_Errors(t *testing.T) {
 		}
 	}
 }
+
+func TestParse_QuotedFieldName(t *testing.T) {
+	// Un nome campo quotato (forma classica Jira "Epic Link") è accettato in
+	// posizione di campo e normalizzato in minuscolo come gli identificatori.
+	q, err := Parse(`"Epic Link" = DEMO-1`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	c, ok := q.Where.(*Clause)
+	if !ok {
+		t.Fatalf("atteso *Clause, got %T", q.Where)
+	}
+	if c.Field != "epic link" || c.Op != "=" || c.Value != "DEMO-1" {
+		t.Errorf("clause errata: %+v", c)
+	}
+	// Una stringa quotata in posizione di valore resta un valore.
+	q2, err := Parse(`summary ~ "Epic Link"`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c2 := q2.Where.(*Clause); c2.Field != "summary" || c2.Value != "Epic Link" {
+		t.Errorf("clause errata: %+v", c2)
+	}
+}
