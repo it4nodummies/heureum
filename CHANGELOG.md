@@ -67,6 +67,46 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GORM error text: unexpected errors are a generic 500 with the detail logged; "already taken" (409),
   invalid credentials and duplicate project key (400) are sanitized sentinels.
 - `gofmt` applied to nine pre-existing unformatted files (no behaviour change).
+- **Creating an issue now emits only `issue_created`** (after commit, with initial status/assignee/
+  labels already applied); the spurious `issue_updated`/`issue_transitioned` events and history
+  rows that used to fire on create are gone — webhooks and automation rules keyed on those no
+  longer trigger at creation, and `issue_created` rules that set assignee/transition are no longer
+  overwritten by the handler. The assignment notification is still sent (after commit).
+
+### Fixed
+
+- **Project invites failed on Postgres.** `project_invites.accepted_by` was written as `""` on
+  creation; it is a nullable FK to `users(id)`, so the insert violated the constraint on Postgres
+  (SQLite never enforced it). It is now `NULL` until the invite is accepted.
+- **Issue descriptions typed at creation were stored as broken JSON.** The create path wrapped the
+  already-serialized ADF document in `{"content":"…"}` without escaping, so the detail view fell
+  back to rendering the raw string. The ADF document is now stored as-is (valid JSON); plain-text
+  descriptions are still wrapped into a paragraph.
+- **Issue keys are allocated atomically.** The next key number used to be "latest row's key + 1"
+  outside any transaction (with the lookup error ignored), so concurrent creates, `created_at`
+  ties or a DB error could produce duplicate keys surfacing as 400 with raw driver text.
+  Migration `000026` adds `projects.issue_counter`; the key, the `seq_id` and the row insert now
+  happen in one transaction, errors are propagated, and an unknown project is a clean error.
+  **Upgrade note:** the counters are backfilled once at first start from the existing keys
+  (idempotent, in Go, logged); until then — and for rows inserted behind the server's back — a
+  create whose allocated key already exists re-syncs the counter instead of failing.
+- **Issue creation follow-ups are transactional.** The initial status, assignee, labels and
+  fix versions are written in the same transaction as the issue row: a failure in any of them
+  leaves no half-initialized issue (previously each step's error was discarded and a failed
+  status assignment could dereference a nil issue). An unknown assignee is now a 400 with a
+  field error instead of a later FK violation.
+- **Sprint completion is NULL-safe and transactional.** Open issues whose `status_id` is NULL were
+  skipped by `status_id NOT IN (…)` and left behind in the completed sprint; they are now moved
+  (or kept) with the others, and the whole completion is one transaction with errors propagated.
+- **A workflow status in use can no longer be removed.** `DELETE` of a status still referenced by
+  issues is refused with **409** and a message naming the count, instead of orphaning them.
+- **`CompleteSprint` returns 500 for database errors** (it mapped every error to 400).
+- **Automation "add comment" actions write valid ADF.** The comment body was built by formatting
+  the text into a JSON literal by hand, which broke on the first quote or newline.
+- The project-create scaffold logs (instead of discarding) a failed rollback delete.
+- **Unknown issue type on create is a 400** with `errors.issuetype` (it surfaced as a 500 after the follow-ups were made transactional); the type must exist and belong to the project.
+  Note for external Jira-compat clients: `GET /rest/api/3/issuetype` lists one id per name across all projects, so an id taken from there and sent for a different project is now refused (previously another project's type was silently attached) — send `issuetype.name` instead, as the UI does.
+- **Removing a workflow status checks the parent first**: a status id from another workflow/project is a 404 before any in-use count, so the 409 guard cannot leak another project's status or issue count.
 
 ### Security
 
@@ -124,6 +164,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   able to create a project could configure a provider with their own secret and, with correctly
   signed events, add commit comments/links to any issue on the instance and — on "PR merged" —
   move it to a status of the attacker's workflow.
+
+### Internal
+
+- **Real-schema test helper and CI matrix (Round 24).** `internal/storetest` gives a test a
+  database built from the real migrations (per-test isolated DB, `TEST_DB_DRIVER=sqlite|postgres`,
+  SQLite with `PRAGMA foreign_keys` on), replacing `AutoMigrate` + hand-written stubs that hid
+  foreign keys and column types; the `backend` CI job runs the suite on both SQLite and Postgres
+  (`TZ=Europe/Rome` on the Postgres leg so timestamp zone skews are visible). Every fix above has
+  a storetest-based test that was red before it. The API-token expiry round-trip is pinned on the
+  real schema too (`TestAPIToken_ExpiryRoundTripsOnRealSchema`). The MySQL leg (migration type
+  alignment) is deferred and parked unverified on `wip/r24-mysql-migrations`.
 
 ## [1.2.0] - 2026-09-23
 

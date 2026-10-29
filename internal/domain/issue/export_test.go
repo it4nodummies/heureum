@@ -6,14 +6,30 @@ import (
 
 func TestExportRowsResolvesNames(t *testing.T) {
 	db := newIssueTestDB(t)
-	// Joined tables live in other domains; create minimal shapes via raw SQL.
-	db.Exec(`CREATE TABLE workflow_statuses (id TEXT PRIMARY KEY, name TEXT)`)
-	// issue_types is auto-migrated by newIssueTestDB (it belongs to this package),
-	// so its table already exists with a NOT NULL project_id — insert accordingly.
-	db.Exec(`CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT, email TEXT)`)
-	db.Exec(`INSERT INTO workflow_statuses (id,name) VALUES ('st-1','In Progress')`)
-	db.Exec(`INSERT INTO issue_types (id,project_id,name) VALUES ('ty-1','proj-1','Bug')`)
-	db.Exec(`INSERT INTO users (id,display_name,email) VALUES ('u-1','Ada Lovelace','ada@example.com')`)
+	// issues.project_id and issue_types.project_id are real FKs to projects(id).
+	createTestProject(t, db, "proj-1")
+	// ExportRows joins workflow_statuses (status_id) and users (assignee_id).
+	// workflow_statuses.workflow_id is a real, NOT NULL FK to workflows(id), and
+	// workflows.project_id is itself a real FK to projects(id) — neither table
+	// is the stub CREATE TABLE this test used to fabricate, which had no such
+	// columns at all.
+	if err := db.Exec(`INSERT INTO workflows (id, project_id, name) VALUES ('wf-1', 'proj-1', 'Default')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO workflow_statuses (id, workflow_id, name) VALUES ('st-1', 'wf-1', 'In Progress')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	// issue_types is created by the real migrations (it belongs to this
+	// package), so its table already exists with a NOT NULL project_id.
+	if err := db.Exec(`INSERT INTO issue_types (id,project_id,name) VALUES ('ty-1','proj-1','Bug')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	// users.username is real, NOT NULL and UNIQUE: the old stub table only had
+	// id/display_name/email, so this insert would violate that constraint
+	// unchanged.
+	if err := db.Exec(`INSERT INTO users (id,display_name,email,username) VALUES ('u-1','Ada Lovelace','ada@example.com','ada')`).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	svc := NewService(db)
 	iss, err := svc.Create("DEMO", "proj-1", "Broken login", "", PriorityHigh, nil, nil)
@@ -42,9 +58,8 @@ func TestExportRowsResolvesNames(t *testing.T) {
 
 func TestExportRowsUnassignedIsBlank(t *testing.T) {
 	db := newIssueTestDB(t)
-	db.Exec(`CREATE TABLE workflow_statuses (id TEXT PRIMARY KEY, name TEXT)`)
-	// issue_types is auto-migrated by newIssueTestDB; no raw CREATE needed here.
-	db.Exec(`CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT, email TEXT)`)
+	// issues.project_id is a real FK to projects(id).
+	createTestProject(t, db, "proj-1")
 	svc := NewService(db)
 	if _, err := svc.Create("DEMO", "proj-1", "No metadata", "", PriorityMedium, nil, nil); err != nil {
 		t.Fatal(err)

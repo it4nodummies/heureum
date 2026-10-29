@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gorm.io/driver/sqlite"
+	"github.com/it4nodummies/heureum/internal/storetest"
 	"gorm.io/gorm"
 )
 
@@ -14,15 +14,7 @@ import (
 var rankSeqCounter int64
 
 func rankDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := db.AutoMigrate(&Issue{}); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return db
+	return storetest.New(t)
 }
 
 func mk(t *testing.T, db *gorm.DB, id string, pos float64) {
@@ -42,6 +34,7 @@ func pos(t *testing.T, db *gorm.DB, id string) float64 {
 
 func TestRank_Between(t *testing.T) {
 	db := rankDB(t)
+	createTestProject(t, db, "p")
 	mk(t, db, "a", 100)
 	mk(t, db, "b", 200)
 	mk(t, db, "x", 0)
@@ -58,6 +51,7 @@ func TestRank_Between(t *testing.T) {
 
 func TestRank_AfterOnly(t *testing.T) {
 	db := rankDB(t)
+	createTestProject(t, db, "p")
 	mk(t, db, "a", 100)
 	mk(t, db, "x", 0)
 	svc := NewService(db)
@@ -72,6 +66,7 @@ func TestRank_AfterOnly(t *testing.T) {
 
 func TestRank_EndWhenNoNeighbors(t *testing.T) {
 	db := rankDB(t)
+	createTestProject(t, db, "p")
 	mk(t, db, "a", 100)
 	mk(t, db, "x", 0)
 	svc := NewService(db)

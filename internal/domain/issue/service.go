@@ -2,13 +2,17 @@ package issue
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"github.com/it4nodummies/heureum/internal/adf"
 )
 
 type Service struct {
@@ -39,40 +43,322 @@ func (s *Service) emit(eventType string, iss *Issue) {
 	}
 }
 
+// ErrProjectNotFound is returned by Create when the project the issue should
+// belong to does not exist (no key can be allocated for it).
+var ErrProjectNotFound = errors.New("project not found")
+
+// seqIDRetries bounds the retry loop around the global seq_id allocation in
+// Create. seq_id is MAX(seq_id)+1 computed inside the create transaction:
+// two creates in the SAME project are serialized by the row lock the counter
+// UPDATE takes on projects, so they never collide; two creates in DIFFERENT
+// projects hold different row locks and can still both read the same MAX on
+// Postgres/MySQL. The loser fails on issues.seq_id's unique index and its
+// transaction is rolled back (counter included), so it is simply retried.
+const seqIDRetries = 5
+
+// ErrAssigneeNotFound is returned by CreateWithOptions when
+// CreateOptions.AssigneeID is not a user: a client error, not an FK
+// violation surfacing as an internal failure.
+var ErrAssigneeNotFound = errors.New("assignee not found")
+
+// ErrIssueTypeNotFound is returned by Create/CreateWithOptions when typeID is
+// not an issue type OF THAT PROJECT (missing or belonging to another project
+// — indistinguishable by design): a client error, not an FK violation.
+var ErrIssueTypeNotFound = errors.New("issue type not found in project")
+
+// CreateOptions carries the create-time fields that used to be applied by
+// the handler as separate UPDATEs after the insert — each with its error
+// discarded, so a failure left a half-initialized issue (no status, no
+// assignee, missing labels) that the client was told was created. They are
+// now applied inside the create transaction: either everything is there, or
+// no issue exists.
+type CreateOptions struct {
+	// StatusID is the initial workflow status (the project's TO DO).
+	StatusID *string
+	// AssigneeID is the initial assignee; must be an existing user.
+	AssigneeID *string
+	// Labels are attached by name (reusing/creating the project's label).
+	// Empty names and duplicates are ignored.
+	Labels []string
+	// Extra, if set, runs inside the create transaction right after the
+	// issue row and its labels are written, for writes that belong to other
+	// domains (the fix-versions pivot). Returning an error rolls the whole
+	// create back.
+	Extra func(tx *gorm.DB, iss *Issue) error
+}
+
+// Create allocates the issue key and seq_id and inserts the row in ONE
+// transaction. The key number comes from projects.issue_counter: the UPDATE
+// that increments it row-locks the project for the rest of the transaction
+// (Postgres/MySQL; SQLite is single-writer), so concurrent creates in one
+// project are serialized and a failed insert rolls the counter back together
+// with the row. Every error is propagated; nothing falls back to a guessed
+// number.
 func (s *Service) Create(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string) (*Issue, error) {
+	return s.CreateWithOptions(projectKey, projectID, title, description, priority, parentID, typeID, CreateOptions{})
+}
+
+// CreateWithOptions is Create plus the create-time follow-ups in
+// CreateOptions, all in the same transaction (see CreateOptions). The initial
+// status and assignee are part of the row itself, so they produce no
+// "changed from empty" history entries, no transition event and no
+// status-change notification — only the "created" entry and the
+// issue_created event, as for any other create. The assignee IS notified of
+// the assignment, after the commit.
+func (s *Service) CreateWithOptions(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string, opts CreateOptions) (*Issue, error) {
 	if title == "" {
 		return nil, errors.New("title is required")
 	}
-	var maxIssue Issue
-	s.db.Where("project_id = ?", projectID).Order("created_at DESC").Limit(1).Find(&maxIssue)
-	seq := int64(1)
-	if maxIssue.Key != "" {
-		fmt.Sscanf(maxIssue.Key, projectKey+"-%d", &seq)
-		seq++
+	// Nullable FKs take SQL NULL, never "" (anti-pattern #2).
+	if opts.StatusID != nil && *opts.StatusID == "" {
+		opts.StatusID = nil
 	}
-	key := fmt.Sprintf("%s-%d", projectKey, seq)
-	seqID, err := s.nextSeqID()
+	if opts.AssigneeID != nil && *opts.AssigneeID == "" {
+		opts.AssigneeID = nil
+	}
+	var issue *Issue
+	var err error
+	for attempt := 0; attempt < seqIDRetries; attempt++ {
+		issue, err = s.createOnce(projectKey, projectID, title, description, priority, parentID, typeID, opts)
+		if err == nil || !isDuplicateKeyErr(err) {
+			break
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	issue := &Issue{
-		ID:              uuid.New().String(),
-		ProjectID:       projectID,
-		Key:             key,
-		Title:           title,
-		DescriptionJSON: fmt.Sprintf(`{"content":"%s"}`, description),
-		Priority:        priority,
-		ParentID:        parentID,
-		TypeID:          typeID,
-		Position:        float64(seq * 1000),
-		SeqID:           seqID,
+	s.logHistory(issue.ID, "", "created", "", issue.Key)
+	if issue.AssigneeID != nil && s.notifier != nil {
+		s.notifier.NotifyIssueAssigned(issue.ID, *issue.AssigneeID, issue.Key, issue.Title)
 	}
-	if err := s.db.Create(issue).Error; err != nil {
-		return nil, err
-	}
-	s.logHistory(issue.ID, "", "created", "", key)
 	s.emit("issue_created", issue)
 	return issue, nil
+}
+
+func (s *Service) createOnce(projectKey, projectID, title, description string, priority Priority, parentID *string, typeID *string, opts CreateOptions) (*Issue, error) {
+	var issue *Issue
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if typeID != nil {
+			var n int64
+			if err := tx.Model(&IssueType{}).Where("id = ? AND project_id = ?", *typeID, projectID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n == 0 {
+				return ErrIssueTypeNotFound
+			}
+		}
+		if opts.AssigneeID != nil {
+			var n int64
+			if err := tx.Table("users").Where("id = ?", *opts.AssigneeID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n == 0 {
+				return ErrAssigneeNotFound
+			}
+		}
+		n, err := nextKeyNumber(tx, projectID, projectKey)
+		if err != nil {
+			return err
+		}
+		seqID, err := nextSeqID(tx)
+		if err != nil {
+			return err
+		}
+		issue = &Issue{
+			ID:              uuid.New().String(),
+			ProjectID:       projectID,
+			Key:             fmt.Sprintf("%s-%d", projectKey, n),
+			Title:           title,
+			DescriptionJSON: descriptionJSONForStorage(description),
+			Priority:        priority,
+			ParentID:        parentID,
+			TypeID:          typeID,
+			StatusID:        opts.StatusID,
+			AssigneeID:      opts.AssigneeID,
+			Position:        float64(n * 1000),
+			SeqID:           seqID,
+		}
+		if err := tx.Create(issue).Error; err != nil {
+			return err
+		}
+		seen := map[string]bool{}
+		for _, name := range opts.Labels {
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			if _, err := addLabel(tx, issue.ID, projectID, name, ""); err != nil {
+				return err
+			}
+		}
+		if opts.Extra != nil {
+			return opts.Extra(tx, issue)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return issue, nil
+}
+
+// nextKeyNumber increments projects.issue_counter inside tx and returns the
+// new value. One implementation for all drivers: UPDATE then SELECT in the
+// same transaction (GORM has no portable RETURNING; the UPDATE's row lock
+// makes the SELECT read exactly the value this transaction wrote).
+//
+// If the resulting key already exists the counter is behind the data — rows
+// written without Create (fixtures, raw inserts, pre-000026 projects not yet
+// backfilled) — so it is re-synced from the highest existing key number and
+// the allocation repeated once. This is checked up front rather than by
+// catching the insert's unique violation because Postgres aborts the whole
+// transaction on the first failed statement.
+func nextKeyNumber(tx *gorm.DB, projectID, projectKey string) (int64, error) {
+	n, err := incrementCounter(tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	taken, err := keyExists(tx, fmt.Sprintf("%s-%d", projectKey, n))
+	if err != nil {
+		return 0, err
+	}
+	if !taken {
+		return n, nil
+	}
+	maxN, err := maxKeyNumber(tx, projectID, projectKey)
+	if err != nil {
+		return 0, err
+	}
+	if maxN < n {
+		maxN = n
+	}
+	if err := tx.Exec("UPDATE projects SET issue_counter = ? WHERE id = ?", maxN, projectID).Error; err != nil {
+		return 0, err
+	}
+	return incrementCounter(tx, projectID)
+}
+
+func incrementCounter(tx *gorm.DB, projectID string) (int64, error) {
+	res := tx.Exec("UPDATE projects SET issue_counter = issue_counter + 1 WHERE id = ?", projectID)
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return 0, ErrProjectNotFound
+	}
+	var n int64
+	if err := tx.Raw("SELECT issue_counter FROM projects WHERE id = ?", projectID).Scan(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func keyExists(tx *gorm.DB, key string) (bool, error) {
+	var count int64
+	if err := tx.Model(&Issue{}).Where("key = ?", key).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// maxKeyNumber returns the highest numeric suffix among the project's keys of
+// the form "<projectKey>-<n>". Parsed in Go: there is no numeric key column
+// and no SQL spelling of "digits after the last dash" that works on all three
+// drivers. Keys with a non-numeric suffix are ignored.
+func maxKeyNumber(tx *gorm.DB, projectID, projectKey string) (int64, error) {
+	var keys []string
+	if err := tx.Model(&Issue{}).Where("project_id = ?", projectID).Pluck("key", &keys).Error; err != nil {
+		return 0, err
+	}
+	prefix := projectKey + "-"
+	var maxN int64
+	for _, k := range keys {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		n, err := strconv.ParseInt(k[len(prefix):], 10, 64)
+		if err != nil || n <= 0 {
+			continue
+		}
+		if n > maxN {
+			maxN = n
+		}
+	}
+	return maxN, nil
+}
+
+// BackfillCounters initializes projects.issue_counter for projects created
+// before migration 000026 (counter still 0) that already have issues, from
+// the highest numeric key suffix, so their key sequence continues where it
+// left off. Called from cmd/server after migrations. Idempotent: a project
+// with a non-zero counter is never touched, and a project with no issues keeps
+// 0 (its first key is "<KEY>-1" either way). Returns the number of projects
+// updated.
+func (s *Service) BackfillCounters() (int, error) {
+	type row struct {
+		ID  string
+		Key string
+	}
+	var projects []row
+	// Select through GORM so "key" is quoted per dialect (reserved on MySQL).
+	if err := s.db.Table("projects").Select("id", "key").Where("issue_counter = 0").Scan(&projects).Error; err != nil {
+		return 0, err
+	}
+	updated := 0
+	for _, p := range projects {
+		err := s.db.Transaction(func(tx *gorm.DB) error {
+			maxN, err := maxKeyNumber(tx, p.ID, p.Key)
+			if err != nil || maxN == 0 {
+				return err
+			}
+			res := tx.Exec("UPDATE projects SET issue_counter = ? WHERE id = ? AND issue_counter = 0", maxN, p.ID)
+			if res.Error != nil {
+				return res.Error
+			}
+			updated += int(res.RowsAffected)
+			return nil
+		})
+		if err != nil {
+			return updated, fmt.Errorf("backfill issue counter for project %s: %w", p.Key, err)
+		}
+	}
+	return updated, nil
+}
+
+// isDuplicateKeyErr recognizes a unique-constraint violation on the three
+// supported drivers (GORM's TranslateError is not enabled in store.New).
+func isDuplicateKeyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") || // sqlite
+		strings.Contains(msg, "SQLSTATE 23505") || // postgres (pgx)
+		strings.Contains(msg, "Error 1062") // mysql
+}
+
+// descriptionJSONForStorage normalizes the description Create receives into
+// the format issues.description_json holds: an ADF document as valid JSON —
+// the same thing Update stores. The handler marshals the request's ADF and
+// passes the JSON string, which is stored as-is; plain text (cmd/seed,
+// programmatic callers) is wrapped into an ADF doc via json.Marshal, never by
+// formatting it into a JSON literal (which produced invalid JSON as soon as
+// the text contained a quote — every ADF description created from the UI).
+// An empty description keeps the schema default "{}", which the v3 mapping
+// renders as "no description".
+func descriptionJSONForStorage(description string) string {
+	if description == "" {
+		return "{}"
+	}
+	if strings.HasPrefix(strings.TrimSpace(description), "{") && json.Valid([]byte(description)) {
+		return description
+	}
+	b, err := json.Marshal(adf.FromText(description))
+	if err != nil {
+		// adf.Node is plain data; Marshal cannot fail. Keep the invariant anyway.
+		return "{}"
+	}
+	return string(b)
 }
 
 func (s *Service) GetByKey(key string) (*Issue, error) {
@@ -83,10 +369,12 @@ func (s *Service) GetByKey(key string) (*Issue, error) {
 	return &issue, nil
 }
 
-func (s *Service) nextSeqID() (int64, error) {
+// nextSeqID returns the next Jira-style numeric issue id (from 10000),
+// computed inside the caller's transaction. See seqIDRetries for why MAX+1 is
+// safe within a project and how cross-project collisions are handled.
+func nextSeqID(tx *gorm.DB) (int64, error) {
 	var max sql.NullInt64
-	// nota: MAX+1 ha una race teorica sotto create concorrenti; accettabile a questa scala.
-	if err := s.db.Model(&Issue{}).Select("COALESCE(MAX(seq_id), 9999)").Scan(&max).Error; err != nil {
+	if err := tx.Model(&Issue{}).Select("COALESCE(MAX(seq_id), 9999)").Scan(&max).Error; err != nil {
 		return 0, err
 	}
 	return max.Int64 + 1, nil
@@ -216,10 +504,18 @@ func (s *Service) Delete(key string) error {
 }
 
 func (s *Service) AddLabel(issueID, projectID, name, color string) (*Label, error) {
+	return addLabel(s.db, issueID, projectID, name, color)
+}
+
+// addLabel attaches the project's label `name` (created on first use) to the
+// issue, on the given handle so it can run inside the create transaction.
+func addLabel(db *gorm.DB, issueID, projectID, name, color string) (*Label, error) {
 	label := Label{ID: uuid.New().String(), ProjectID: projectID, Name: name, Color: color}
-	s.db.Where("project_id = ? AND name = ?", projectID, name).FirstOrCreate(&label)
+	if err := db.Where("project_id = ? AND name = ?", projectID, name).FirstOrCreate(&label).Error; err != nil {
+		return nil, err
+	}
 	il := &IssueLabel{IssueID: issueID, LabelID: label.ID}
-	if err := s.db.Create(il).Error; err != nil {
+	if err := db.Create(il).Error; err != nil {
 		return nil, err
 	}
 	return &label, nil

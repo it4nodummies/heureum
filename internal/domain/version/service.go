@@ -88,7 +88,13 @@ func (s *Service) Delete(id string) error {
 // desired set of version ids (mirrors issue.Service.SetLabels): adds missing
 // links and removes the extras.
 func (s *Service) SetFixVersions(issueID string, versionIDs []string) error {
-	current, err := s.currentVersionIDs(issueID)
+	return s.SetFixVersionsIn(s.db, issueID, versionIDs)
+}
+
+// SetFixVersionsIn is SetFixVersions on the given handle, so the issue create
+// transaction can write the pivot and roll it back together with the issue.
+func (s *Service) SetFixVersionsIn(db *gorm.DB, issueID string, versionIDs []string) error {
+	current, err := currentVersionIDs(db, issueID)
 	if err != nil {
 		return err
 	}
@@ -104,14 +110,14 @@ func (s *Service) SetFixVersions(issueID string, versionIDs []string) error {
 	}
 	for _, id := range current {
 		if !want[id] {
-			if err := s.db.Where("issue_id = ? AND version_id = ?", issueID, id).Delete(&IssueVersion{}).Error; err != nil {
+			if err := db.Where("issue_id = ? AND version_id = ?", issueID, id).Delete(&IssueVersion{}).Error; err != nil {
 				return err
 			}
 		}
 	}
 	for id := range want {
 		if !have[id] {
-			if err := s.db.Create(&IssueVersion{IssueID: issueID, VersionID: id}).Error; err != nil {
+			if err := db.Create(&IssueVersion{IssueID: issueID, VersionID: id}).Error; err != nil {
 				return err
 			}
 		}
@@ -119,9 +125,9 @@ func (s *Service) SetFixVersions(issueID string, versionIDs []string) error {
 	return nil
 }
 
-func (s *Service) currentVersionIDs(issueID string) ([]string, error) {
+func currentVersionIDs(db *gorm.DB, issueID string) ([]string, error) {
 	var pivots []IssueVersion
-	if err := s.db.Where("issue_id = ?", issueID).Find(&pivots).Error; err != nil {
+	if err := db.Where("issue_id = ?", issueID).Find(&pivots).Error; err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(pivots))

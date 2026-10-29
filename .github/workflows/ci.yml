@@ -7,6 +7,30 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    strategy:
+      # A red sqlite leg must never cancel the postgres leg (or vice versa) before
+      # it finishes — see both results, not whichever failed first.
+      fail-fast: false
+      matrix:
+        driver: [sqlite, postgres]
+    services:
+      # Started for every leg regardless of driver (simpler than conditioning it,
+      # and idle for the sqlite leg costs nothing) — internal/storetest creates
+      # and drops a database per test against this server, so it needs
+      # CREATE DATABASE permission rather than a pre-made application database.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -14,7 +38,17 @@ jobs:
           go-version-file: go.mod
       - run: go build ./...
       - run: go vet ./...
+      # TZ is set only on the postgres leg: GitHub runners default to UTC, which
+      # collapses the notification package's discardTimeZone skew assertion
+      # (internal/domain/notification/service_test.go) to "skew ≈ 0" — the same
+      # value it would have on a genuine bug, so that leg would never exercise
+      # the non-UTC branch the finding is actually about. sqlite has no such
+      # skew (no pgx codec involved), so it doesn't need this.
       - run: go test ./... -count=1
+        env:
+          TEST_DB_DRIVER: ${{ matrix.driver }}
+          TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+          TZ: ${{ matrix.driver == 'postgres' && 'Europe/Rome' || '' }}
 
   gap-report:
     runs-on: ubuntu-latest
@@ -95,6 +129,8 @@ jobs:
       # Seed runs golang-migrate itself (see internal/store.RunMigrations), so this
       # applies the schema and exercises the notification insert path against a real
       # Postgres, catching Go-model/DB-column type mismatches that SQLite hides.
+      # The backend matrix above now runs the domain test suites against Postgres
+      # too, but only this job exercises the cmd/seed binary end to end — keep both.
       - name: Seed demo data against Postgres
         run: go run ./cmd/seed
         env:

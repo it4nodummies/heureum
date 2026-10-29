@@ -1,0 +1,15 @@
+-- Per-project issue-key counter: issues.key is "<PROJECT_KEY>-<n>" and n is
+-- now allocated by incrementing this column inside the create transaction
+-- (internal/domain/issue Service.Create), instead of "latest created_at row's
+-- key + 1" outside any transaction.
+--
+-- Backfill: the key number exists only as the text suffix of issues.key (there
+-- is no numeric per-project column), and extracting "the digits after the last
+-- '-'" has no portable SQL spelling across SQLite, Postgres and MySQL. The
+-- backfill is therefore done in Go at startup (issue.Service.BackfillCounters,
+-- called from cmd/server after migrations): idempotent, only touches projects
+-- whose counter is still 0 and that already have issues. Until it runs — and
+-- for rows inserted behind Create's back — Create re-syncs the counter from the
+-- existing keys when the allocated key already exists, so a stale 0 can never
+-- produce a duplicate key.
+ALTER TABLE projects ADD COLUMN issue_counter INTEGER NOT NULL DEFAULT 0;

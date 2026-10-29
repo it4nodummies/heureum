@@ -3,10 +3,14 @@ package handlers
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"gorm.io/gorm"
 
 	"github.com/it4nodummies/heureum/internal/api/authz"
 	"github.com/it4nodummies/heureum/internal/api/middleware"
@@ -266,34 +270,27 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	iss, err := h.svc.Create(proj.Key, proj.ID, req.Fields.Summary, descJSON, priority, parentID, typeID)
-	if err != nil {
-		v3.WriteError(w, http.StatusBadRequest, []string{err.Error()}, nil)
-		return
-	}
+	// Create-time follow-ups (initial status, assignee, labels, fix versions)
+	// go INTO the create transaction via CreateOptions: they used to be four
+	// separate UPDATEs after the insert, each with its error discarded, so a
+	// failure left a half-initialized issue (and one of them could nil-deref
+	// the handler). Now either the whole issue exists or none of it does.
+	opts := issue.CreateOptions{Labels: req.Fields.Labels}
 	// Mantiene l'auto-assegnazione dello status "todo" dal workflow del progetto.
 	if h.wfSvc != nil {
 		if wf, wfErr := h.wfSvc.GetWorkflow(proj.ID); wfErr == nil {
 			for _, status := range wf.Statuses {
 				if status.Category == workflow.CategoryTodo {
-					iss, _ = h.svc.Update(iss.Key, nil, nil, nil, nil, &status.ID, nil)
+					id := status.ID
+					opts.StatusID = &id
 					break
 				}
 			}
 		}
 	}
-	// Create's payload doesn't route through Update's generic field-diffing —
-	// wire the assignee through the same Update path Update itself uses
-	// (assigneeID as the 5th positional arg) rather than teaching Create a
-	// second way to set it.
 	if req.Fields.Assignee != nil && req.Fields.Assignee.AccountID != "" {
 		accountID := req.Fields.Assignee.AccountID
-		if updated, uerr := h.svc.Update(iss.Key, nil, nil, nil, &accountID, nil, nil); uerr == nil {
-			iss = updated
-		}
-	}
-	for _, name := range req.Fields.Labels {
-		_, _ = h.svc.AddLabel(iss.ID, proj.ID, name, "")
+		opts.AssigneeID = &accountID
 	}
 	if len(req.Fields.FixVersions) > 0 && h.versionSvc != nil {
 		ids := make([]string, 0, len(req.Fields.FixVersions))
@@ -302,7 +299,28 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 				ids = append(ids, fv.ID)
 			}
 		}
-		_ = h.versionSvc.SetFixVersions(iss.ID, ids)
+		opts.Extra = func(tx *gorm.DB, iss *issue.Issue) error {
+			return h.versionSvc.SetFixVersionsIn(tx, iss.ID, ids)
+		}
+	}
+
+	iss, err := h.svc.CreateWithOptions(proj.Key, proj.ID, req.Fields.Summary, descJSON, priority, parentID, typeID, opts)
+	switch {
+	case errors.Is(err, issue.ErrIssueTypeNotFound):
+		v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"issuetype": "The issue type selected is invalid."})
+		return
+	case errors.Is(err, issue.ErrAssigneeNotFound):
+		v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"assignee": "User '" + req.Fields.Assignee.AccountID + "' does not exist."})
+		return
+	case errors.Is(err, issue.ErrProjectNotFound):
+		v3.WriteError(w, http.StatusBadRequest, nil, map[string]string{"project": "The project does not exist."})
+		return
+	case err != nil:
+		// Anything else is internal (DB failure, rolled back): log the
+		// detail, keep the client message generic.
+		log.Printf("issue: create in %q failed: %v", proj.Key, err)
+		v3.WriteError(w, http.StatusInternalServerError, []string{"Failed to create issue."}, nil)
+		return
 	}
 
 	v3.WriteJSON(w, http.StatusCreated, map[string]any{

@@ -354,6 +354,11 @@ func TestNested_WorkflowStatusUpdateRemove_OtherProjectIs404(t *testing.T) {
 	}
 	stB := wfB.Statuses[0]
 	base := "/rest/api/3/project/AAA/workflow/statuses/" + stB.ID
+	// B's issue uses stB: the in-use guard must not turn the 404 into a 409
+	// that leaks "used by N issues" about a status outside A.
+	if err := f.db.Model(&issue.Issue{}).Where("id = ?", f.issueB.ID).Update("status_id", stB.ID).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	f.expect(t, "PATCH other-project status", f.do(t, f.adminA, http.MethodPatch, base, `{"name":"HIJACKED","category":"done","color":"#000"}`), http.StatusNotFound)
 	f.expect(t, "DELETE other-project status", f.do(t, f.adminA, http.MethodDelete, base, ""), http.StatusNotFound)

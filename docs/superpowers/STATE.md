@@ -1,6 +1,6 @@
 # Stato del progetto — punto di ripresa
 
-> Aggiornato: 2026-10-28 (dopo Round 27 — security hardening, branch `feat/round-27-security`; R23→R26 in `main`, R24 ancora su branch). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
+> Aggiornato: 2026-10-28 (dopo **Round 24 finish** — gate reale + integrità dati, branch `feat/round-24-finish` = R24 originale + merge di `main` a 7b388ca, da mergiare; R23→R27 in `main`; **MySQL rinviato**, WIP su `wip/r24-mysql-migrations`). Questo file è il punto di ingresso per riprendere lo sviluppo in una nuova sessione di Claude Code.
 >
 > **DIREZIONE DECISA (2026-09-21).** Dopo due mesi di fermo il progetto ha una direzione registrata: prodotto distinto «easy for product owners», validato dall'uso interno, con la superficie Jira-compat **congelata** come ponte di migrazione. Leggi prima questi tre documenti, poi torna qui: `docs/superpowers/specs/2026-09-21-direzione-prodotto-design.md` (decisioni ordinarie, sequenza R23-R25, fatti verificati), `docs/adr/` (le tre decisioni difficili da annullare), `docs/GLOSSARIO.md` (vocabolario). **Le voci di follow-up qui sotto sono parzialmente obsolete**: almeno una è già chiusa nel codice (ownership dei filtri, vedi `FilterHandler.requireOwner`); la verifica completa è un compito del Round 23.
 >
@@ -109,6 +109,70 @@ Gap report attuale: **114 endpoint path-match conformi** + **87 estensioni** su 
   verificare il fix MySQL contro un server MySQL/MariaDB reale, non solo l'unit test puro — nessun
   ambiente CI lo esercita ancora end-to-end.
 
+- **Round 24 — Gate reale** ✅ (piano: `docs/superpowers/plans/2026-09-23-round-24-gate-reale.md`;
+  branch `feat/round-24-gate-reale`; scope ridotto con l'utente il 2026-09-23: DB isolato per
+  worker Playwright **FUORI scopo**, resta il resto). Cinque task: **(T1)** `internal/store/migrate.go`
+  — ripristinato l'invariante "un solo `driverFor` per chiamata pubblica" (`driverForStore` +
+  `migrateUp(drv, name, sources...)`) che una bozza del piano stesso avrebbe rotto, così il commento
+  anti-regressione su `m.Close()` ("costa 1 delle 25 connessioni") resta vero. **(T2)** nuovo
+  `internal/storetest`: helper condiviso che applica le **migrazioni reali** (golang-migrate) invece
+  di `AutoMigrate` + stub, un database isolato per test (CREATE/DROP per Postgres e MySQL, file
+  temporaneo per SQLite) selezionabile via `TEST_DB_DRIVER`; corretti in review un bug di
+  parsing (`net/url.Parse` mangla silenziosamente una DSN libpq keyword/value) e una finestra di leak
+  del DB di test tra `CREATE DATABASE` e la prima `t.Fatalf` successiva. **(T3)** dominio `issue`
+  convertito allo schema reale (9 file, 23 test) — ogni file aveva bisogno di righe padre che gli
+  stub non richiedevano mai, cioè gli stub nascondevano l'integrità referenziale ovunque, non solo
+  sul caso noto. **(T4)** dominio `notification` — **prima non aveva alcun test** (0.0% copertura) —
+  7 nuovi test. **(T5)** matrice CI `backend` su **SQLite e Postgres** (`fail-fast: false`, job
+  `postgres-smoke` esistente lasciato invariato). **Due difetti di produzione scoperti dal round
+  stesso, nessuno cercato apposta:** (1) **MySQL non ha mai funzionato** — `migrations/000001` riga 5
+  `settings_json TEXT DEFAULT '{}'` fa scattare l'errore MySQL 1101, pattern che ricorre 69 volte su
+  14 file; dato che la migrazione 000001 non è mai passata su MySQL, **non può esistere alcun
+  deployment MySQL di Heureum** — nessuna base installata da rompere; verificato su container reali
+  che `TEXT DEFAULT ('{}')` (parentesi) è accettato invariato da MySQL 8, Postgres 16 e SQLite,
+  quindi una sola sintassi servirebbe tutti e tre; decisione di prodotto (fix/drop/documenta) escalata
+  all'utente e rimasta aperta per tutto il round (vedi follow-up `[APERTO]` sotto). (2) **le colonne
+  `TIMESTAMP` senza timezone sfasano dell'offset UTC dell'host** — il codec timestamp di pgx
+  (`discardTimeZone`, `pgtype/timestamp.go`) rietichetta le cifre wall-clock come UTC senza convertire
+  l'istante; misurato **1h59m59.997511s** su un host CEST; latente sotto Docker (nessun `TZ` impostato
+  in nessun Dockerfile/compose) ma live per chiunque esegua il binario su un host non-UTC (setup
+  normale di self-hosting). A causa della decisione MySQL rimasta aperta, la matrice CI dell'ultimo
+  task (T5) è stata scritta **esattamente come da design originale** (solo SQLite+Postgres, mai
+  MySQL) invece di aspettare la risposta. Gate finale del round: `go build ./... && go vet ./... &&
+  go test ./...` verde su entrambe le gambe della matrice; Playwright e `cmd/gapreport` non
+  rieseguiti (nessuna rotta v3 toccata).
+  **Fix wave post-review (stesso giorno, 2026-09-23, dopo una review dell'intero branch):** 4
+  Important + 2 cheap: (a) `migrateUp` (`internal/store/migrate.go`) faceva ripartire il tentativo
+  successivo anche dopo che una sorgente si era aperta e il suo `Up()` aveva fallito con un vero
+  errore SQL — nel Docker di produzione (`WORKDIR /app`, migrazioni in `/app/migrations`) il primo
+  path candidato fallisce SEMPRE l'apertura e il secondo si apre sempre, quindi un fallimento SQL
+  reale veniva **mascherato** dall'errore di apertura del terzo candidato, e l'operatore vedeva "no
+  such file or directory" invece del vero errore su un database che golang-migrate aveva appena
+  marcato dirty — fix: una sorgente aperta è LA sorgente, il suo errore va ritornato subito; aggiunto
+  anche il guardrail "zero sorgenti → errore, non `nil`" e il test di regressione
+  `TestMigrateUpSurfacesTheSecondSourcesUpError`. (b) nessun test rilevava se `TEST_DB_DRIVER` veniva
+  onorato davvero — aggiunto `TestNewHonoursTheSelectedDriver` (`internal/storetest`) che confronta
+  `Dialector.Name()` col driver richiesto. (c) il commento del package `storetest` dichiarava i tre
+  difetti di luglio "impossibili da scrivere qui", ma su SQLite (il driver di default in locale)
+  `PRAGMA foreign_keys` è OFF di default e né `store.New` né `gorm.io/driver/sqlite` lo accendono mai
+  — verificato empiricamente (insert su FK inesistente: passa a `0`, fallisce a `1`) — fix: DSN
+  SQLite ora porta `?_foreign_keys=on`; **rieseguita l'intera suite su SQLite dopo il fix: tutta
+  verde, nessuna fixture si è rotta**; commento di package riscritto per dire cosa l'helper garantisce
+  davvero per ciascun driver. (d) `docs/superpowers/STATE.md` (questo file) non registrava i due
+  difetti sopra né la decisione MySQL aperta (vivevano solo in `.superpowers/`, gitignored) e
+  dichiarava per il Round 24 cose mai spedite (matrice a tre driver, DB per-worker Playwright) — sezione
+  "Prossimo" corretta, voce R13 riaperta (sotto), tre nuove voci `[APERTO]` aggiunte. (e) cheap:
+  `notification/service_test.go` ricalcolava il default di `TEST_DB_DRIVER` in proprio — estratta
+  `storetest.Driver()` come unica fonte di verità. (f) cheap: CI setta `TZ: Europe/Rome` sulla gamba
+  Postgres della matrice (i runner GitHub sono UTC, che avrebbe silenziosamente azzerato lo skew che
+  il test da (notification) misura) + commento che segnala che il fix definitivo dello skew farà
+  fallire quell'assert di proposito.
+  **Chiusura 2026-10-28 — Round 24 finish** (branch `feat/round-24-finish`, piano
+  `docs/superpowers/plans/2026-10-28-round-24-finish-and-data-integrity.md`): T1-T5 rebased sul
+  `main` post-R27 e completati con i fix di integrità dati che il gate reale ha intercettato —
+  dettaglio nella voce `[CHIUSO — 2026-10-28]` **(R24 finish)** tra i follow-up. MySQL (T7-T8,
+  PR #44) **rinviato**: WIP parcheggiato su `wip/r24-mysql-migrations` (16632a2), non verificato.
+
 - **Round 25 — Zero-config** ✅ (piano: `docs/superpowers/plans/2026-10-27-round-25-zero-config.md`;
   branch `feat/round-25-zero-config`; design `docs/superpowers/specs/2026-09-21-direzione-prodotto-design.md`
   § "R25 — Zero-config"). Obiettivo: un progetto appena creato è **immediatamente usabile** — si crea
@@ -150,7 +214,18 @@ Gap report attuale: **114 endpoint path-match conformi** + **87 estensioni** su 
 
 **STATO MERGE (2026-07-17):** `main` contiene ora l'INTERA parity **R13→R22**. Storia dei merge: PR #17 (`feat/frontend-next`→`main`) mergiata quando il branch era a **R17** (merge-commit `c5eb516`) → main ebbe R13-R17; poi R18-R22 sono proseguiti sul branch e sono stati mergiati con **PR #18** (merge-commit `e9f68f2`, 2026-07-17T15:32Z) → main ora ha R13-R22. `feat/frontend-next` è a **0 commit avanti** di `main` (completamente integrato). Migrazioni su main: fino a **000022**. CI di #18 tutta verde (backend/gap-report/frontend/e2e). **Ultimo tag pubblico: ancora `v1.0.2`** — `main` è avanti rispetto al tag (candidato prossima release **v1.1.0**, non ancora taggato). Da qui in avanti la sequenza è quella decisa il 2026-09-21 (design document sopra):
 1. **R23 (resto, a carico dell'utente)**: il Round 23 vero e proprio è ✅ (vedi la sua entrata sopra) — resta solo ciò che è deliberatamente gated sull'approvazione dell'utente e non ancora accaduto: merge di **PR #24** (teams↔progetti, aperta dal 2026-07-20 col solo job `e2e` rosso, 3 fallimenti su 3, diagnosi già fatta in R23 — il rossore era write-contention Playwright, non codice della PR); 11 PR dependabot in lotti, **`@dnd-kit/sortable` 8→10 per ultimo**; tag **v1.1.1** (push a carico dell'utente — `[Unreleased]` contiene i tre fix Postgres user-facing).
-2. **R24 — Gate reale**: helper di test condiviso che applica le **migrazioni reali** invece di `AutoMigrate` + stub (oggi lo schema dei test non ha alcun vincolo FK, ed è per questo che i tre bug Postgres sono sfuggiti); applicato ai 4 domini che scrivono FK nullable (`issue`, `comment`, `notification`, `issue_history`); matrice CI **SQLite, Postgres e MySQL** — MySQL è il driver che il Round 23 ha dimostrato essere strutturalmente non verificato (il fix `multiStatements` ha solo un test unitario puro, nessun ambiente CI esercita ancora una migrazione reale contro un server MySQL); DB isolato per worker Playwright.
+2. **R24 — Gate reale**: il Round 24 vero e proprio è ✅ (vedi la sua entrata sopra, dopo il
+   Round 23) — **corretto rispetto a questo paragrafo pianificato**: la matrice CI è finita a
+   **SQLite e Postgres**, NON "e MySQL" come scritto qui — la gamba MySQL resta sospesa alla
+   decisione di prodotto ancora aperta (vedi i follow-up `[APERTO]` su MySQL più sotto), e
+   aggiungerla dopo sarà un diff di tre righe una volta arrivata la risposta. **"DB isolato per
+   worker Playwright" non è stato fatto**: è stato de-scopato dal proprietario del repository
+   durante il round (decisione presa con l'utente il 2026-09-23: per-worker Playwright DB FUORI
+   scopo) — `frontend-next/playwright.config.ts` resta `workers: 1` (vedi il follow-up R13
+   riaperto più sotto). **Aggiornamento 2026-10-28:** la decisione MySQL è arrivata — **rinviato**
+   (non è sul percorso del team di riferimento, che usa Postgres); R24 chiuso sul branch
+   `feat/round-24-finish` con i fix di integrità dati, vedi la voce `[CHIUSO — 2026-10-28]`
+   **(R24 finish)** più sotto.
 3. **R25 — Zero-config**: `POST /project` crea anche board, issue type di default e resolution; i tre template generano configurazioni davvero diverse (oggi mappano solo `project.Type`); il fallimento di `CreateDefaultWorkflow` smette di essere silenzioso; E2E di accettazione «crea progetto → trascina una issue sulla board **senza mai aprire Settings**». R24 precede R25 perché R25 scrive proprio nelle tabelle dove sono esplose le regressioni Postgres.
 Le restanti feature Jira sono in **FASE D (fuori scopo)** del requirements v2 (Advanced Roadmaps, Goals/OKR, Teams, SSO/LDAP, Confluence, ecc.).
 
@@ -166,10 +241,15 @@ Tag 1.0 già pubblicato (v1.0.2 rilasciata, `docs/RELEASE.md`); i round successi
 
 ## Follow-up aperti (non bloccanti)
 
-> Verificato integralmente il 2026-09-21 (Round 23): 28 aperti (di cui 1 non verificabile), 7
-> chiusi, 2 archiviati su 37 voci (la 37esima aggiunta il 2026-09-23: la release a metà automatizzata) (la voce R9 è stata divisa in un CHIUSO e un APERTO durante la
-> fix wave del Round 23, che ha corretto un timbro "verificato" non guadagnato — vedi entrata
-> Round 23 più sotto).
+> Verificato integralmente il 2026-09-21 (Round 23): aggiornato dopo la fix wave del Round 24
+> (2026-09-23) a **32 aperti (di cui 1 non verificabile), 6 chiusi, 2 archiviati su 40 voci** (la
+> 37esima, release a metà automatizzata, era già stata aggiunta il 2026-09-23; le voci 38-40 sono
+> state aggiunte nella stessa data dalla fix wave del Round 24: MySQL mai stato funzionante, skew
+> `TIMESTAMP`-senza-timezone, 27 file di test ancora su `AutoMigrate` invece di `storetest.New`).
+> La voce R9 è stata divisa in un CHIUSO e un APERTO durante la fix wave del Round 23, che ha
+> corretto un timbro "verificato" non guadagnato — vedi entrata Round 23 più sotto. La voce R13 è
+> stata riaperta durante la fix wave del Round 24 — un verdetto CHIUSO che si è rivelato falso, vedi
+> quella voce più sotto.
 > Una voce senza verdetto è una voce mai verificata: aggiungerne di nuove con il prefisso [APERTO].
 
 - **[APERTO — verificato 2026-09-23]** **La procedura di rilascio è metà automatizzata e metà
@@ -229,7 +309,57 @@ Tag 1.0 già pubblicato (v1.0.2 rilasciata, `docs/RELEASE.md`); i round successi
 - **[APERTO — verificato 2026-09-21]** **(R13)** `WorklogService.Delete` non decrementa `Issue.TimeSpent` (il fix R13 ha collegato solo `Add`) — un worklog cancellato lascia il tempo speso gonfiato finché non si aggiunge un decremento simmetrico.
 - **[APERTO — verificato 2026-09-21]** **(R13)** `IssueHandler.Update` loggano una entry di history per **ogni** campo del payload PUT ad ogni save, anche quelli invariati — da diffare contro il valore precedente prima di scrivere su `issue_history` (oggi la tab History si riempie di rumore su edit ripetuti dello stesso campo).
 - **[APERTO — verificato 2026-09-21]** **(R13)** Attribuzione autore nello storico: il changelog logga sempre `ActorID=""` (la History mostra "System"). Serve threadare l'uid dell'utente autenticato da `issue.Service.Create`/`Update`/transizioni fino a `logHistory` — invasivo (tocca molte firme/chiamanti), dichiarato non-goal del Round 13.
-- **[CHIUSO — verificato 2026-09-21: `frontend-next/playwright.config.ts` fissa `workers: 1`; il Round 24 è ciò che riguadagna il parallelismo]** ~~**(R13)** La suite Playwright completa ha flakiness da write-contention SQLite quando lanciata con più di un worker in parallelo — `--workers=1` è richiesto per un run pulito; valutare un DB per-worker o `DB_DRIVER=postgres` in CI per recuperare il parallelismo.~~
+- **[APERTO — verificato 2026-09-23]** **(R13)** La suite Playwright completa ha flakiness da write-contention SQLite quando lanciata con più di un worker in parallelo — `--workers=1` è richiesto per un run pulito; valutare un DB per-worker o `DB_DRIVER=postgres` in CI per recuperare il parallelismo. Questa voce era stata marcata **CHIUSO il 2026-09-21** con la motivazione "il Round 24 è ciò che riguadagna il parallelismo" — falso: `frontend-next/playwright.config.ts` fissa tuttora `workers: 1`. Il Round 24 ha convertito i domini `issue`/`notification` allo schema reale e la matrice CI backend a SQLite+Postgres, ma il DB isolato per worker Playwright che avrebbe riguadagnato il parallelismo è stato **de-scopato dal proprietario del repository** durante il round (decisione presa con l'utente il 2026-09-23) — riaperta durante la fix wave di Round 24 dopo che la review dell'intero branch ha verificato il file di config contro l'affermazione.
+- **[APERTO — verificato 2026-09-23]** **(R24)** **MySQL non ha mai funzionato: nessun deployment
+  MySQL di Heureum può esistere.** `migrations/000001_init_schema.up.sql` riga 5
+  `settings_json TEXT DEFAULT '{}'` fa scattare l'errore MySQL 1101 ("BLOB/TEXT column can't have a
+  default value"); il pattern ricorre **69 volte su 14 file di migrazione**. `README.md:33`
+  pubblicizza "PostgreSQL or MySQL/MariaDB in production" — falso oggi. Dato che la migrazione
+  000001 non ha mai superato un server MySQL reale, non esiste (e non può esistere) alcuna
+  installazione MySQL di Heureum da preservare, e golang-migrate non fa il checksum dei file di
+  migrazione, quindi cambiarli ora non romperebbe nessuno storico reale. Verificato su container
+  reali (MySQL 8, Postgres 16, SQLite): `TEXT DEFAULT ('{}')` (con parentesi) è **accettato
+  invariato da tutti e tre** con lo stesso default risultante, quindi una singola sintassi
+  parentesizzata servirebbe tutti e tre i driver in un colpo solo. Decisione di prodotto aperta con
+  l'utente (fix / drop / documenta come non supportato) — sollevata quattro volte durante il Round
+  24 e ancora senza risposta; è il motivo per cui la matrice CI del Round 24 copre solo
+  SQLite+Postgres. Non toccare `README.md` né alcun file di migrazione finché la decisione non
+  arriva (vietato esplicitamente durante la fix wave che ha aggiunto questa voce).
+  **Aggiornamento 2026-10-28: decisione presa — rinviato.** MySQL non è sul percorso del team di
+  riferimento (Postgres); il tentativo R24 Task 7-8 (PR #44, allineamento tipi delle migrazioni) è
+  parcheggiato **non verificato** sul branch `wip/r24-mysql-migrations` (commit 16632a2). Oltre a
+  `TEXT DEFAULT '{}'` restano i problemi di schema già annotati: `key` non quotato nelle migrazioni
+  (parola riservata su MySQL), `ON CONFLICT` (sintassi Postgres/SQLite, su MySQL serve
+  `INSERT IGNORE`/`ON DUPLICATE KEY`), l'indice unique su colonna `TEXT` di `000024`, i 404 basati
+  su `RowsAffected`. La matrice CI resta `[sqlite, postgres]`; `README.md` continua a
+  pubblicizzare MySQL — da correggere quando si deciderà se droppare il driver.
+- **[APERTO — verificato 2026-09-23]** **(R24)** **Le colonne `TIMESTAMP` senza timezone sfasano
+  dell'offset UTC dell'host.** Il codec timestamp di pgx (`pgtype.Timestamp`, `discardTimeZone` in
+  `pgtype/timestamp.go` — "Time zone will be ignored when encoding") scrive le cifre wall-clock di
+  `time.Now()` nel fuso *locale* del processo, e Postgres le ritorna tali quali etichettate UTC:
+  su un host non-UTC il valore riletto è sfasato dall'istante reale esattamente dell'offset UTC
+  locale dell'host. Misurato **1h59m59.997511s** su un host CEST (+0200) — non ipotizzato, osservato
+  davvero. Nessun Dockerfile/compose imposta `TZ`, quindi è **latente sotto lo stack Docker
+  standard** ma **live** per chiunque esegua il binario direttamente su un host non-UTC (setup
+  normale di self-hosting). Riguarda ogni colonna `TIMESTAMP` dello schema via `internal/store`, non
+  solo `notifications.created_at` (dove il Round 24 l'ha misurato per primo). Fix possibili: migrare
+  le colonne a `TIMESTAMPTZ` (tocca le migrazioni) oppure impostare `NowFunc` di GORM su UTC in
+  `internal/store` (non tocca le migrazioni) — nessuno dei due fatto in questa fix wave, che si è
+  limitata a pinnare l'assert di regressione al meccanismo (`internal/domain/notification/service_test.go`)
+  e a farla eseguire davvero in CI (`TZ: Europe/Rome` sulla gamba Postgres).
+- **[APERTO — verificato 2026-09-23]** **(R24)** **27 file di test costruiscono ancora lo schema con
+  `AutoMigrate`** invece di `storetest.New` (il Round 24 ne ha convertiti solo 2: `issue` e
+  `notification`, i quattro domini con FK nullable meno `comment`/`issue_history` che vivono nello
+  stesso pacchetto `issue`). Migrarli il resto è opportunistico, non un round dedicato — ma **non
+  scala ingenuamente**: `storetest.New` fa una `CREATE DATABASE` + 23 migrazioni per test su
+  Postgres, e applicarlo a tutti e 27 senza ottimizzare renderebbe la gamba Postgres della matrice
+  molto più lenta. Un'ottimizzazione a **database template** (creare una volta uno schema migrato,
+  poi clonarlo per test via `CREATE DATABASE ... TEMPLATE ...` su Postgres) starebbe dietro
+  all'API esistente di `storetest.New` senza toccare i chiamanti — candidato naturale per chi
+  converte il prossimo blocco di file. **Aggiornamento 2026-10-28:** con R25-R27 il conteggio è
+  salito — 36 file di test chiamano ancora `AutoMigrate` (19 col literal `sqlite.Open(":memory:")`);
+  R24 finish ne ha convertiti altri (`project/invite`, `issue/resolution`, `sprint`, `workflow`,
+  `automation`, i nuovi test handler) — vedi la voce `[APERTO — 2026-10-28]` **(R24 finish follow-up, test)**.
 
 - **[CHIUSO — 2026-10-27]** **(R25)** Zero-config project creation: `POST /project` ora fa lo scaffold completo (workflow di default → issue type standard via `SeedStandardTypes`/`typeSetFor` → resolution "Done" → board via `boardTypeFor`) fail-loud con rollback; frontend usabile subito senza aprire Settings. Mergiato in `main` (PR #68) e in produzione nel homelab. Plan: `docs/superpowers/plans/2026-10-27-round-25-zero-config.md`.
 - **[CHIUSO — 2026-10-27]** **(R26)** Workflow QA + Kanban/Scrum reale (guidato dal tour del Jira reale di Harpa: 5/7 progetti usano uno stato QA, split Scrum/Kanban reale). Spec: `docs/superpowers/specs/2026-10-27-round-26-workflow-kanban-scrum-design.md`, plan: `…/plans/2026-10-27-round-26-workflow-kanban-scrum.md`. Consegnato: (1) `CreateDefaultWorkflow(projectID, includeReview)` → progetti software TO DO → IN PROGRESS → **TO BE TESTED** → DONE, business resta 3 stati; (2) creazione sprint respinta (400) su board Kanban (guard in `agile_sprint_handler.Create`); (3) frontend: Scrum tiene il backlog con sprint, **Kanban ha un backlog flat** (lista to-do rank-ordered + "Send to board" → primo stato in-progress), `backlog/page.tsx` type-router su `board.type`; (4) e2e `round-26-workflow-kanban-scrum.spec.ts` (3 scenari). Gate a tre livelli verde (Playwright 78 passed, gapreport no-diff). Nessuna regressione sui progetti pre-R26 (board default `scrum`).
@@ -239,21 +369,29 @@ Tag 1.0 già pubblicato (v1.0.2 rilasciata, `docs/RELEASE.md`); i round successi
 - **[CHIUSO — 2026-10-28]** **(R27)** Security hardening — chiusura del debito di autorizzazione/perimetro emerso dall'audit di `main` (R25+R26), prerequisito all'onboarding del team Harpa. Spec: `docs/superpowers/specs/2026-10-28-round-27-security-hardening-design.md`, plan: `…/plans/2026-10-28-round-27-security-hardening.md`. Branch `feat/round-27-security`. Nove task, ciascuno TDD con un test che **dimostra il buco e fallisce su `main`** prima del fix: (1) perimetro — `APP_SIGNUP` default `closed` con `APP_ENV=production` (valore sconosciuto = errore di avvio), bootstrap «tabella `users` vuota → la prima registrazione diventa global admin» (guardia anti-race multi-replica: ricontrollo del conteggio admin attivi dopo l'insert, il perdente viene cancellato, 503 retryable/403; un'istanza già popolata senza admin NON si auto-ripara — promote via SQL dall'operatore, vedi nota di upgrade nel CHANGELOG), `APP_SECRET` ≥32 in produzione; (2) git provider — GET solo `ADMINISTER_PROJECTS`, risposta senza token/secret (`has_token`, `webhook_url`), token cifrato at rest (AES-256-GCM da `APP_SECRET`, prefisso `v1:`, backfill all'avvio), URL token dedicato `webhook_url_token` (migrazione `000024`); (3) figli annidati legati al padre (comment/worklog/webhook di progetto/workflow status+transition/sprint → 404 su mismatch, riga intatta; comment update/delete e worklog delete solo autore-o-admin; `gorm.ErrRecordNotFound` distinto dagli errori DB); (4) issue da body autorizzate (move-to-sprint, backlog, rank, `issueLink` su entrambi i lati, target di `CompleteSprint` nello stesso progetto); (5) webhook in uscita SSRF-safe (`webhook.ValidateTargetURL`: solo http/https, range privati/loopback/link-local/NAT64/6to4/Teredo/IPv4-mapped respinti dopo risoluzione DNS, a create e a delivery; niente redirect, timeout 10s; escape hatch `APP_WEBHOOK_ALLOW_PRIVATE_HOSTS`); (6) WebSocket — routing notifiche per utente, `BROWSE_PROJECTS` sulla board socket, `CheckOrigin` su `APP_BASE_URL`, cleanup connessioni morte/buffer pieno; (7) ciclo di vita API token — list/revoke/expiry (migrazione `000025`, rotte estensione `GET/DELETE /rest/api/3/auth/api-tokens[/{id}]`, sezione profilo; expiry calcolata in UTC per evitare skew su Postgres non-UTC); (8) misc — rate limiter con `APP_TRUSTED_PROXIES` (XFF creduto solo da proxy fidato, hop più a destra non fidato, tutte le righe header lette), body limit 10 MB allegati / 32 MB globale (copre anche il webhook git non autenticato), `MarkRead` con ownership, messaggi d'errore generici su register/login/project create, gofmt di 9 file; (9) webhook git inbound — provider senza validatore respinti (`bitbucket` rifiutato a create), confronto GitLab constant-time, `webhook_secret` obbligatorio ≥16 (i provider legacy con secret vuoto smettono di ricevere eventi finché non vengono ricreati; warning all'avvio). Metodo: subagent-driven, per ogni task **review a due stadi** (spec compliance + code quality) e **riproduzione rossa** del finding (test fallito su `main` → fix → verde; un test già verde su `main` = finding errato, da riportare non da «aggiustare»); i follow-up di ogni review sono stati ripiegati nei task successivi (vedi i sei commit `docs(plan)` sul branch). Gate a tre livelli verde; `gap-report.md` rigenerato (extensions 97 → 99). Docs: README (tabella env, bootstrap, API token/git provider), `.env.example`, `docs/RELEASE.md`, CHANGELOG `[Unreleased]` Changed/Security.
 - **[APERTO — 2026-10-28]** **(R27 follow-up, frontend)** CSP e JWT fuori da `localStorage` (modello auth frontend) — non-goal dichiarato della spec R27, da fare in un round dedicato.
 - **[APERTO — 2026-10-28]** **(R27 follow-up, ops)** Riconciliare lo Helm chart pubblico (`deploy/helm/heureum`) con quello di produzione del homelab: ingress `/rest`, strategy `Recreate`, Secret per il DSN, tag immagine pinnati, subchart.
-- **[APERTO — 2026-10-28]** **(R27 follow-up, dati)** Mergiare R24 (`feat/round-24-gate-reale`, gate Postgres in CI) e poi chiudere i bug di integrità dati che quel gate deve intercettare: invite con `""` nella FK (→ NULL), description alla create salvata come JSON rotto, allocazione atomica della issue key, transazioni attorno alle scritture multi-step.
-- **[APERTO — 2026-10-28]** **(R27 follow-up)** `agile_sprint_handler.CompleteSprint` risponde 400 anche per errori DB reali — dovrebbe essere 500 come fa `writeSprintErr`.
-- **[APERTO — 2026-10-28]** **(R27 follow-up)** `sprint.Service.Complete` salta le issue con `status_id` NULL: usare `(status_id IS NULL OR status_id NOT IN (...))` e proteggere `RemoveStatus` quando lo stato è in uso.
+- **[CHIUSO — 2026-10-28]** **(R27 follow-up, dati → R24 finish)** Mergiare R24 (`feat/round-24-gate-reale`, gate Postgres in CI) e poi chiudere i bug di integrità dati che quel gate deve intercettare: invite con `""` nella FK (→ NULL), description alla create salvata come JSON rotto, allocazione atomica della issue key, transazioni attorno alle scritture multi-step. **Fatto** sul branch `feat/round-24-finish` (commit c51f4a3 merge+adattamento test, f4d9e29 invite, 441e592 description, ef14623 key atomica + migrazione `000026`, 3f7cf24 transazioni) — dettaglio nella voce **(R24 finish)** sotto.
+- **[CHIUSO — 2026-10-28]** **(R27 follow-up → R24 finish)** `agile_sprint_handler.CompleteSprint` risponde 400 anche per errori DB reali — dovrebbe essere 500 come fa `writeSprintErr`. **Fatto** (3f7cf24): gli errori DB passano da `writeSprintErr` → 500; test `TestCompleteSprint_DBErrorIs500` (storetest).
+- **[CHIUSO — 2026-10-28]** **(R27 follow-up → R24 finish)** `sprint.Service.Complete` salta le issue con `status_id` NULL: usare `(status_id IS NULL OR status_id NOT IN (...))` e proteggere `RemoveStatus` quando lo stato è in uso. **Fatto** (3f7cf24): `Complete` NULL-safe e in transazione (`TestComplete_MovesNullStatusIssues`); `workflow.RemoveStatus` rifiuta con `ErrStatusInUse` → handler **409** (`TestRemoveStatus_RefusedWhileInUse`).
 - **[APERTO — 2026-10-28]** **(R27 follow-up)** Quando verrà aggiunta una rotta di deactivate/demote utente, guardare «non si può disattivare o retrocedere l'ultimo admin attivo» (la guardia anti-race del bootstrap R27 conta `is_admin AND is_active`) e far controllare `is_active` a `Login`.
 - **[APERTO — 2026-10-28]** **(R27 follow-up)** Rotta di **promote admin** (global-admin only): oggi un'istanza popolata senza admin attivo si ripara solo con `UPDATE users SET is_admin = true WHERE email = '…'` da parte dell'operatore (il bootstrap scatta solo a tabella `users` vuota).
 - **[APERTO — 2026-10-28]** **(R27 follow-up, cosmetico)** `migrations/000001` ha ancora `'bitbucket'` nel CHECK di `git_providers.provider_type`; il gate autoritativo è nel codice (`git.SupportedProviderTypes`).
 - **[APERTO — 2026-10-28]** **(R27 follow-up, wording)** Il warning di avvio `cmd/server/main.go:41` dice «until the provider is re-saved» ma non esiste una rotta di update del provider: il rimedio è delete + ricreazione.
-- **[APERTO — 2026-10-28]** **(R27 follow-up, MySQL → R24)** La migrazione `000024` crea un `UNIQUE INDEX` su una colonna `TEXT` (`git_providers.webhook_url_token`): su MySQL serve un prefisso o `VARCHAR`, e il down deve usare `DROP INDEX … ON git_providers`. Inoltre il pattern `RowsAffected == 0 → 404` è un falso 404 su MySQL (conta le righe *cambiate*, non quelle *matchate*) per le scritture idempotenti — `MarkRead` su notifica già letta, update di un commento con body identico: convertire in R24 (es. `SELECT` di esistenza + `UPDATE`, o `clientFoundRows=true` nel DSN).
+- **[APERTO — 2026-10-28]** **(R27 follow-up, MySQL → R24)** La migrazione `000024` crea un `UNIQUE INDEX` su una colonna `TEXT` (`git_providers.webhook_url_token`): su MySQL serve un prefisso o `VARCHAR`, e il down deve usare `DROP INDEX … ON git_providers`. Inoltre il pattern `RowsAffected == 0 → 404` è un falso 404 su MySQL (conta le righe *cambiate*, non quelle *matchate*) per le scritture idempotenti — `MarkRead` su notifica già letta, update di un commento con body identico: convertire in R24 (es. `SELECT` di esistenza + `UPDATE`, o `clientFoundRows=true` nel DSN). **2026-10-28:** rinviato insieme a MySQL (vedi la voce R24 sopra); il WIP su `wip/r24-mysql-migrations` non copre né l'indice né i 404.
 - **[APERTO — 2026-10-28]** **(R27 follow-up, API token)** Una richiesta autenticata con API token può coniare altri token, anche senza scadenza: valutare di limitare la gestione dei token (`POST/GET/DELETE /rest/api/3/auth/api-tokens`) alle sessioni JWT.
 - **[APERTO — 2026-10-28]** **(R27 follow-up, body-id checks pre-esistenti)** `AddTransition` non valida `from`/`to` status id contro il workflow del progetto (e rimanda l'errore grezzo al client); `POST /rest/api/3/issue` non verifica che `fields.parent.key` appartenga allo stesso progetto (rilevante per R28 Epic); la rotta legacy `POST /issues/rank` non autorizza l'issue ancora `after_id`.
 - **[APERTO — 2026-10-28]** **(R27 follow-up, WebSocket)** Il permesso sulla board socket è verificato solo alla connessione: quando verranno cablati gli eventi board, rivalutare `BROWSE_PROJECTS` per evento o chiudere la connessione alla revoca del ruolo.
 - **[APERTO — 2026-10-28]** **(R27, documentato)** Un hostname in `APP_WEBHOOK_ALLOW_PRIVATE_HOSTS` è fidato ovunque punti il DNS (loopback/link-local compresi): è una scelta esplicita dell'operatore, documentata in README/`.env.example`.
 - **[APERTO — 2026-10-28]** **(R27 follow-up, cosmetico)** `internal/api/router.go:353-355` dice ancora «first issue in the list» per backlog/rank, ma ora `AgileMiscHandler` autorizza ogni issue del body; `internal/api/handlers/issue_handler.go` riscrive 7 volte il literal «Issue does not exist or you do not have permission to see it.» invece di usare `issueNotVisibleMsg` (`issuelink_handler.go:41`).
 - **[APERTO — 2026-10-28]** **(R27 follow-up, basso valore)** `webhook.Delivery.Error` può incorporare il testo d'errore del resolver (indirizzo del server DNS); il worker potrebbe mandare subito a `dead` un `ErrInvalidTargetURL` deterministico invece di 5 retry (solo rumore).
-- **[APERTO — 2026-10-28]** **(R27 follow-up, test)** Una volta mergiato storetest (R24), aggiungere l'asserzione di round-trip gated `TEST_DB_DRIVER=postgres` per `api_tokens.expires_at` (il test UTC attuale non esercita il codec pgx).
+- **[CHIUSO — 2026-10-28]** **(R27 follow-up, test → R24 finish)** Una volta mergiato storetest (R24), aggiungere l'asserzione di round-trip gated `TEST_DB_DRIVER=postgres` per `api_tokens.expires_at` (il test UTC attuale non esercita il codec pgx). **Fatto** (R24 finish Task 6): `TestAPIToken_ExpiryRoundTripsOnRealSchema` in `internal/api/handlers/api_token_expiry_roundtrip_test.go` — crea il token via handler con clock pinnato in zona fissa CEST, rilegge `expires_at` dallo schema reale e asserisce `Equal` sull'istante (entrambi i driver), su Postgres confronta anche le cifre memorizzate (`to_char`) con le cifre UTC attese, e verifica che `VerifyAPIToken` accetti 1h prima della scadenza e rifiuti 1h dopo. Solo la gamba Postgres (TZ=Europe/Rome in CI) prova il codec pgx `discardTimeZone`: SQLite serializza il `time.Time` col suo offset e passerebbe anche con la regressione.
+- **[CHIUSO — 2026-10-28]** **(R24 finish)** Round 24 finish — gate reale su `main` + integrità dati. Piano: `docs/superpowers/plans/2026-10-28-round-24-finish-and-data-integrity.md`; branch `feat/round-24-finish` (= R24 T1-T5 + merge di `main` a 7b388ca). Sei task, ciascuno con test `storetest` rosso-prima: **(T1)** albero mergiato verde su entrambi i driver (`resolution_test` → storetest, `MarkRead(userID,id)` nel test notifiche); **(T2)** `project.Invite.AcceptedBy` `string`→`*string`, NULL finché non accettato (violazione FK `accepted_by → users(id)` con `""`, rossa anche su SQLite grazie al pragma FK di storetest); **(T3)** description alla create salvata come ADF JSON valido (prima `fmt.Sprintf(`{"content":"%s"}`)` incapsulava senza escape) + e2e `issue-detail.spec.ts` stretta sul paragrafo esatto; **(T4)** issue key atomica: migrazione **`000026`** (`projects.issue_counter`), incremento + `seq_id` + insert in UNA transazione, retry su unique violation, backfill in Go all'avvio (`issue.Service.BackfillCounters` da `cmd/server`, idempotente — non esiste SQL portabile per «cifre dopo l'ultimo trattino»), ri-sync del contatore se la key allocata esiste già; **(T5)** `CreateWithOptions` — status/assignee/label/fixVersions iniziali nella stessa transazione della riga (all-or-nothing, assignee sconosciuto → 400, niente più `iss, _ =` nil-deref), `sprint.Complete` NULL-safe e transazionale, `workflow.RemoveStatus` → `ErrStatusInUse` → 409 (e, dal commit 1755d56, controlla PRIMA che lo status appartenga al workflow indicato → 404, poi il 409 «in uso»: uno status di un altro workflow non rivela né esistenza né conteggio), `CompleteSprint` 500 per errori DB, rollback del project create loggato, commenti automation come ADF valido, `issuetype.id` sconosciuto o di un altro progetto a `POST /rest/api/3/issue` → **400** `errors.issuetype` invece di violazione FK (1755d56 — **cambio di comportamento compat** per i client esterni che prendono gli id da `GET /rest/api/3/issuetype`: gli id sono per-progetto; la UI manda i nomi e non è toccata); **(T6)** round-trip `api_tokens.expires_at` sullo schema reale (voce sopra) + chiusura documentale. Gate: `go build/vet/test ./... -count=1` verde su SQLite in locale (Postgres solo in CI: nessuna istanza locale), gofmt pulito, gapreport no-diff (nessuna rotta toccata). **MySQL (T7-T8, PR #44) rinviato** — vedi la voce MySQL `[APERTO]` sopra.
+- **[APERTO — 2026-10-28]** **(R24 finish follow-up, automation)** `automation.Service.execute`: `set_assignee` e `transition_issue` scrivono il `value` grezzo della regola direttamente nelle colonne FK `issues.assignee_id`/`status_id` (`""` o un id inesistente → violazione FK su Postgres, anti-pattern #2, errore ignorato); `applyLabel` usa `INSERT … ON CONFLICT DO NOTHING` (non portabile su MySQL). Validare il valore (utente/status esistenti, `""` → NULL) e passare dal servizio issue invece di `Table("issues").Update`.
+- **[APERTO — 2026-10-28]** **(R24 finish follow-up, issue)** `issue.isDuplicateKeyErr` riconosce solo le unique violation (SQLite 2067/`UNIQUE constraint`, Postgres 23505, MySQL 1062): il retry di `CreateWithOptions` non copre i deadlock (Postgres `40P01`, MySQL 1213) possibili tra il lock sul contatore e gli insert dei figli sotto carico concorrente — aggiungere i codici al retry.
+- **[APERTO — 2026-10-28]** **(R24 finish, cambio di comportamento documentato)** Dalla T5 lo status, l'assignee e le label iniziali passati a `POST /rest/api/3/issue` fanno parte della riga stessa: la creazione emette **solo `issue_created`** (dopo il commit, con status/assignee/label già applicati) — spariscono gli eventi spuri `issue_updated`/`issue_transitioned` e le righe di history «changed from empty» che scattavano alla create. Webhook e regole di automation agganciati a quegli eventi non si attivano più alla creazione, e le regole `issue_created` che impostano assignee/transizione non vengono più sovrascritte dall'handler. Resta la notifica di assegnazione (dopo il commit). Registrato nel CHANGELOG `[Unreleased]` → Changed; da tenere presente per R28 Epic/webhook.
+- **[APERTO — 2026-10-28]** **(R24 finish follow-up, issue, pre-esistente)** Id di `fixVersion` inesistenti sono accettati in silenzio a create e update: la pivot `issue_versions` non ha FK verso `versions(id)`, quindi né lo schema reale né il codice li respingono. Validare l'esistenza (e l'appartenenza al progetto) prima della scrittura, o aggiungere la FK in una migrazione.
+- **[APERTO — 2026-10-28]** **(R24 finish follow-up, workflow)** La guardia «status in uso» di `workflow.RemoveStatus` fa una `COUNT` senza lock: su Postgres resta una piccola finestra di race in cui una transizione concorrente verso quello stato passa dopo il conteggio e prima della `DELETE`, e la FK `ON DELETE SET NULL` annulla lo `status_id` di quella issue. Chiudere con `SELECT … FOR UPDATE` sullo status (o lock sulle issue del progetto) nella stessa transazione della delete.
+- **[APERTO — 2026-10-28]** **(R24 finish follow-up, test)** 36 file di test chiamano ancora `AutoMigrate` (19 col literal `sqlite.Open(":memory:")`) invece di `storetest.New(t)`: **solo i test storetest girano davvero sulla gamba Postgres della matrice**, gli altri testano SQLite due volte. Convertire incrementalmente (prima i domini con FK nullable e colonne TIMESTAMP: `comment`, `webhook`, `git`, `user`, `auth`), valutando il template-database su Postgres quando il tempo della gamba cresce.
+- **[APERTO — 2026-10-28]** **(R24 finish follow-up, e2e)** `frontend-next/playwright.config.ts` cabla la porta `8080` (`healthz`, `NEXT_PUBLIC_API_URL`) e con `reuseExistingServer: !process.env.CI` riusa **qualsiasi** listener su quella porta fuori da CI — in R25 un servizio estraneo ssh-forwardato sulla 8080 ha reso la suite ineseguibile in locale. Parametrizzare con `E2E_API_PORT` (config + `scripts/e2e-backend.sh`) e non riusare un server che non risponde 200 su `/healthz`.
 
 ## Come far ripartire il lavoro
 

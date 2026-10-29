@@ -4,9 +4,8 @@ import "testing"
 
 func TestVoteService_AddIsIdempotent(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&Vote{}); err != nil {
-		t.Fatal(err)
-	}
+	// issue_votes.issue_id is a real FK to issues(id).
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewVoteService(db)
 
 	if err := svc.Add("issue-1", "user-1"); err != nil {
@@ -22,9 +21,7 @@ func TestVoteService_AddIsIdempotent(t *testing.T) {
 
 func TestVoteService_HasVoted(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&Vote{}); err != nil {
-		t.Fatal(err)
-	}
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewVoteService(db)
 
 	if svc.HasVoted("issue-1", "user-1") {
@@ -40,9 +37,7 @@ func TestVoteService_HasVoted(t *testing.T) {
 
 func TestVoteService_Voters(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&Vote{}); err != nil {
-		t.Fatal(err)
-	}
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewVoteService(db)
 
 	if err := svc.Add("issue-1", "user-1"); err != nil {
@@ -56,9 +51,7 @@ func TestVoteService_Voters(t *testing.T) {
 
 func TestVoteService_Remove(t *testing.T) {
 	db := newIssueTestDB(t)
-	if err := db.AutoMigrate(&Vote{}); err != nil {
-		t.Fatal(err)
-	}
+	createTestIssue(t, db, "issue-1", "p1")
 	svc := NewVoteService(db)
 
 	if err := svc.Add("issue-1", "user-1"); err != nil {

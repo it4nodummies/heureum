@@ -7,20 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"gorm.io/driver/sqlite"
+	"github.com/it4nodummies/heureum/internal/storetest"
 	"gorm.io/gorm"
 )
 
 func newAttachmentTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&IssueAttachment{}); err != nil {
-		t.Fatal(err)
-	}
-	return db
+	return storetest.New(t)
 }
 
 // fakeMultipartFile adapts an io.Reader to multipart.File for tests that
@@ -33,6 +25,10 @@ func (fakeMultipartFile) Close() error { return nil }
 
 func TestUploadAttachment_WritesIntoConfiguredDir(t *testing.T) {
 	db := newAttachmentTestDB(t)
+	// issue_attachments.issue_id and .uploader_id are real FKs to issues(id)
+	// and users(id): both rows must exist before UploadAttachment can insert.
+	createTestIssue(t, db, "issue-1", "p1")
+	createTestUser(t, db, "user-1")
 	dir := t.TempDir()
 	svc := NewAttachmentService(db, dir)
 
