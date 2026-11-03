@@ -2,23 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { issues, type ChangeItem, type Changelog } from "@/lib/api";
-
-// Renders relative time the same way across History rows ("just now", "5m
-// ago", "3d ago", falling back to the date once it's more than a month old).
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return iso;
-  const diffSec = Math.round((Date.now() - then) / 1000);
-  if (diffSec < 5) return "just now";
-  if (diffSec < 60) return `${diffSec}s ago`;
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHour = Math.round(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}h ago`;
-  const diffDay = Math.round(diffHour / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
+import { useFormat, useT } from "@/lib/i18n";
+import { historyFieldLabel, richSentence, slot, stripMark } from "./historyText";
 
 // Flattens a changelog entry (author/created + one or more field changes)
 // into one row per changed field, keeping the entry's author/created/id so
@@ -30,10 +15,10 @@ interface HistoryRow {
   item: ChangeItem;
 }
 
-function toRows(entries: Changelog[]): HistoryRow[] {
+function toRows(entries: Changelog[], systemName: string): HistoryRow[] {
   const rows: HistoryRow[] = [];
   for (const entry of entries) {
-    const authorName = entry.author?.displayName ?? "System";
+    const authorName = entry.author?.displayName ?? systemName;
     entry.items.forEach((item, idx) => {
       rows.push({ key: `${entry.id}-${idx}`, authorName, created: entry.created, item });
     });
@@ -42,6 +27,8 @@ function toRows(entries: Changelog[]): HistoryRow[] {
 }
 
 export function History({ issueKey }: { issueKey: string }) {
+  const t = useT();
+  const fmt = useFormat();
   const { data, isLoading } = useQuery({
     queryKey: ["changelog", issueKey],
     queryFn: () => issues.changelog(issueKey),
@@ -53,14 +40,14 @@ export function History({ issueKey }: { issueKey: string }) {
   const entries = [...(data?.values ?? [])].sort(
     (a, b) => new Date(b.created).getTime() - new Date(a.created).getTime()
   );
-  const rows = toRows(entries);
+  const rows = toRows(entries, t("issues.history.system"));
 
   if (isLoading) {
-    return <p className="text-sm text-slate-400">Loading history…</p>;
+    return <p className="text-sm text-slate-400">{t("issues.history.loading")}</p>;
   }
 
   if (rows.length === 0) {
-    return <p className="text-sm text-slate-400">No history yet.</p>;
+    return <p className="text-sm text-slate-400">{t("issues.history.empty")}</p>;
   }
 
   return (
@@ -79,11 +66,22 @@ export function History({ issueKey }: { issueKey: string }) {
         const toStr = typeof row.item.toString === "string" ? row.item.toString : undefined;
         return (
           <li key={row.key} data-testid="history-row" className="text-sm text-[#1a1f36]">
-            <span className="font-semibold">{row.authorName}</span> changed{" "}
-            <span className="font-medium">{row.item.field}</span> from «
-            {fromStr && fromStr.length ? fromStr : "—"}» to «
-            {toStr && toStr.length ? toStr : "—"}»{" "}
-            <span className="text-xs text-slate-400">· {relativeTime(row.created)}</span>
+            {richSentence(
+              t(row.item.field === "created" ? "issues.history.createdIssue" : "issues.history.changed", {
+                author: slot("author"),
+                field: slot("field"),
+                // Values are data: drop the marker so they can't inject a node.
+                from: fromStr && fromStr.length ? stripMark(fromStr) : "—",
+                to: toStr && toStr.length ? stripMark(toStr) : "—",
+              }),
+              {
+                author: <span className="font-semibold">{row.authorName}</span>,
+                field: <span className="font-medium">{historyFieldLabel(t, row.item.field)}</span>,
+              },
+            )}{" "}
+            <span className="text-xs text-slate-400" title={fmt.dateTime(row.created)}>
+              · {fmt.relative(row.created)}
+            </span>
           </li>
         );
       })}

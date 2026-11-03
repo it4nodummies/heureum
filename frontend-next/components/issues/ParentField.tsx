@@ -12,6 +12,7 @@ import Link from "next/link";
 import { epics, fieldError, issues, type ParentRef } from "@/lib/api";
 import { EpicLozenge } from "./EpicLozenge";
 import { ParentPicker, type ParentOption } from "./ParentPicker";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   issueKey: string;
@@ -25,8 +26,10 @@ interface Props {
 }
 
 export function ParentField({ issueKey, projectKey, childLevel, parent, canEdit = true }: Props) {
+  const t = useT();
   const qc = useQueryClient();
-  const label = childLevel === 0 ? "Epic" : "Parent";
+  const isEpic = childLevel === 0;
+  const label = isEpic ? t("issues.parent.epic") : t("issues.parent.parent");
   const [editing, setEditing] = useState(false);
 
   // The epic's colour is not part of fields.parent; one small read of the
@@ -52,7 +55,7 @@ export function ParentField({ issueKey, projectKey, childLevel, parent, canEdit 
   const value: ParentOption | null = parent ? { key: parent.key, summary: parent.fields?.summary ?? parent.key } : null;
   const errorText = setParent.isError
     ? fieldError(setParent.error, "parent") ??
-      (setParent.error instanceof Error ? setParent.error.message : "Could not change the parent.")
+      (setParent.error instanceof Error ? setParent.error.message : t("issues.parent.failed"))
     : null;
 
   return (
@@ -67,7 +70,7 @@ export function ParentField({ issueKey, projectKey, childLevel, parent, canEdit 
           disabled={setParent.isPending}
           autoOpen
           clearable={false}
-          label={`Select ${label.toLowerCase()}`}
+          label={isEpic ? t("issues.parent.selectEpic") : t("issues.parent.selectParent")}
           onChange={(next) => {
             if ((next?.key ?? null) === (value?.key ?? null)) {
               setEditing(false);
@@ -95,7 +98,9 @@ export function ParentField({ issueKey, projectKey, childLevel, parent, canEdit 
                 </Link>
               )
             ) : (
-              <span className="text-slate-400">None</span>
+              <span className="text-slate-400">
+                {isEpic ? t("issues.parent.noneEpic") : t("issues.parent.noneParent")}
+              </span>
             )}
           </div>
           {canEdit && (
@@ -106,14 +111,14 @@ export function ParentField({ issueKey, projectKey, childLevel, parent, canEdit 
               data-testid="parent-edit"
               className="shrink-0 text-xs text-[#0052cc] hover:underline disabled:opacity-60"
             >
-              {parent ? "Change" : "Set"}
+              {parent ? t("issues.parent.change") : t("issues.parent.set")}
             </button>
           )}
           {canEdit && parent && (
             <button
               type="button"
-              aria-label={`Remove ${label.toLowerCase()}`}
-              title={`Remove ${label.toLowerCase()}`}
+              aria-label={isEpic ? t("issues.parent.removeEpic") : t("issues.parent.removeParent")}
+              title={isEpic ? t("issues.parent.removeEpic") : t("issues.parent.removeParent")}
               onClick={() => setParent.mutate(null)}
               disabled={setParent.isPending}
               data-testid="parent-clear"

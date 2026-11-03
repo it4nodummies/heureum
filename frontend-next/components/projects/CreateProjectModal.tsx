@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, ProjectTypeKey } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   onClose: () => void;
@@ -13,13 +14,11 @@ type TemplateKey = "scrum" | "kanban" | "business";
 
 const TEMPLATES: Record<
   TemplateKey,
-  { projectTypeKey: ProjectTypeKey; projectTemplateKey: string; label: string; description: string; icon: React.ReactNode }
+  { projectTypeKey: ProjectTypeKey; projectTemplateKey: string; icon: React.ReactNode }
 > = {
   scrum: {
     projectTypeKey: "software",
     projectTemplateKey: "com.pyxis.greenhopper.jira:gh-scrum-template",
-    label: "Scrum",
-    description: "Sprints, backlog, burndown charts",
     icon: (
       <svg viewBox="0 0 32 32" fill="none" className="w-8 h-8">
         <rect width="32" height="32" rx="6" fill="#E8F4FD" />
@@ -30,8 +29,6 @@ const TEMPLATES: Record<
   kanban: {
     projectTypeKey: "software",
     projectTemplateKey: "com.pyxis.greenhopper.jira:gh-kanban-template",
-    label: "Kanban",
-    description: "Continuous flow, WIP limits",
     icon: (
       <svg viewBox="0 0 32 32" fill="none" className="w-8 h-8">
         <rect width="32" height="32" rx="6" fill="#F0FFF4" />
@@ -44,8 +41,6 @@ const TEMPLATES: Record<
   business: {
     projectTypeKey: "business",
     projectTemplateKey: "com.atlassian.jira-core-project-templates:jira-core-simplified-process-control",
-    label: "Business",
-    description: "Task tracking, no sprints",
     icon: (
       <svg viewBox="0 0 32 32" fill="none" className="w-8 h-8">
         <rect width="32" height="32" rx="6" fill="#FFF7ED" />
@@ -61,6 +56,7 @@ const TEMPLATE_ORDER: TemplateKey[] = ["scrum", "kanban", "business"];
 
 export default function CreateProjectModal({ onClose, onCreated }: Props) {
   const queryClient = useQueryClient();
+  const t = useT();
   const [step, setStep] = useState<1 | 2>(1);
   const [template, setTemplate] = useState<TemplateKey>("scrum");
   const [name, setName] = useState("");
@@ -105,10 +101,11 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-[#1a1f36]">
-            {step === 1 ? "Select project type" : "Create project"}
+            {step === 1 ? t("projects.create.selectType") : t("projects.create.title")}
           </h2>
           <button
             onClick={onClose}
+            aria-label={t("common.actions.close")}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -125,7 +122,7 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
           {step === 1 ? (
             <>
               <p className="text-sm text-slate-500 mb-4">
-                Choose the methodology that fits your team's workflow.
+                {t("projects.create.intro")}
               </p>
               <div className="space-y-2">
                 {TEMPLATE_ORDER.map((tpl) => {
@@ -142,8 +139,8 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
                     >
                       {pt.icon}
                       <div>
-                        <p className="text-sm font-semibold text-[#1a1f36]">{pt.label}</p>
-                        <p className="text-xs text-slate-500">{pt.description}</p>
+                        <p className="text-sm font-semibold text-[#1a1f36]">{t(`projects.create.templates.${tpl}.label`)}</p>
+                        <p className="text-xs text-slate-500">{t(`projects.create.templates.${tpl}.description`)}</p>
                       </div>
                       <div className="ml-auto">
                         <div
@@ -167,7 +164,7 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
                   onClick={() => setStep(2)}
                   className="px-5 py-2 bg-[#0052cc] hover:bg-[#0065ff] text-white text-sm font-semibold rounded-lg transition-colors"
                 >
-                  Next
+                  {t("projects.create.next")}
                 </button>
               </div>
             </>
@@ -175,26 +172,26 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
             <>
               {error && (
                 <div className="mb-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg px-4 py-3">
-                  {error instanceof Error ? error.message : "Failed to create project"}
+                  {error instanceof Error ? error.message : t("projects.create.failed")}
                 </div>
               )}
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Project name <span className="text-red-400">*</span>
+                    {t("projects.create.name")} <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    placeholder="My awesome project"
+                    placeholder={t("projects.create.namePlaceholder")}
                     className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] transition-all"
                     autoFocus
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Project key <span className="text-red-400">*</span>
+                    {t("projects.create.key")} <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -207,17 +204,17 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
                     className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] transition-all font-mono"
                   />
                   <p className="text-xs text-slate-400 mt-1">
-                    2–10 uppercase letters/numbers. Used in issue identifiers (e.g. MAP-1).
+                    {t("projects.create.keyHelp")}
                   </p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Description
+                    {t("projects.create.description")}
                   </label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="What is this project about?"
+                    placeholder={t("projects.create.descriptionPlaceholder")}
                     rows={3}
                     className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] transition-all resize-none"
                   />
@@ -229,14 +226,14 @@ export default function CreateProjectModal({ onClose, onCreated }: Props) {
                   onClick={() => setStep(1)}
                   className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors"
                 >
-                  ← Back
+                  {t("projects.create.back")}
                 </button>
                 <button
                   onClick={handleCreate}
                   disabled={!name || !key || isPending}
                   className="px-5 py-2 bg-[#0052cc] hover:bg-[#0065ff] disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
                 >
-                  {isPending ? "Creating…" : "Create project"}
+                  {isPending ? t("projects.create.creating") : t("projects.create.submit")}
                 </button>
               </div>
             </>

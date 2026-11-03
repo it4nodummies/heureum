@@ -4,12 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { issueLinks, search, IssueLinkForIssue, IssueLinkTypeName, SearchIssue } from "@/lib/api";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 interface Props {
   issueKey: string;
 }
 
 const RELATION_OPTIONS: IssueLinkTypeName[] = ["Blocks", "Duplicate", "Relates"];
+
+// type.inward / type.outward phrases of the fixed link types
+// (internal/api/v3/collab.go JiraLinkType) → catalogue keys; any other phrase
+// is shown as received.
+const RELATION_KEYS: Record<string, MessageKey> = {
+  blocks: "issues.links.relations.blocks",
+  "is blocked by": "issues.links.relations.isBlockedBy",
+  duplicates: "issues.links.relations.duplicates",
+  "is duplicated by": "issues.links.relations.isDuplicatedBy",
+  "relates to": "issues.links.relations.relatesTo",
+};
 
 // Row derived from an IssueLinkForIssue from THIS issue's point of view: the
 // backend only populates the side opposite the requested issue (see
@@ -53,6 +65,7 @@ function statusBadgeClasses(categoryKey?: string): string {
 }
 
 export function LinkedWorkItems({ issueKey }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const linksKey = ["issue", issueKey, "links"];
   const { data, isLoading } = useQuery({
@@ -129,18 +142,20 @@ export function LinkedWorkItems({ issueKey }: Props) {
   return (
     <section className="mt-8" data-testid="linked-work-items-section">
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-        Linked work items
+        {t("issues.links.title")}
       </h2>
 
       {!isLoading && grouped.length === 0 && (
-        <p className="mb-3 text-sm text-slate-400">No linked work items yet.</p>
+        <p className="mb-3 text-sm text-slate-400">{t("issues.links.empty")}</p>
       )}
 
       {grouped.length > 0 && (
         <div className="mb-4 space-y-3">
           {grouped.map(([label, items]) => (
             <div key={label}>
-              <div className="mb-1 text-xs font-medium text-slate-400">{label}</div>
+              <div className="mb-1 text-xs font-medium text-slate-400">
+                {Object.prototype.hasOwnProperty.call(RELATION_KEYS, label) ? t(RELATION_KEYS[label]) : label}
+              </div>
               <ul className="space-y-2">
                 {items.map((row) => (
                   <li
@@ -165,10 +180,10 @@ export function LinkedWorkItems({ issueKey }: Props) {
                     <button
                       onClick={() => remove.mutate(row.id)}
                       disabled={remove.isPending}
-                      aria-label={`Remove link to ${row.key}`}
+                      aria-label={t("issues.links.removeLink", { key: row.key })}
                       className="shrink-0 text-xs text-slate-400 hover:text-red-600 disabled:opacity-60"
                     >
-                      Remove
+                      {t("issues.actions.remove")}
                     </button>
                   </li>
                 ))}
@@ -180,14 +195,14 @@ export function LinkedWorkItems({ issueKey }: Props) {
 
       <div className="flex items-start gap-2">
         <select
-          aria-label="Relation type"
+          aria-label={t("issues.links.relationType")}
           value={relation}
           onChange={(e) => setRelation(e.target.value as IssueLinkTypeName)}
           className="rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
         >
           {RELATION_OPTIONS.map((r) => (
             <option key={r} value={r}>
-              {r}
+              {t(`issues.links.types.${r}`)}
             </option>
           ))}
         </select>
@@ -202,8 +217,8 @@ export function LinkedWorkItems({ issueKey }: Props) {
             }}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            placeholder="Search for an issue…"
-            aria-label="Search for an issue to link"
+            placeholder={t("issues.links.searchPlaceholder")}
+            aria-label={t("issues.links.searchLabel")}
             className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
           />
           {showSuggestions && !target && suggestions.length > 0 && (
@@ -234,12 +249,12 @@ export function LinkedWorkItems({ issueKey }: Props) {
           disabled={!target || create.isPending}
           className="shrink-0 rounded bg-[#0052cc] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0065ff] disabled:opacity-60"
         >
-          {create.isPending ? "Adding…" : "Add"}
+          {create.isPending ? t("issues.actions.adding") : t("issues.actions.add")}
         </button>
       </div>
       {create.isError && (
         <p className="mt-2 text-xs text-red-600">
-          {create.error instanceof Error ? create.error.message : "Failed to create link."}
+          {create.error instanceof Error ? create.error.message : t("issues.links.failed")}
         </p>
       )}
     </section>

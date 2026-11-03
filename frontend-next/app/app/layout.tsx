@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
+import LocaleSync from "@/components/layout/LocaleSync";
 import { isAuthenticated } from "@/lib/auth";
 
 export default function JiraLayout({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,7 @@ export default function JiraLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      <LocaleSync />
       <TopBar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

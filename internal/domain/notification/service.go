@@ -155,8 +155,8 @@ func (s *Service) GetIssueProjectIDAndKey(issueID string) (string, string, error
 
 func (s *Service) NotifyIssueAssigned(issueID, assigneeUserID, issueKey, issueTitle string) error {
 	link := fmt.Sprintf("/issues/%s", issueKey)
-	return s.Create(assigneeUserID, "assignment", "You were assigned to an issue",
-		fmt.Sprintf("You were assigned to %s: %s", issueKey, issueTitle), link)
+	title, body := assignmentText(issueKey, issueTitle)
+	return s.Create(assigneeUserID, "assignment", title, body, link)
 }
 
 func (s *Service) NotifyIssueCommented(issueID, commenterID, issueKey, issueTitle, commentPreview string) error {
@@ -172,8 +172,8 @@ func (s *Service) NotifyIssueCommented(issueID, commenterID, issueKey, issueTitl
 	if len(body) > 200 {
 		body = body[:200] + "..."
 	}
-	return s.CreateBatch(watchers, "comment", fmt.Sprintf("New comment on %s", issueKey),
-		fmt.Sprintf("%s: %s", issueTitle, body), link)
+	title, text := commentText(issueKey, issueTitle, body)
+	return s.CreateBatch(watchers, "comment", title, text, link)
 }
 
 // NotifyUsersMentionedByIDs notifica gli utenti citati passandone direttamente
@@ -197,8 +197,8 @@ func (s *Service) NotifyUsersMentionedByIDs(userIDs []string, authorID, issueKey
 		return nil
 	}
 	link := fmt.Sprintf("/issues/%s", issueKey)
-	return s.CreateBatch(mentioned, "mention", fmt.Sprintf("You were mentioned in %s", issueKey),
-		fmt.Sprintf("Someone mentioned you in the comments of %s: %s", issueKey, issueTitle), link)
+	title, body := mentionText(issueKey, issueTitle)
+	return s.CreateBatch(mentioned, "mention", title, body, link)
 }
 
 func (s *Service) NotifySprintStarted(projectID, sprintID, sprintName string, startedByUserID string) error {
@@ -209,8 +209,8 @@ func (s *Service) NotifySprintStarted(projectID, sprintID, sprintName string, st
 	if len(members) == 0 {
 		return nil
 	}
-	return s.CreateBatch(members, "sprint_started", "Sprint started",
-		fmt.Sprintf("Sprint \"%s\" has started", sprintName), fmt.Sprintf("/sprints/%s", sprintID))
+	title, body := sprintStartedText(sprintName)
+	return s.CreateBatch(members, "sprint_started", title, body, fmt.Sprintf("/sprints/%s", sprintID))
 }
 
 func (s *Service) NotifySprintCompleted(projectID, sprintID, sprintName string, completedByUserID string) error {
@@ -221,8 +221,8 @@ func (s *Service) NotifySprintCompleted(projectID, sprintID, sprintName string, 
 	if len(members) == 0 {
 		return nil
 	}
-	return s.CreateBatch(members, "sprint_completed", "Sprint completed",
-		fmt.Sprintf("Sprint \"%s\" has been completed", sprintName), fmt.Sprintf("/sprints/%s", sprintID))
+	title, body := sprintCompletedText(sprintName)
+	return s.CreateBatch(members, "sprint_completed", title, body, fmt.Sprintf("/sprints/%s", sprintID))
 }
 
 func (s *Service) NotifyStatusChanged(issueID, newStatus, issueKey, issueTitle, actorUserID string) error {
@@ -234,6 +234,39 @@ func (s *Service) NotifyStatusChanged(issueID, newStatus, issueKey, issueTitle, 
 		return nil
 	}
 	link := fmt.Sprintf("/issues/%s", issueKey)
-	return s.CreateBatch(watchers, "status_change", fmt.Sprintf("Status changed on %s", issueKey),
-		fmt.Sprintf("%s status changed to %s", issueTitle, newStatus), link)
+	title, body := statusChangedText(issueKey, issueTitle, newStatus)
+	return s.CreateBatch(watchers, "status_change", title, body, link)
+}
+
+// Stored notification title/body texts. They are English and fixed on purpose:
+// the web UI does NOT show them verbatim — it renders the title from `type` and
+// parses these exact body sentences to re-render them in the user's language
+// (frontend-next/components/notifications/NotificationBell.tsx,
+// notificationBody). Changing a sentence here breaks that parsing (the Italian
+// UI would silently fall back to the English body): update NotificationBell's
+// patterns together with TestNotificationTexts_PinnedForTheWebUI.
+
+func assignmentText(issueKey, issueTitle string) (title, body string) {
+	return "You were assigned to an issue", fmt.Sprintf("You were assigned to %s: %s", issueKey, issueTitle)
+}
+
+func commentText(issueKey, issueTitle, preview string) (title, body string) {
+	return fmt.Sprintf("New comment on %s", issueKey), fmt.Sprintf("%s: %s", issueTitle, preview)
+}
+
+func mentionText(issueKey, issueTitle string) (title, body string) {
+	return fmt.Sprintf("You were mentioned in %s", issueKey),
+		fmt.Sprintf("Someone mentioned you in the comments of %s: %s", issueKey, issueTitle)
+}
+
+func sprintStartedText(sprintName string) (title, body string) {
+	return "Sprint started", fmt.Sprintf("Sprint \"%s\" has started", sprintName)
+}
+
+func sprintCompletedText(sprintName string) (title, body string) {
+	return "Sprint completed", fmt.Sprintf("Sprint \"%s\" has been completed", sprintName)
+}
+
+func statusChangedText(issueKey, issueTitle, newStatus string) (title, body string) {
+	return fmt.Sprintf("Status changed on %s", issueKey), fmt.Sprintf("%s status changed to %s", issueTitle, newStatus)
 }

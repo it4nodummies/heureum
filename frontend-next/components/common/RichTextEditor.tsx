@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { profile, users, type ADFNode } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 // ── Constrained ADF vocabulary ───────────────────────────────────────────────
 //
@@ -222,6 +223,7 @@ function detectMention(root: HTMLElement): { node: Text; at: number; caret: numb
 }
 
 export function RichTextEditor({ valueAdf, onChangeAdf, placeholder, projectKey, ariaLabel, testId }: Props) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [empty, setEmpty] = useState(true);
 
@@ -247,7 +249,7 @@ export function RichTextEditor({ valueAdf, onChangeAdf, placeholder, projectKey,
     if (mQuery === null) return;
     const q = mQuery;
     const seq = ++searchSeq.current;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const raw = projectKey
           ? await users.assignableSearch(projectKey, q)
@@ -259,7 +261,7 @@ export function RichTextEditor({ valueAdf, onChangeAdf, placeholder, projectKey,
         if (seq === searchSeq.current) setMResults([]);
       }
     }, 200);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [mQuery, projectKey]);
 
   function refreshMention() {
@@ -406,19 +408,19 @@ export function RichTextEditor({ valueAdf, onChangeAdf, placeholder, projectKey,
     <div className="rounded border border-slate-300 focus-within:border-[#0052cc] focus-within:ring-2 focus-within:ring-[#0052cc]/20">
       <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 px-1.5 py-1" data-testid="rich-editor-toolbar">
         {/* preventDefault on mousedown keeps the editor selection while clicking. */}
-        <button type="button" aria-label="Bold" title="Bold" className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")}>
+        <button type="button" aria-label={t("issues.editor.bold")} title={t("issues.editor.bold")} className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")}>
           <b>B</b>
         </button>
-        <button type="button" aria-label="Italic" title="Italic" className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("italic")}>
+        <button type="button" aria-label={t("issues.editor.italic")} title={t("issues.editor.italic")} className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("italic")}>
           <i>I</i>
         </button>
-        <button type="button" aria-label="Code" title="Code" className={`${btn} font-mono`} onMouseDown={(e) => e.preventDefault()} onClick={toggleCode}>
+        <button type="button" aria-label={t("issues.editor.code")} title={t("issues.editor.code")} className={`${btn} font-mono`} onMouseDown={(e) => e.preventDefault()} onClick={toggleCode}>
           {"</>"}
         </button>
-        <button type="button" aria-label="Bullet list" title="Bullet list" className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertUnorderedList")}>
-          • List
+        <button type="button" aria-label={t("issues.editor.bulletList")} title={t("issues.editor.bulletList")} className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertUnorderedList")}>
+          {t("issues.editor.bulletListButton")}
         </button>
-        <button type="button" aria-label="Heading" title="Heading" className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "h3")}>
+        <button type="button" aria-label={t("issues.editor.heading")} title={t("issues.editor.heading")} className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "h3")}>
           H3
         </button>
       </div>

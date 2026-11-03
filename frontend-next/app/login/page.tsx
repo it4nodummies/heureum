@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/api";
 import { saveToken, saveUser } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 
 export default function LoginPage() {
   const router = useRouter();
+  const t = useT();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -31,9 +35,12 @@ export default function LoginPage() {
         const user = await auth.me();
         saveUser(user);
       }
+      // Drop anything cached for a previous session (e.g. the ["myself"] query
+      // LocaleSync reads), so the new user's profile/locale is fetched fresh.
+      queryClient.clear();
       router.push("/app/projects");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(err instanceof Error ? err.message : t("auth.genericError"));
     } finally {
       setLoading(false);
     }
@@ -62,7 +69,7 @@ export default function LoginPage() {
               Heureum
             </span>
           </div>
-          <p className="text-sm text-[#64748b]">Project management, modernized</p>
+          <p className="text-sm text-[#64748b]">{t("auth.tagline")}</p>
         </div>
 
         {/* Card */}
@@ -77,7 +84,7 @@ export default function LoginPage() {
                   : "text-[#64748b] hover:text-[#1a1f36]"
               }`}
             >
-              Sign in
+              {t("auth.signIn")}
             </button>
             <button
               onClick={() => setTab("register")}
@@ -87,7 +94,7 @@ export default function LoginPage() {
                   : "text-[#64748b] hover:text-[#1a1f36]"
               }`}
             >
-              Create account
+              {t("auth.createAccount")}
             </button>
           </div>
 
@@ -103,7 +110,7 @@ export default function LoginPage() {
                 htmlFor="login-email"
                 className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5"
               >
-                Email
+                {t("auth.email")}
               </label>
               <input
                 id="login-email"
@@ -111,7 +118,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="you@example.com"
+                placeholder={t("auth.emailPlaceholder")}
                 className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] transition-all placeholder:text-slate-300"
               />
             </div>
@@ -122,7 +129,7 @@ export default function LoginPage() {
                   htmlFor="login-username"
                   className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5"
                 >
-                  Username
+                  {t("auth.username")}
                 </label>
                 <input
                   id="login-username"
@@ -130,7 +137,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  placeholder="johndoe"
+                  placeholder={t("auth.usernamePlaceholder")}
                   className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] transition-all placeholder:text-slate-300"
                 />
               </div>
@@ -141,7 +148,7 @@ export default function LoginPage() {
                 htmlFor="login-password"
                 className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5"
               >
-                Password
+                {t("auth.password")}
               </label>
               <input
                 id="login-password"
@@ -160,10 +167,10 @@ export default function LoginPage() {
               className="w-full mt-2 py-2.5 px-4 bg-[#0052cc] hover:bg-[#0065ff] disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#0052cc]/30 focus:ring-offset-2"
             >
               {loading
-                ? "Please wait…"
+                ? t("auth.pleaseWait")
                 : tab === "login"
-                ? "Sign in"
-                : "Create account"}
+                ? t("auth.signIn")
+                : t("auth.createAccount")}
             </button>
           </form>
         </div>

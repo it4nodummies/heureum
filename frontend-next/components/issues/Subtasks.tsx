@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fieldError, hierarchyLevelOf, issues, projects, type Issue, type IssueTypeRef } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   issueKey: string;
@@ -33,6 +34,7 @@ export function ChildIssues(props: Props) {
 export const Subtasks = ChildIssues;
 
 function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const epicMode = parentLevel === 1;
   const childLevel = parentLevel - 1;
@@ -55,15 +57,15 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
     queryFn: () => projects.get(projectKey),
   });
   const childTypes: IssueTypeRef[] = (project?.issueTypes ?? []).filter(
-    (t) => hierarchyLevelOf(t) === childLevel,
+    (ty) => hierarchyLevelOf(ty) === childLevel,
   );
   const defaultChildType = epicMode
-    ? (childTypes.find((t) => t.name === "Story") ?? childTypes[0])?.name ?? "Story"
+    ? (childTypes.find((ty) => ty.name === "Story") ?? childTypes[0])?.name ?? "Story"
     : childTypes[0]?.name ?? "Subtask";
 
   const [typeName, setTypeName] = useState("");
   useEffect(() => {
-    if (!typeName || (childTypes.length > 0 && !childTypes.some((t) => t.name === typeName))) {
+    if (!typeName || (childTypes.length > 0 && !childTypes.some((ty) => ty.name === typeName))) {
       setTypeName(defaultChildType);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,8 +87,7 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
     if (summary.trim() && !create.isPending) create.mutate();
   }
 
-  const heading = epicMode ? "Child issues" : "Subtasks";
-  const noun = epicMode ? "child issue" : "subtask";
+  const heading = epicMode ? t("issues.children.epicTitle") : t("issues.children.subtasksTitle");
 
   return (
     <section className="mt-8" data-testid={epicMode ? "child-issues" : "subtasks-section"}>
@@ -96,14 +97,14 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
           className="text-xs text-slate-500"
           data-testid={epicMode ? "child-issues-progress" : "subtasks-progress"}
         >
-          {done} of {total} done
+          {t("issues.children.progress", { done, total })}
         </span>
       </div>
 
       {epicMode && (
         <div
           role="progressbar"
-          aria-label="Child issues progress"
+          aria-label={t("issues.children.progressLabel")}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={pct}
@@ -116,7 +117,9 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
         </div>
       )}
 
-      {!isLoading && total === 0 && <p className="mb-3 text-sm text-slate-400">No {noun}s yet.</p>}
+      {!isLoading && total === 0 && <p className="mb-3 text-sm text-slate-400">
+          {epicMode ? t("issues.children.epicEmpty") : t("issues.children.subtasksEmpty")}
+        </p>}
 
       {total > 0 && (
         <ul className="mb-3 space-y-2">
@@ -129,15 +132,15 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
       <div className="flex items-center gap-2">
         {epicMode && childTypes.length > 1 && (
           <select
-            aria-label="Child issue type"
+            aria-label={t("issues.children.childType")}
             data-testid="create-child-type"
             value={effectiveTypeName}
             onChange={(e) => setTypeName(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
           >
-            {childTypes.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.name}
+            {childTypes.map((ct) => (
+              <option key={ct.id} value={ct.name}>
+                {ct.name}
               </option>
             ))}
           </select>
@@ -148,8 +151,8 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
           onKeyDown={(e) => {
             if (e.key === "Enter") submit();
           }}
-          placeholder={`Add a ${noun}…`}
-          aria-label={`Add a ${noun}`}
+          placeholder={epicMode ? t("issues.children.epicPlaceholder") : t("issues.children.subtaskPlaceholder")}
+          aria-label={epicMode ? t("issues.children.epicAdd") : t("issues.children.subtaskAdd")}
           data-testid="create-child"
           className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
         />
@@ -159,13 +162,17 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
           data-testid="create-child-submit"
           className="rounded bg-[#0052cc] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0065ff] disabled:opacity-60"
         >
-          {create.isPending ? "Adding…" : "Add"}
+          {create.isPending ? t("issues.actions.adding") : t("issues.actions.add")}
         </button>
       </div>
       {create.isError && (
         <p className="mt-2 text-xs text-red-600">
           {fieldError(create.error, "parent") ??
-            (create.error instanceof Error ? create.error.message : `Failed to create ${noun}.`)}
+            (create.error instanceof Error
+              ? create.error.message
+              : epicMode
+                ? t("issues.children.epicFailed")
+                : t("issues.children.subtaskFailed"))}
         </p>
       )}
     </section>
@@ -191,6 +198,7 @@ function typeBadgeClasses(name: string): string {
 }
 
 function ChildRow({ child, parentChildrenKey }: { child: Issue; parentChildrenKey: string[] }) {
+  const t = useT();
   const qc = useQueryClient();
   const f = child.fields;
   const typeName = f.issuetype?.name ?? "Subtask";
@@ -224,7 +232,7 @@ function ChildRow({ child, parentChildrenKey }: { child: Issue; parentChildrenKe
       </Link>
       <span className="flex-1 truncate text-sm text-[#1a1f36]">{f.summary}</span>
       <select
-        aria-label={`Status of ${child.key}`}
+        aria-label={t("issues.children.statusOf", { key: child.key })}
         value={f.status?.id ?? ""}
         onChange={(e) => transition.mutate(e.target.value)}
         disabled={transition.isPending}
@@ -232,14 +240,14 @@ function ChildRow({ child, parentChildrenKey }: { child: Issue; parentChildrenKe
       >
         {f.status && <option value={f.status.id}>{f.status.name}</option>}
         {(transitionsData?.transitions ?? [])
-          .filter((t) => t.to.id !== f.status?.id)
-          .map((t) => (
-            <option key={t.id} value={t.to.id}>
-              {t.to.name}
+          .filter((tr) => tr.to.id !== f.status?.id)
+          .map((tr) => (
+            <option key={tr.id} value={tr.to.id}>
+              {tr.to.name}
             </option>
           ))}
       </select>
-      <span className="shrink-0 text-xs text-slate-500">{f.assignee?.displayName ?? "Unassigned"}</span>
+      <span className="shrink-0 text-xs text-slate-500">{f.assignee?.displayName ?? t("issues.unassigned")}</span>
     </li>
   );
 }

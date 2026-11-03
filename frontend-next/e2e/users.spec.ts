@@ -8,6 +8,22 @@ async function login(page: Page) {
   await page.waitForURL(/\/app/);
 }
 
+// Round 29: the saved profile locale now drives the UI language, so the
+// language-selector test below (which saves admin's locale as "it") would leave
+// every later test of the shared DB in Italian. Restore the unset locale after
+// each test. Additive only: no existing step or assertion changed.
+test.afterEach(async ({ request }) => {
+  const api = process.env.E2E_API_URL ?? "http://localhost:8080";
+  const res = await request.post(`${api}/rest/api/3/auth/login`, {
+    data: { email: "admin@example.com", password: "admin-demo-123" },
+  });
+  const { token } = (await res.json()) as { token: string };
+  await request.put(`${api}/rest/api/3/myself`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { locale: "" },
+  });
+});
+
 test("notification bell opens dropdown", async ({ page }) => {
   await login(page);
   await page.getByRole("button", { name: "Notifications" }).click();

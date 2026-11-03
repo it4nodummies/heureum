@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { SearchIssue } from "@/lib/api";
 import type { EpicRef } from "@/lib/epicHierarchy";
 import { EpicLozenge } from "@/components/issues/EpicLozenge";
+import { useT } from "@/lib/i18n";
 
 export function IssueCard({
   issue,
@@ -28,6 +29,7 @@ export function IssueCard({
   action?: ReactNode;
   epic?: EpicRef | null;
 }) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: issue.key });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -44,7 +46,7 @@ export function IssueCard({
       {!hideSelect && (
         <input
           type="checkbox"
-          aria-label={`Select ${issue.key}`}
+          aria-label={t("boards.issueCard.select", { key: issue.key })}
           checked={selected}
           onChange={() => onToggleSelect(issue.key)}
           className="shrink-0"
@@ -55,7 +57,7 @@ export function IssueCard({
         {...attributes}
         {...listeners}
         className="cursor-grab text-slate-400 hover:text-slate-600"
-        aria-label={`Drag ${issue.key}`}
+        aria-label={t("boards.issueCard.drag", { key: issue.key })}
         data-testid={`drag-handle-${issue.key}`}
       >
         ⠿

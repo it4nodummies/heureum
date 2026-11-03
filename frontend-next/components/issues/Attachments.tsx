@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { attachments as attachmentsApi, Attachment } from "@/lib/api";
+import { useFormat, useLocale, useT, type Locale } from "@/lib/i18n";
 
 interface Props {
   issueKey: string;
 }
 
-function humanSize(bytes: number): string {
+function humanSize(bytes: number, locale: Locale): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];
   let value = bytes / 1024;
@@ -17,16 +18,16 @@ function humanSize(bytes: number): string {
     value /= 1024;
     unitIndex++;
   }
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  const num = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    useGrouping: false,
+  }).format(value);
+  return `${num} ${units[unitIndex]}`;
 }
 
 export function Attachments({ issueKey }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const listKey = ["issue", issueKey, "attachments"];
   const { data, isLoading } = useQuery({
@@ -71,7 +72,7 @@ export function Attachments({ issueKey }: Props) {
 
   return (
     <section className="mt-8" data-testid="attachments-section">
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Attachments</h2>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.attachments.title")}</h2>
 
       <div
         data-testid="attachments-dropzone"
@@ -89,13 +90,14 @@ export function Attachments({ issueKey }: Props) {
         }`}
       >
         <p className="text-sm text-slate-500">
-          Drag and drop files here, or <span className="font-semibold text-[#0052cc]">browse</span>
+          {t("issues.attachments.dropzone")}{" "}
+          <span className="font-semibold text-[#0052cc]">{t("issues.attachments.browse")}</span>
         </p>
         <input
           ref={fileInputRef}
           type="file"
           multiple
-          aria-label="Upload attachment"
+          aria-label={t("issues.attachments.upload")}
           className="hidden"
           onChange={(e) => {
             if (e.target.files?.length) uploadFiles(e.target.files);
@@ -108,7 +110,7 @@ export function Attachments({ issueKey }: Props) {
         <ul className="mb-3 space-y-1">
           {pendingNames.map((name, i) => (
             <li key={`${name}-${i}`} className="text-xs text-slate-400">
-              Uploading {name}…
+              {t("issues.attachments.uploading", { name })}
             </li>
           ))}
         </ul>
@@ -116,12 +118,12 @@ export function Attachments({ issueKey }: Props) {
 
       {upload.isError && (
         <p className="mb-3 text-xs text-red-600">
-          {upload.error instanceof Error ? upload.error.message : "Failed to upload file."}
+          {upload.error instanceof Error ? upload.error.message : t("issues.attachments.uploadFailed")}
         </p>
       )}
 
       {!isLoading && items.length === 0 && pendingNames.length === 0 && (
-        <p className="text-sm text-slate-400">No attachments yet.</p>
+        <p className="text-sm text-slate-400">{t("issues.attachments.empty")}</p>
       )}
 
       {items.length > 0 && (
@@ -149,6 +151,9 @@ function AttachmentCard({
   onDelete: () => void;
   deleting: boolean;
 }) {
+  const t = useT();
+  const fmt = useFormat();
+  const { locale } = useLocale();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const isImage = attachment.mimeType.startsWith("image/");
 
@@ -207,19 +212,19 @@ function AttachmentCard({
           {attachment.filename}
         </span>
         <span className="text-[11px] text-slate-400">
-          {humanSize(attachment.size)} · {formatDate(attachment.created)}
+          {humanSize(attachment.size, locale)} · {fmt.date(attachment.created)}
         </span>
         <div className="mt-1 flex gap-2 text-xs">
           <button onClick={download} className="text-[#0052cc] hover:underline">
-            Download
+            {t("issues.attachments.download")}
           </button>
           <button
             onClick={onDelete}
             disabled={deleting}
-            aria-label={`Delete ${attachment.filename}`}
+            aria-label={t("issues.attachments.deleteFile", { name: attachment.filename })}
             className="text-slate-400 hover:text-red-600 disabled:opacity-60"
           >
-            {deleting ? "Deleting…" : "Delete"}
+            {deleting ? t("issues.actions.deleting") : t("issues.actions.delete")}
           </button>
         </div>
       </div>

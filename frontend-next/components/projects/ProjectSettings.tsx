@@ -10,6 +10,7 @@ import { IntegrationsTab } from "@/components/projects/IntegrationsTab";
 import { AutomationTab } from "@/components/projects/AutomationTab";
 import { CustomFieldsTab } from "@/components/projects/CustomFieldsTab";
 import { AccessTab } from "@/components/projects/AccessTab";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   projectKey: string;
@@ -18,6 +19,7 @@ interface Props {
 export function ProjectSettings({ projectKey }: Props) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const t = useT();
 
   const { data: project, isLoading, isError, error } = useQuery({
     queryKey: ["project", projectKey],
@@ -53,7 +55,7 @@ export function ProjectSettings({ projectKey }: Props) {
 
   function handleArchive() {
     if (!project) return;
-    if (!confirm(`Archive "${project.name}"? It will no longer appear in the list.`)) return;
+    if (!confirm(t("projects.list.archiveConfirm", { name: project.name }))) return;
     archive.mutate();
   }
 
@@ -61,7 +63,7 @@ export function ProjectSettings({ projectKey }: Props) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <div className="w-7 h-7 rounded-full border-2 border-[#0052cc] border-t-transparent animate-spin" />
-        <span className="text-sm text-slate-400">Loading project…</span>
+        <span className="text-sm text-slate-400">{t("projects.header.loading")}</span>
       </div>
     );
   }
@@ -70,7 +72,7 @@ export function ProjectSettings({ projectKey }: Props) {
     return (
       <div className="px-8 py-8">
         <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl">
-          {error instanceof Error ? error.message : "Project not found."}
+          {error instanceof Error ? error.message : t("projects.header.notFound")}
         </div>
       </div>
     );
@@ -81,7 +83,7 @@ export function ProjectSettings({ projectKey }: Props) {
       <div className="px-8 pt-8 pb-0 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#1a1f36] tracking-tight">
-            {project.name} settings
+            {t("projects.settings.title", { name: project.name })}
           </h1>
           <p className="text-sm text-slate-400 font-mono mt-1">{project.key}</p>
         </div>
@@ -93,43 +95,43 @@ export function ProjectSettings({ projectKey }: Props) {
             onClick={() => setTab("general")}
             className={tab === "general" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
-            General
+            {t("projects.settings.tabs.general")}
           </button>
           <button
             onClick={() => setTab("workflow")}
             className={tab === "workflow" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
-            Workflow
+            {t("projects.settings.tabs.workflow")}
           </button>
           <button
             onClick={() => setTab("summary")}
             className={tab === "summary" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
-            Summary
+            {t("projects.settings.tabs.summary")}
           </button>
           <button
             onClick={() => setTab("integrations")}
             className={tab === "integrations" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
-            Integrations
+            {t("projects.settings.tabs.integrations")}
           </button>
           <button
             onClick={() => setTab("automation")}
             className={tab === "automation" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
-            Automation
+            {t("projects.settings.tabs.automation")}
           </button>
           <button
             onClick={() => setTab("fields")}
             className={tab === "fields" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
-            Fields
+            {t("projects.settings.tabs.fields")}
           </button>
           <button
             onClick={() => setTab("access")}
             className={tab === "access" ? "border-b-2 border-[#0052cc] pb-2 text-sm font-medium" : "pb-2 text-sm text-slate-500"}
           >
-            Access
+            {t("projects.settings.tabs.access")}
           </button>
         </div>
 
@@ -141,7 +143,7 @@ export function ProjectSettings({ projectKey }: Props) {
                   htmlFor="proj-name"
                   className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5"
                 >
-                  Name
+                  {t("projects.settings.name")}
                 </label>
                 <input
                   id="proj-name"
@@ -156,7 +158,7 @@ export function ProjectSettings({ projectKey }: Props) {
                   htmlFor="proj-desc"
                   className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5"
                 >
-                  Description
+                  {t("projects.settings.description")}
                 </label>
                 <textarea
                   id="proj-desc"
@@ -169,11 +171,11 @@ export function ProjectSettings({ projectKey }: Props) {
 
               {save.isError && (
                 <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
-                  {save.error instanceof Error ? save.error.message : "Failed to save changes"}
+                  {save.error instanceof Error ? save.error.message : t("projects.settings.saveFailed")}
                 </div>
               )}
               {save.isSuccess && (
-                <p className="text-sm text-green-600">Saved.</p>
+                <p className="text-sm text-green-600">{t("projects.settings.saved")}</p>
               )}
 
               <div className="flex justify-end pt-1">
@@ -182,26 +184,26 @@ export function ProjectSettings({ projectKey }: Props) {
                   disabled={save.isPending || !name}
                   className="px-5 py-2 bg-[#0052cc] hover:bg-[#0065ff] disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
                 >
-                  {save.isPending ? "Saving…" : "Save changes"}
+                  {save.isPending ? t("projects.settings.saving") : t("projects.settings.save")}
                 </button>
               </div>
             </div>
 
             <div className="bg-white border border-red-100 rounded-2xl shadow-sm shadow-slate-100/80 p-6 mt-6">
-              <h2 className="text-sm font-semibold text-[#1a1f36] mb-1">Archive project</h2>
+              <h2 className="text-sm font-semibold text-[#1a1f36] mb-1">{t("projects.settings.archiveTitle")}</h2>
               <p className="text-xs text-slate-500 mb-4">
-                Archived projects are hidden from the project list and can be restored later.
+                {t("projects.settings.archiveHelp")}
               </p>
               <button
                 onClick={handleArchive}
                 disabled={archive.isPending}
                 className="px-4 py-2 border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 text-sm font-semibold rounded-lg transition-colors"
               >
-                {archive.isPending ? "Archiving…" : "Archive project"}
+                {archive.isPending ? t("projects.settings.archiving") : t("projects.settings.archive")}
               </button>
               {archive.isError && (
                 <p className="mt-3 text-sm text-red-600">
-                  {archive.error instanceof Error ? archive.error.message : "Failed to archive project"}
+                  {archive.error instanceof Error ? archive.error.message : t("projects.settings.archiveFailed")}
                 </p>
               )}
             </div>
@@ -217,7 +219,7 @@ export function ProjectSettings({ projectKey }: Props) {
               href={`/app/projects/${projectKey}/reports`}
               className="text-[#0052cc] hover:underline text-sm"
             >
-              Open reports →
+              {t("projects.settings.openReports")}
             </a>
           </div>
         )}

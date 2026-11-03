@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, boards as boardsApi, search as searchApi, issues } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   projectKey: string;
@@ -12,6 +13,7 @@ interface Props {
 
 export function ProjectOverview({ projectKey }: Props) {
   const qc = useQueryClient();
+  const t = useT();
 
   const project = useQuery({
     queryKey: ["project", projectKey],
@@ -26,7 +28,11 @@ export function ProjectOverview({ projectKey }: Props) {
 
   const [boardName, setBoardName] = useState<string | null>(null);
   const createBoard = useMutation({
-    mutationFn: () => boardsApi.create(boardName || `${project.data?.name ?? projectKey} board`, projectKey, "scrum"),
+    mutationFn: () => boardsApi.create(
+        boardName || t("projects.overview.defaultBoardName", { name: project.data?.name ?? projectKey }),
+        projectKey,
+        "scrum"
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["boards"] }),
   });
 
@@ -39,7 +45,7 @@ export function ProjectOverview({ projectKey }: Props) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <div className="w-7 h-7 rounded-full border-2 border-[#0052cc] border-t-transparent animate-spin" />
-        <span className="text-sm text-slate-400">Loading project…</span>
+        <span className="text-sm text-slate-400">{t("projects.header.loading")}</span>
       </div>
     );
   }
@@ -48,7 +54,7 @@ export function ProjectOverview({ projectKey }: Props) {
     return (
       <div className="px-8 py-8">
         <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl">
-          {project.error instanceof Error ? project.error.message : "Project not found."}
+          {project.error instanceof Error ? project.error.message : t("projects.header.notFound")}
         </div>
       </div>
     );
@@ -73,12 +79,12 @@ export function ProjectOverview({ projectKey }: Props) {
         {boardsList.isSuccess && !board && (
           <div className="mb-5 p-4 bg-slate-50 border border-slate-100 rounded-xl">
             <p className="text-sm text-slate-500 mb-3">
-              This project doesn&apos;t have a board yet — Board and Backlog will unlock once one is created.
+              {t("projects.overview.noBoard")}
             </p>
             <div className="flex items-center gap-2">
               <input
-                aria-label="Board name"
-                value={boardName ?? `${p.name} board`}
+                aria-label={t("projects.overview.boardName")}
+                value={boardName ?? t("projects.overview.defaultBoardName", { name: p.name })}
                 onChange={(e) => setBoardName(e.target.value)}
                 className="flex-1 max-w-xs rounded border border-slate-300 px-3 py-1.5 text-sm"
               />
@@ -87,24 +93,24 @@ export function ProjectOverview({ projectKey }: Props) {
                 disabled={createBoard.isPending}
                 className="rounded bg-[#0052cc] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60"
               >
-                {createBoard.isPending ? "Creating…" : "Create board"}
+                {createBoard.isPending ? t("projects.overview.creating") : t("projects.overview.createBoard")}
               </button>
             </div>
             {createBoard.isError && (
               <p className="mt-2 text-xs text-red-600">
-                {createBoard.error instanceof Error ? createBoard.error.message : "Failed to create board."}
+                {createBoard.error instanceof Error ? createBoard.error.message : t("projects.overview.createBoardFailed")}
               </p>
             )}
           </div>
         )}
 
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[#1a1f36]">Recent issues</h2>
+          <h2 className="text-sm font-semibold text-[#1a1f36]">{t("projects.overview.recentIssues")}</h2>
           <button
             onClick={() => issues.exportCsv(projectKey)}
             className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
           >
-            Export CSV
+            {t("projects.overview.exportCsv")}
           </button>
         </div>
         <div className="bg-white border border-slate-100 rounded-2xl shadow-sm shadow-slate-100/80 p-4">

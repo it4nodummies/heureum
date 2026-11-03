@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
+import { useT } from "@/lib/i18n";
 
 type Theme = "light" | "dark";
 
@@ -58,6 +59,7 @@ export function useTheme(): ThemeContextValue {
 
 export function ThemeToggle({ className }: { className?: string }) {
   const { toggleTheme } = useTheme();
+  const t = useT();
 
   // Markup is intentionally theme-AGNOSTIC: both the moon/"Dark" and sun/"Light"
   // variants are always rendered, and CSS (keyed on the `.dark` class the no-flash
@@ -65,14 +67,16 @@ export function ThemeToggle({ className }: { className?: string }) {
   // server and on the client's first render, there is no hydration mismatch — and
   // no post-mount re-render (which could race controlled inputs elsewhere on the
   // page during fast programmatic input). The aria-label is static for the same
-  // reason (a theme-branched attribute would itself be a mismatch).
+  // reason (a theme-branched attribute would itself be a mismatch). The label is
+  // locale-dependent, which is safe: the locale is identical on the server and on
+  // the first client render (I18nProvider's initialLocale).
   return (
     <button
       type="button"
       data-testid="theme-toggle"
       onClick={toggleTheme}
-      title="Toggle light and dark theme"
-      aria-label="Toggle light and dark theme"
+      title={t("layout.theme.toggle")}
+      aria-label={t("layout.theme.toggle")}
       className={
         className ??
         "inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-1.5 text-sm text-[#1a1f36] hover:bg-slate-50 dark:border-[#2a3142] dark:text-[#e6e8eb] dark:hover:bg-[#232a3a]"
@@ -83,14 +87,14 @@ export function ThemeToggle({ className }: { className?: string }) {
         <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
           <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
         </svg>
-        Dark
+        {t("layout.theme.dark")}
       </span>
       {/* Shown in dark mode → offers switching to light. */}
       <span className="hidden items-center gap-2 dark:inline-flex">
         <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
           <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4.95 2.05a1 1 0 010 1.414l-.707.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM18 9a1 1 0 010 2h-1a1 1 0 110-2h1zM3 9a1 1 0 010 2H2a1 1 0 110-2h1zm2.464-4.243a1 1 0 011.414 0l.707.707A1 1 0 116.17 6.878l-.707-.707a1 1 0 010-1.414zM10 6a4 4 0 100 8 4 4 0 000-8zm-1 10a1 1 0 112 0v1a1 1 0 11-2 0v-1zm6.243-1.757a1 1 0 011.414 1.414l-.707.707a1 1 0 01-1.414-1.414l.707-.707zM4.464 14.243a1 1 0 011.414 1.414l-.707.707A1 1 0 013.757 14.95l.707-.707z" />
         </svg>
-        Light
+        {t("layout.theme.light")}
       </span>
     </button>
   );

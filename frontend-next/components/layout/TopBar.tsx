@@ -10,9 +10,11 @@ import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
 import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { ThemeToggle } from "@/components/layout/ThemeProvider";
+import { useT } from "@/lib/i18n";
 
 export default function TopBar() {
   const router = useRouter();
+  const t = useT();
   const [user, setUser] = useState<User | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
@@ -78,7 +80,7 @@ export default function TopBar() {
                   clipRule="evenodd"
                 />
               </svg>
-              Create
+              {t("layout.topbar.create")}
             </button>
 
             {createMenuOpen && (
@@ -90,7 +92,7 @@ export default function TopBar() {
                   }}
                   className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-50 dark:hover:bg-[#232a3a] transition-colors"
                 >
-                  Issue
+                  {t("layout.topbar.createIssue")}
                 </button>
                 <button
                   onClick={() => {
@@ -99,7 +101,7 @@ export default function TopBar() {
                   }}
                   className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-50 dark:hover:bg-[#232a3a] transition-colors"
                 >
-                  Project
+                  {t("layout.topbar.createProject")}
                 </button>
               </div>
             )}
@@ -133,6 +135,7 @@ export default function TopBar() {
           {/* User avatar */}
           <div className="relative" ref={userMenuRef}>
             <button
+              data-testid="user-menu-button"
               onClick={() => setUserMenuOpen((v) => !v)}
               className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0052cc] to-[#0065ff] flex items-center justify-center text-white text-xs font-bold hover:ring-2 hover:ring-[#0052cc]/30 transition-all"
             >
@@ -169,13 +172,13 @@ export default function TopBar() {
                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400">
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                   </svg>
-                  Profile
+                  {t("layout.topbar.profile")}
                 </button>
                 <button className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-50 dark:hover:bg-[#232a3a] transition-colors">
                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400">
                     <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
                   </svg>
-                  Settings
+                  {t("layout.topbar.settings")}
                 </button>
                 <div className="border-t border-slate-100 dark:border-[#2a3142] mt-1 pt-1">
                   <button
@@ -185,7 +188,7 @@ export default function TopBar() {
                     <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                       <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
                     </svg>
-                    Sign out
+                    {t("layout.topbar.signOut")}
                   </button>
                 </div>
               </div>
