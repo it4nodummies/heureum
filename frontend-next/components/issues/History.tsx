@@ -17,6 +17,7 @@ function fieldLabel(t: (key: MessageKey) => string, field: string): string {
 // Placeholder marker: the sentence comes from the catalogue as one string, the
 // author and field names are spliced back in as styled nodes.
 const MARK = "\u0001";
+const stripMark = (s: string) => s.split(MARK).join("");
 function richSentence(text: string, nodes: Record<string, ReactNode>): ReactNode[] {
   return text
     .split(MARK)
@@ -85,11 +86,12 @@ export function History({ issueKey }: { issueKey: string }) {
         return (
           <li key={row.key} data-testid="history-row" className="text-sm text-[#1a1f36]">
             {richSentence(
-              t("issues.history.changed", {
+              t(row.item.field === "created" ? "issues.history.createdIssue" : "issues.history.changed", {
                 author: `${MARK}author${MARK}`,
                 field: `${MARK}field${MARK}`,
-                from: fromStr && fromStr.length ? fromStr : "—",
-                to: toStr && toStr.length ? toStr : "—",
+                // Values are data: drop the marker so they can't inject a node.
+                from: fromStr && fromStr.length ? stripMark(fromStr) : "—",
+                to: toStr && toStr.length ? stripMark(toStr) : "—",
               }),
               {
                 author: <span className="font-semibold">{row.authorName}</span>,

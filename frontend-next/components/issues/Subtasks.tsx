@@ -57,15 +57,15 @@ function ChildIssuesInner({ issueKey, projectKey, parentLevel }: Props) {
     queryFn: () => projects.get(projectKey),
   });
   const childTypes: IssueTypeRef[] = (project?.issueTypes ?? []).filter(
-    (t) => hierarchyLevelOf(t) === childLevel,
+    (ty) => hierarchyLevelOf(ty) === childLevel,
   );
   const defaultChildType = epicMode
-    ? (childTypes.find((t) => t.name === "Story") ?? childTypes[0])?.name ?? "Story"
+    ? (childTypes.find((ty) => ty.name === "Story") ?? childTypes[0])?.name ?? "Story"
     : childTypes[0]?.name ?? "Subtask";
 
   const [typeName, setTypeName] = useState("");
   useEffect(() => {
-    if (!typeName || (childTypes.length > 0 && !childTypes.some((t) => t.name === typeName))) {
+    if (!typeName || (childTypes.length > 0 && !childTypes.some((ty) => ty.name === typeName))) {
       setTypeName(defaultChildType);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

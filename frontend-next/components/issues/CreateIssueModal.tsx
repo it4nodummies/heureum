@@ -85,14 +85,14 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
   // the current name isn't in it, fall back to Task (or the first level-0
   // type, or the first type).
   useEffect(() => {
-    if (types.length === 0 || types.some((t) => t.name === typeName)) return;
+    if (types.length === 0 || types.some((ty) => ty.name === typeName)) return;
     const fallback =
-      types.find((t) => t.name === "Task") ?? types.find((t) => hierarchyLevelOf(t) === 0) ?? types[0];
+      types.find((ty) => ty.name === "Task") ?? types.find((ty) => hierarchyLevelOf(ty) === 0) ?? types[0];
     setTypeName(fallback.name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [types.map((t) => t.name).join("|")]);
+  }, [types.map((ty) => ty.name).join("|")]);
 
-  const selectedType = types.find((t) => t.name === typeName);
+  const selectedType = types.find((ty) => ty.name === typeName);
   // Level of the type being created: -1 → pick a parent story, 0 → optional
   // epic, 1 → an epic has no parent. Falls back by name when the project's
   // types haven't loaded yet.
@@ -293,9 +293,9 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           onChange={(e) => setTypeName(e.target.value)}
           className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
         >
-          {(types.length ? types : [{ id: "0", name: "Task", subtask: false }]).map((t) => (
-            <option key={t.id} value={t.name}>
-              {t.name}
+          {(types.length ? types : [{ id: "0", name: "Task", subtask: false }]).map((ty) => (
+            <option key={ty.id} value={ty.name}>
+              {ty.name}
             </option>
           ))}
         </select>

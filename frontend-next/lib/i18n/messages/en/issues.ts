@@ -23,7 +23,9 @@ export const issues = {
   none: "None",
   detail: {
     loading: "Loading issue…",
-    notFound: "Issue not found.",
+    // Shown on a 404 (same text the API returns for an unknown issue key).
+    notFound: "Issue does not exist or you do not have permission to see it.",
+    missing: "Issue not found.",
     breadcrumbProjects: "Projects",
     description: "Description",
     descriptionPlaceholder: "Add a description…",
@@ -89,6 +91,8 @@ export const issues = {
     empty: "No history yet.",
     system: "System",
     changed: "{author} changed {field} from «{from}» to «{to}»",
+    // The "created" changelog row (English keeps the generic sentence's output).
+    createdIssue: "{author} changed created from «{from}» to «{to}»",
     // Jira-style field ids logged by the backend (issue_history.field_name).
     // English shows the raw id, as before; unknown ids fall back to the raw name.
     fields: {
@@ -131,7 +135,8 @@ export const issues = {
     removeParent: "Remove parent",
     change: "Change",
     set: "Set",
-    none: "None",
+    noneEpic: "None",
+    noneParent: "None",
     failed: "Could not change the parent.",
   },
   parentPicker: {
@@ -180,6 +185,21 @@ export const issues = {
     deleteFile: "Delete {name}",
   },
   links: {
+    // Fixed backend vocabulary (internal/api/v3/collab.go JiraLinkType): the
+    // select keeps the wire name as value, these are only the labels.
+    types: {
+      Blocks: "Blocks",
+      Duplicate: "Duplicate",
+      Relates: "Relates",
+    },
+    // type.inward / type.outward phrases of those link types.
+    relations: {
+      blocks: "blocks",
+      isBlockedBy: "is blocked by",
+      duplicates: "duplicates",
+      isDuplicatedBy: "is duplicated by",
+      relatesTo: "relates to",
+    },
     title: "Linked work items",
     empty: "No linked work items yet.",
     removeLink: "Remove link to {key}",

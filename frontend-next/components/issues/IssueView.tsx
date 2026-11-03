@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  ApiError,
   issues,
   meta,
   watchers,
@@ -224,7 +225,11 @@ export function IssueView({ issueKey }: Props) {
     return (
       <div className="px-8 py-8">
         <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl">
-          {error instanceof Error ? error.message : t("issues.detail.notFound")}
+          {error instanceof ApiError && error.status === 404
+            ? t("issues.detail.notFound")
+            : error instanceof Error
+              ? error.message
+              : t("issues.detail.missing")}
         </div>
       </div>
     );

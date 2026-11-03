@@ -4,13 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { issueLinks, search, IssueLinkForIssue, IssueLinkTypeName, SearchIssue } from "@/lib/api";
-import { useT } from "@/lib/i18n";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 interface Props {
   issueKey: string;
 }
 
 const RELATION_OPTIONS: IssueLinkTypeName[] = ["Blocks", "Duplicate", "Relates"];
+
+// type.inward / type.outward phrases of the fixed link types
+// (internal/api/v3/collab.go JiraLinkType) → catalogue keys; any other phrase
+// is shown as received.
+const RELATION_KEYS: Record<string, MessageKey> = {
+  blocks: "issues.links.relations.blocks",
+  "is blocked by": "issues.links.relations.isBlockedBy",
+  duplicates: "issues.links.relations.duplicates",
+  "is duplicated by": "issues.links.relations.isDuplicatedBy",
+  "relates to": "issues.links.relations.relatesTo",
+};
 
 // Row derived from an IssueLinkForIssue from THIS issue's point of view: the
 // backend only populates the side opposite the requested issue (see
@@ -142,7 +153,9 @@ export function LinkedWorkItems({ issueKey }: Props) {
         <div className="mb-4 space-y-3">
           {grouped.map(([label, items]) => (
             <div key={label}>
-              <div className="mb-1 text-xs font-medium text-slate-400">{label}</div>
+              <div className="mb-1 text-xs font-medium text-slate-400">
+                {Object.prototype.hasOwnProperty.call(RELATION_KEYS, label) ? t(RELATION_KEYS[label]) : label}
+              </div>
               <ul className="space-y-2">
                 {items.map((row) => (
                   <li
@@ -189,7 +202,7 @@ export function LinkedWorkItems({ issueKey }: Props) {
         >
           {RELATION_OPTIONS.map((r) => (
             <option key={r} value={r}>
-              {r}
+              {t(`issues.links.types.${r}`)}
             </option>
           ))}
         </select>

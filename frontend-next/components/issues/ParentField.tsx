@@ -98,7 +98,9 @@ export function ParentField({ issueKey, projectKey, childLevel, parent, canEdit 
                 </Link>
               )
             ) : (
-              <span className="text-slate-400">{t("issues.parent.none")}</span>
+              <span className="text-slate-400">
+                {isEpic ? t("issues.parent.noneEpic") : t("issues.parent.noneParent")}
+              </span>
             )}
           </div>
           {canEdit && (

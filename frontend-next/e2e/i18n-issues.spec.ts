@@ -81,6 +81,19 @@ test.beforeAll(async ({ playwright }) => {
   });
   expect(updated.status(), "update priority").toBe(204);
 
+  // A second issue blocked by the first: the detail shows the "blocks" group.
+  const other = await request.post(`${API}/rest/api/3/issue`, {
+    headers,
+    data: { fields: { project: { key: projectKey }, summary: `I18N bloccato ${stamp}`, issuetype: { name: "Task" } } },
+  });
+  expect(other.status(), "create linked issue").toBe(201);
+  const otherKey = ((await other.json()) as { key: string }).key;
+  const link = await request.post(`${API}/rest/api/3/issueLink`, {
+    headers,
+    data: { type: { name: "Blocks" }, outwardIssue: { key: issueKey }, inwardIssue: { key: otherKey } },
+  });
+  expect([200, 201, 204], "create link").toContain(link.status());
+
   const comment = await request.post(`${API}/rest/api/3/issue/${issueKey}/comment`, {
     headers,
     data: {
@@ -139,6 +152,17 @@ test("issue detail in Italian: field labels, comments, history and an Italian da
   await expect(page.getByRole("heading", { name: "Monitoraggio del tempo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Registra lavoro" })).toBeVisible();
   await expect(page.getByText("Ancora nessun sotto-task.")).toBeVisible();
+  await expect(page.getByTestId("subtasks-progress")).toHaveText("Completati: 0 di 0");
+
+  // Linked tickets: section title, the relation phrase and the link-type
+  // labels are Italian; the select still submits the wire name.
+  const links = page.getByTestId("linked-work-items-section");
+  await expect(links.getByRole("heading", { name: "Ticket collegati" })).toBeVisible();
+  await expect(links.getByText("blocca", { exact: true })).toBeVisible();
+  const relation = links.getByLabel("Tipo di relazione");
+  await expect(relation.locator("option")).toHaveText(["Blocca", "Duplica", "Correlato"]);
+  await expect(relation).toHaveValue("Blocks");
+  await expect(page.getByText("Linked work items")).toHaveCount(0);
 
   // History: Italian sentence with translated field name; values are data.
   await tabs.getByRole("button", { name: "Cronologia" }).click();
@@ -149,6 +173,14 @@ test("issue detail in Italian: field labels, comments, history and an Italian da
   await expect(priorityRow).toContainText("«low»");
   await expect(priorityRow).not.toContainText("changed");
   await expect(priorityRow).toContainText(/fa\b|ora/);
+  // The "created" row has its own sentence.
+  await expect(page.getByTestId("history-row").filter({ hasText: "ha creato il ticket" })).toHaveCount(1);
+});
+
+test("a missing ticket shows the Italian not-found message", async ({ page }) => {
+  await login(page);
+  await page.goto("/app/browse/NOPE-99999");
+  await expect(page.getByText("Il ticket non esiste o non hai i permessi per vederlo.")).toBeVisible();
 });
 
 test("Crea ticket modal in Italian", async ({ page }) => {
