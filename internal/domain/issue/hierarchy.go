@@ -49,17 +49,41 @@ func IsEpicColorKey(key string) bool {
 // corrupt; the bound only guarantees termination on a pre-existing loop.
 const parentWalkLimit = 32
 
-// levelForTypeName maps a standard type name to its hierarchy level: "epic"
-// → 1, subtask names → -1, anything else → 0. It is the single rule used by
-// TypeIDByName/SeedStandardTypes and mirrored by migration 000027's backfill.
-func levelForTypeName(name string) int {
-	switch strings.ToLower(name) {
-	case "epic":
-		return 1
-	case "subtask", "sub-task":
-		return -1
+// typeNameClass is what a standard issue-type name implies about the type:
+// its icon, whether it is a subtask type, and its hierarchy level.
+type typeNameClass struct {
+	Icon      string
+	IsSubtask bool
+	Level     int
+}
+
+// classifyTypeName normalises name (trim + lower-case) and classifies it as a
+// standard issue type, recognising both English and Italian names: epic/epica
+// → level 1; subtask/sub-task/sottotask/sotto-task/sotto-attività/sottoattività
+// → subtask, level -1; bug, story/storia → their icons at level 0; anything
+// else → a plain "task" at level 0. It is the single rule behind both
+// levelForTypeName and TypeIDByName's icon/isSubtask inference, so the two
+// cannot drift.
+func classifyTypeName(name string) typeNameClass {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "epic", "epica":
+		return typeNameClass{Icon: "epic", Level: 1}
+	case "subtask", "sub-task", "sottotask", "sotto-task", "sotto-attività", "sottoattività":
+		return typeNameClass{Icon: "subtask", IsSubtask: true, Level: -1}
+	case "bug":
+		return typeNameClass{Icon: "bug"}
+	case "story", "storia":
+		return typeNameClass{Icon: "story"}
 	}
-	return 0
+	return typeNameClass{Icon: "task"}
+}
+
+// levelForTypeName maps a standard type name to its hierarchy level: epic
+// names → 1, subtask names → -1, anything else → 0 (see classifyTypeName).
+// It is the rule used by TypeIDByName/SeedStandardTypes; migration 000027's
+// backfill mirrors only the English names (existing rows are left unchanged).
+func levelForTypeName(name string) int {
+	return classifyTypeName(name).Level
 }
 
 // typeLevel returns the hierarchy level of the issue type typeID, 0 when the
