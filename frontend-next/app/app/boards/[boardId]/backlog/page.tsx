@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { boards } from "@/lib/api";
 import { ScrumBacklog } from "./ScrumBacklog";
 import { KanbanBacklog } from "./KanbanBacklog";
+import { useT } from "@/lib/i18n";
 
 // Branch on the board type (boardsApi.get returns `type`): a scrum board keeps
 // the sprint-based backlog; a kanban board gets a flat, rank-ordered to-do
@@ -13,6 +14,7 @@ import { KanbanBacklog } from "./KanbanBacklog";
 export default function BacklogPage({ params }: { params: Promise<{ boardId: string }> }) {
   const { boardId } = use(params);
   const id = Number(boardId);
+  const t = useT();
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
 
@@ -20,7 +22,7 @@ export default function BacklogPage({ params }: { params: Promise<{ boardId: str
   // scrum view (and fire its sprint queries) for a kanban board.
   if (!board.data) {
     return (
-      <div className="mx-auto max-w-3xl p-8 text-sm text-slate-400">Loading backlog…</div>
+      <div className="mx-auto max-w-3xl p-8 text-sm text-slate-400">{t("boards.backlog.loading")}</div>
     );
   }
 

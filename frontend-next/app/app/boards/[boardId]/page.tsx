@@ -7,11 +7,13 @@ import { boards, issues as issuesApi, search, type SearchIssue } from "@/lib/api
 import { BoardColumns } from "@/components/board/BoardColumns";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
 import { epicOf, indexEpics, indexIssues, matchesEpicFilter, type EpicFilter } from "@/lib/epicHierarchy";
+import { useT } from "@/lib/i18n";
 
 export default function BoardPage({ params }: { params: Promise<{ boardId: string }> }) {
   const { boardId } = use(params);
   const id = Number(boardId);
   const qc = useQueryClient();
+  const t = useT();
   const [moveError, setMoveError] = useState<string | null>(null);
   // Quick-filter attivi (per id). Più filtri attivi → INTERSEZIONE delle chiavi.
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
@@ -111,7 +113,7 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
       qc.invalidateQueries({ queryKey: ["board", id, "issues"] });
     },
     onError: (err: unknown) => {
-      setMoveError(err instanceof Error ? err.message : "Move failed");
+      setMoveError(err instanceof Error ? err.message : t("boards.moveFailed"));
     },
   });
 
@@ -150,14 +152,14 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
             </div>
           )}
           <select
-            aria-label="Epic filter"
+            aria-label={t("boards.board.epicFilter")}
             value={epicFilter}
             onChange={(e) => setEpicFilter(e.target.value)}
             data-testid="board-epic-filter"
             className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
           >
-            <option value="all">All epics</option>
-            <option value="none">No epic</option>
+            <option value="all">{t("boards.board.allEpics")}</option>
+            <option value="none">{t("boards.board.noEpic")}</option>
             {(epicList.data?.values ?? []).map((epic) => (
               <option key={epic.key} value={epic.key}>
                 {epic.name}
@@ -169,7 +171,7 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
             data-testid="board-settings-link"
             className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Board settings
+            {t("boards.board.settingsLink")}
           </Link>
         </div>
         {moveError && (
@@ -178,10 +180,10 @@ export default function BoardPage({ params }: { params: Promise<{ boardId: strin
             data-testid="move-error"
             className="mb-2 flex items-center gap-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
           >
-            <span>Move failed: {moveError}</span>
+            <span>{t("boards.moveFailedWith", { message: moveError })}</span>
             <button
               onClick={() => setMoveError(null)}
-              aria-label="Dismiss error"
+              aria-label={t("boards.actions.dismissError")}
               className="ml-auto text-red-700 hover:underline"
             >
               ×

@@ -25,6 +25,7 @@ import { ProjectHeader } from "@/components/projects/ProjectHeader";
 import { DroppableList } from "@/components/backlog/DroppableList";
 import { EpicPanel, epicAwareCollision, epicDropTarget } from "@/components/backlog/EpicPanel";
 import { epicOf, indexEpics, indexIssues, matchesEpicFilter, type EpicFilter } from "@/lib/epicHierarchy";
+import { useT } from "@/lib/i18n";
 
 const BACKLOG_ID = "backlog";
 const EMPTY_SELECTION: Set<string> = new Set();
@@ -41,6 +42,7 @@ const EMPTY_SELECTION: Set<string> = new Set();
 export function KanbanBacklog({ boardId }: { boardId: number }) {
   const id = boardId;
   const qc = useQueryClient();
+  const t = useT();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -99,14 +101,14 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
       await qc.invalidateQueries({ queryKey: ["board", id, "backlog"] });
     },
     onError: async (err) => {
-      setActionError(err instanceof Error ? err.message : "Failed to reorder issue");
+      setActionError(err instanceof Error ? err.message : t("boards.backlog.errors.reorder"));
       await qc.invalidateQueries({ queryKey: ["board", id, "backlog"] });
     },
   });
 
   const sendToBoard = useMutation({
     mutationFn: (key: string) => {
-      if (!firstInProgress) throw new Error("No in-progress status configured for this board");
+      if (!firstInProgress) throw new Error(t("boards.backlog.noInProgressForBoard"));
       return issuesApi.transition(key, firstInProgress.id);
     },
     onSuccess: async () => {
@@ -117,7 +119,7 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
       ]);
     },
     onError: (err) => {
-      setActionError(err instanceof Error ? err.message : "Failed to send issue to board");
+      setActionError(err instanceof Error ? err.message : t("boards.backlog.errors.sendToBoard"));
     },
   });
 
@@ -125,7 +127,7 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
   const setEpic = useMutation({
     mutationFn: async ({ key, epicKey }: { key: string; epicKey: string | null }) => {
       if (hierarchyLevelOf(issuesByKey[key]?.fields.issuetype) !== 0) {
-        throw new Error(`Only stories, tasks and bugs can be moved into an epic (${key})`);
+        throw new Error(t("boards.backlog.errors.onlyLevelZero", { keys: key }));
       }
       await issuesApi.setParent(key, epicKey);
     },
@@ -137,7 +139,7 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
       ]);
     },
     onError: (err) => {
-      setActionError(fieldError(err, "parent") ?? (err instanceof Error ? err.message : "Failed to move issue into epic"));
+      setActionError(fieldError(err, "parent") ?? (err instanceof Error ? err.message : t("boards.backlog.errors.moveOneIntoEpic")));
     },
   });
 
@@ -200,7 +202,7 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
             <span>{actionError}</span>
             <button
               onClick={() => setActionError(null)}
-              aria-label="Dismiss error"
+              aria-label={t("boards.actions.dismissError")}
               className="ml-auto text-red-700 hover:underline"
             >
               ×
@@ -230,21 +232,21 @@ export function KanbanBacklog({ boardId }: { boardId: number }) {
                 onToggleSelect={() => {}}
                 hideSelect
                 resolveEpic={resolveEpic}
-                emptyLabel="No to-do issues in the backlog"
+                emptyLabel={t("boards.backlog.kanbanEmpty")}
                 testId="backlog-list"
                 header={
-                  <div className="mb-1 text-sm font-semibold text-slate-500">Backlog ({visibleItems.length})</div>
+                  <div className="mb-1 text-sm font-semibold text-slate-500">{t("boards.backlog.header", { count: visibleItems.length })}</div>
                 }
                 renderAction={(issue) => (
                   <button
                     type="button"
                     onClick={() => sendToBoard.mutate(issue.key)}
                     disabled={sendToBoard.isPending || !firstInProgress}
-                    title={!firstInProgress ? "No in-progress status configured" : undefined}
+                    title={!firstInProgress ? t("boards.backlog.noInProgress") : undefined}
                     data-testid={`send-to-board-${issue.key}`}
                     className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   >
-                    Send to board
+                    {t("boards.backlog.sendToBoard")}
                   </button>
                 )}
               />

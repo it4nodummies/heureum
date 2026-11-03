@@ -5,6 +5,7 @@ import type { SearchIssue } from "@/lib/api";
 import type { EpicRef } from "@/lib/epicHierarchy";
 import { epicColorHex } from "@/lib/epicColors";
 import { EpicLozenge } from "@/components/issues/EpicLozenge";
+import { useT } from "@/lib/i18n";
 
 // Una colonna mappa un SET di status (statusIds). `id` è lo status PRIMARIO
 // (statuses[0]) usato come target della transizione quando ci si droppa sopra.
@@ -139,17 +140,18 @@ function bandKeyOf(iss: SearchIssue, mode: Swimlane, resolveEpic: EpicResolver):
 
 // Calcola le bande di swimlane a partire dalle issue visibili. La banda
 // "senza valore" (key "none") va in fondo; le altre ordinate per etichetta.
-function computeBands(issues: SearchIssue[], mode: Swimlane, resolveEpic: EpicResolver): Swimband[] {
+// `noneLabel` is the (translated) label of the "no value" band.
+function computeBands(issues: SearchIssue[], mode: Swimlane, resolveEpic: EpicResolver, noneLabel: string): Swimband[] {
   const bands = new Map<string, Swimband>();
   for (const iss of issues) {
     const key = bandKeyOf(iss, mode, resolveEpic);
     if (bands.has(key)) continue;
     if (mode === "assignee") {
-      bands.set(key, { key, label: iss.fields.assignee?.displayName ?? "No assignee" });
+      bands.set(key, { key, label: iss.fields.assignee?.displayName ?? noneLabel });
     } else {
       const epic = resolveEpic(iss);
       // "KEY · Name" keeps the key visible next to the epic name.
-      bands.set(key, epic ? { key, label: `${epic.key} · ${epic.name}`, colorKey: epic.colorKey } : { key, label: "No epic" });
+      bands.set(key, epic ? { key, label: `${epic.key} · ${epic.name}`, colorKey: epic.colorKey } : { key, label: noneLabel });
     }
   }
   const out = Array.from(bands.values());
@@ -179,6 +181,7 @@ export function BoardColumns({
   // Optional: the issue's epic (card lozenge + epic swimlane); omitted → none.
   resolveEpic?: EpicResolver;
 }) {
+  const t = useT();
   // In entrambe le modalità l'id droppable termina con l'id colonna (= status
   // primario): in flat è l'id stesso, nelle swimlane è la parte dopo il SEP.
   const handleDragEnd = (e: DragEndEvent) => {
@@ -199,7 +202,7 @@ export function BoardColumns({
     );
   }
 
-  const bands = computeBands(issues, swimlane, resolveEpic);
+  const bands = computeBands(issues, swimlane, resolveEpic, t(swimlane === "assignee" ? "boards.board.noAssigneeBand" : "boards.board.noEpicBand"));
   return (
     <DndContext onDragEnd={handleDragEnd}>
       <div className="space-y-4">
