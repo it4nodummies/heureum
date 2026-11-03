@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { search, filters, filterIsShared, LIST_FIELDS, type SearchIssue, type Filter } from "@/lib/api";
 import { SearchResults } from "@/components/search/SearchResults";
+import { useT } from "@/lib/i18n";
 
 export default function FiltersPage() {
   return (
@@ -17,6 +18,7 @@ export default function FiltersPage() {
 const MAX_RESULTS = 25;
 
 function FiltersPageInner() {
+  const t = useT();
   const qc = useQueryClient();
   const params = useSearchParams();
   const [jql, setJql] = useState("");
@@ -98,7 +100,7 @@ function FiltersPageInner() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <h1 className="mb-4 text-xl font-semibold text-[#1a1f36]">Filters</h1>
+      <h1 className="mb-4 text-xl font-semibold text-[#1a1f36]">{t("filters.title")}</h1>
 
       <div className="mb-3 flex gap-2">
         <input
@@ -113,7 +115,7 @@ function FiltersPageInner() {
           disabled={!jql.trim() || run.isPending}
           className="rounded bg-[#0052cc] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
-          Search
+          {t("common.actions.search")}
         </button>
       </div>
 
@@ -125,10 +127,10 @@ function FiltersPageInner() {
         }}
       >
         <input
-          aria-label="Filter name"
+          aria-label={t("filters.filterName")}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Filter name"
+          placeholder={t("filters.filterName")}
           className="rounded border border-slate-300 px-3 py-2 text-sm"
         />
         <label className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -137,23 +139,23 @@ function FiltersPageInner() {
             checked={isShared}
             onChange={(e) => setIsShared(e.target.checked)}
           />
-          Share with team
+          {t("filters.shareWithTeam")}
         </label>
         <button
           type="submit"
           disabled={!jql.trim() || !name.trim() || save.isPending}
           className="rounded border border-slate-300 px-4 py-2 text-sm disabled:opacity-60"
         >
-          Save
+          {t("filters.save")}
         </button>
       </form>
 
-      {run.isError && <p className="mb-3 text-sm text-red-600">Invalid JQL</p>}
+      {run.isError && <p className="mb-3 text-sm text-red-600">{t("filters.invalidJql")}</p>}
 
       <div className="grid grid-cols-[260px_1fr] gap-6">
         <aside>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Saved filters
+            {t("filters.saved")}
           </h2>
           <ul className="space-y-1 text-sm">
             {myFilters.data?.map((f) => (
@@ -167,7 +169,7 @@ function FiltersPageInner() {
                 onChanged={invalidate}
               />
             ))}
-            {myFilters.data?.length === 0 && <li className="text-slate-400">None yet</li>}
+            {myFilters.data?.length === 0 && <li className="text-slate-400">{t("filters.noneYet")}</li>}
           </ul>
         </aside>
         <section>
@@ -175,7 +177,7 @@ function FiltersPageInner() {
             <>
               <div className="mb-2 flex items-center gap-3 text-sm text-slate-600">
                 <span data-testid="list-count">
-                  {results.length} {results.length === 1 ? "result" : "results"}
+                  {t("filters.resultCount", { count: results.length })}
                 </span>
                 <div className="ml-auto flex gap-2">
                   <button
@@ -184,7 +186,7 @@ function FiltersPageInner() {
                     disabled={pageTokens.length <= 1 || run.isPending}
                     className="rounded border border-slate-300 px-3 py-1 text-sm disabled:opacity-50"
                   >
-                    Prev
+                    {t("filters.prev")}
                   </button>
                   <button
                     data-testid="page-next"
@@ -192,7 +194,7 @@ function FiltersPageInner() {
                     disabled={isLast || run.isPending}
                     className="rounded border border-slate-300 px-3 py-1 text-sm disabled:opacity-50"
                   >
-                    Next
+                    {t("filters.next")}
                   </button>
                 </div>
               </div>
@@ -214,6 +216,7 @@ function FilterRow({
   onRun: () => void;
   onChanged: () => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(filter.name);
   const [isShared, setIsShared] = useState(filterIsShared(filter));
@@ -242,7 +245,7 @@ function FilterRow({
           }}
         >
           <input
-            aria-label="Edit filter name"
+            aria-label={t("filters.row.editName")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1 text-sm"
@@ -253,7 +256,7 @@ function FilterRow({
               checked={isShared}
               onChange={(e) => setIsShared(e.target.checked)}
             />
-            Share with team
+            {t("filters.shareWithTeam")}
           </label>
           <div className="flex gap-2">
             <button
@@ -261,7 +264,7 @@ function FilterRow({
               disabled={!name.trim() || update.isPending}
               className="rounded bg-[#0052cc] px-2 py-0.5 text-xs font-semibold text-white disabled:opacity-60"
             >
-              Save
+              {t("common.actions.save")}
             </button>
             <button
               type="button"
@@ -272,7 +275,7 @@ function FilterRow({
               }}
               className="rounded border border-slate-300 px-2 py-0.5 text-xs"
             >
-              Cancel
+              {t("common.actions.cancel")}
             </button>
           </div>
         </form>
@@ -292,27 +295,27 @@ function FilterRow({
         <span
           data-testid="filter-shared-badge"
           className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700"
-          title="Shared with team"
+          title={t("filters.row.sharedTitle")}
         >
-          Shared
+          {t("filters.row.shared")}
         </span>
       )}
       <button
-        aria-label="Edit filter"
-        title={`Edit ${filter.name}`}
+        aria-label={t("filters.row.edit")}
+        title={t("filters.row.editTitle", { name: filter.name })}
         onClick={() => setEditing(true)}
         className="text-xs text-slate-400 hover:text-slate-700"
       >
-        Edit
+        {t("common.actions.edit")}
       </button>
       <button
-        aria-label="Delete filter"
-        title={`Delete ${filter.name}`}
+        aria-label={t("filters.row.delete")}
+        title={t("filters.row.deleteTitle", { name: filter.name })}
         onClick={() => del.mutate()}
         disabled={del.isPending}
         className="text-xs text-slate-400 hover:text-red-600 disabled:opacity-60"
       >
-        Delete
+        {t("common.actions.delete")}
       </button>
     </li>
   );

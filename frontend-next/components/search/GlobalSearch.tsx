@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useT } from "@/lib/i18n";
 
 // GlobalSearch: la barra in top nav. Invio => vai alla pagina filtri con la
 // query come JQL testuale (text ~ "...") oppure JQL grezza se contiene un operatore.
 export function GlobalSearch() {
   const router = useRouter();
+  const t = useT();
   const [q, setQ] = useState("");
 
   const submit = (e: React.FormEvent) => {
@@ -33,10 +35,10 @@ export function GlobalSearch() {
       </svg>
       <input
         type="text"
-        aria-label="Search"
+        aria-label={t("search.global.label")}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search"
+        placeholder={t("search.global.placeholder")}
         className="w-full pl-9 pr-4 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] focus:bg-white transition-all placeholder:text-slate-400"
       />
       <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-300 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
