@@ -145,7 +145,7 @@ test("search results and filters in Italian; JQL stays as typed", async ({ page 
   // Invalid JQL → Italian client error.
   await page.getByLabel("JQL").fill("project = = =");
   await page.getByRole("button", { name: "Cerca", exact: true }).click();
-  await expect(page.getByText("JQL non valida")).toBeVisible();
+  await expect(page.getByText("Query JQL non valida")).toBeVisible();
 });
 
 test("dashboards list and detail in Italian (gadget titles are chrome)", async ({ page }) => {

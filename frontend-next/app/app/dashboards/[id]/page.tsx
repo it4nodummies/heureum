@@ -4,6 +4,7 @@ import { use, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dashboards, type AssignedIssue, type ActivityItem, type DashboardWidget } from "@/lib/api";
 import { useT, type MessageKey } from "@/lib/i18n";
+import { historyFieldLabel, richSentence, slot, stripMark } from "@/components/issues/historyText";
 
 // The two gadget types the backend hydrates + renders; anything else falls back
 // to raw JSON, so the "catalog" the UI offers is exactly these two. Titles are
@@ -43,12 +44,24 @@ function Gadget({ widget }: { widget: DashboardWidget }) {
       <ul className="space-y-1 text-sm">
         {activity.map((a) => (
           <li key={a.id}>
-            <span className="font-medium">{a.actor_name}</span>{" "}
-            {t("dashboards.gadgets.changedOn", { field: a.field_name })}{" "}
-            <a href={`/app/browse/${a.issue_key}`} className="text-[#0052cc] hover:underline">
-              {a.issue_key}
-            </a>
-            : {a.old_value} → {a.new_value}
+            {richSentence(
+              t(a.field_name === "created" ? "dashboards.gadgets.created" : "dashboards.gadgets.changed", {
+                actor: slot("actor"),
+                field: slot("field"),
+                key: slot("key"),
+                from: stripMark(a.old_value ?? ""),
+                to: stripMark(a.new_value ?? ""),
+              }),
+              {
+                actor: <span className="font-medium">{a.actor_name || t("issues.history.system")}</span>,
+                field: historyFieldLabel(t, a.field_name),
+                key: (
+                  <a href={`/app/browse/${a.issue_key}`} className="text-[#0052cc] hover:underline">
+                    {a.issue_key}
+                  </a>
+                ),
+              },
+            )}
           </li>
         ))}
         {activity.length === 0 && <li className="text-slate-400">{t("dashboards.gadgets.noActivity")}</li>}

@@ -3,7 +3,7 @@ import type { groups as en } from "../en/groups";
 
 export const groups: Catalog<typeof en> = {
   title: "Team",
-  subtitle: "Gestisci i team e i loro membri. Richiede un amministratore globale.",
+  subtitle: "Gestisci i team e i loro membri. Riservato agli amministratori globali.",
   create: {
     title: "Crea team",
     name: "Nome del team",

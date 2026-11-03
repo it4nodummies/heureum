@@ -17,6 +17,7 @@ export const dashboards: Catalog<typeof en> = {
     activityStream: "Attività recenti",
     noAssigned: "Nessun ticket assegnato",
     noActivity: "Nessuna attività recente",
-    changedOn: "ha modificato {field} in",
+    changed: "{actor} ha modificato {field} di {key}: {from} → {to}",
+    created: "{actor} ha creato il ticket {key}",
   },
 };

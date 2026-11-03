@@ -16,6 +16,5 @@ export const common = {
   loading: "Loading…",
   never: "never",
   error: "An error occurred",
-  comingSoon: "Coming soon",
   issueCount: { one: "{count} issue", other: "{count} issues" },
 } as const;

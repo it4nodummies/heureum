@@ -15,7 +15,11 @@ export const dashboards = {
     activityStream: "Activity stream",
     noAssigned: "No assigned issues",
     noActivity: "No recent activity",
-    // "<actor> changed <field> on <ISSUE-1>: old → new" — actor/field/values are data.
-    changedOn: "changed {field} on",
+    // One issue_history row. {actor}, {field} and {key} are spliced in as nodes;
+    // the field id is labelled via issues.history.fields (raw id if unknown);
+    // actor and values are data.
+    changed: "{actor} changed {field} on {key}: {from} → {to}",
+    // The "created" row (English keeps the generic sentence's output).
+    created: "{actor} changed created on {key}: {from} → {to}",
   },
 } as const;

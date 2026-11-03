@@ -41,7 +41,8 @@ function notificationTitle(n: AppNotification, t: T): string {
 // for some types the backend wraps it in a fixed English sentence
 // (internal/domain/notification/service.go). Recognise those sentences, keep
 // only their data parts and re-render them in the UI language; anything else is
-// shown as stored.
+// shown as stored. The backend sentences are pinned by
+// internal/domain/notification/texts_test.go — change both sides together.
 function notificationBody(n: AppNotification, t: T): string {
   const body = n.body || "";
   let m: RegExpMatchArray | null;

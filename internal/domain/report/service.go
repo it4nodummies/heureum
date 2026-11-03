@@ -1,8 +1,10 @@
 package report
 
 import (
+	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/it4nodummies/heureum/internal/domain/issue"
@@ -39,6 +41,29 @@ type SprintVelocity struct {
 	SprintName   string `json:"sprint_name"`
 	Completed    int    `json:"completed"`
 	TotalPlanned int    `json:"total_planned"`
+}
+
+// ErrSprintNotFound: the sprint reference does not name a sprint of the project.
+var ErrSprintNotFound = errors.New("sprint not found")
+
+// ResolveSprintID maps a sprint's PUBLIC id (its seq_id, as
+// /rest/agile/1.0/board/{id}/sprint exposes it) within projectID to the
+// internal id the report queries key on. A non-numeric reference, an unknown
+// seq_id or a sprint of another project is ErrSprintNotFound; other DB errors
+// are returned as-is.
+func (s *Service) ResolveSprintID(projectID, publicID string) (string, error) {
+	seq, err := strconv.ParseInt(publicID, 10, 64)
+	if err != nil {
+		return "", ErrSprintNotFound
+	}
+	var sp sprint.Sprint
+	if err := s.db.Select("id").First(&sp, "seq_id = ? AND project_id = ?", seq, projectID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrSprintNotFound
+		}
+		return "", err
+	}
+	return sp.ID, nil
 }
 
 func (s *Service) GetBurndownData(sprintID string) (*BurndownData, error) {

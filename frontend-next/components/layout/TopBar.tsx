@@ -135,6 +135,7 @@ export default function TopBar() {
           {/* User avatar */}
           <div className="relative" ref={userMenuRef}>
             <button
+              data-testid="user-menu-button"
               onClick={() => setUserMenuOpen((v) => !v)}
               className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0052cc] to-[#0065ff] flex items-center justify-center text-white text-xs font-bold hover:ring-2 hover:ring-[#0052cc]/30 transition-all"
             >

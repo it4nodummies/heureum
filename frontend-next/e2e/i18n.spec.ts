@@ -110,6 +110,23 @@ test("(a) choosing Italiano in the profile translates the chrome at once and on 
   expect(hydration).toEqual([]);
 });
 
+test("(a2) after an Italian user signs out, a user with an empty locale follows the (en-US) browser, not the cookie", async ({ page, request }) => {
+  await setSavedLocale(request, ADMIN, "it");
+  await setSavedLocale(request, DEV, "");
+  await login(page, ADMIN);
+  await expectItalianNav(page);
+
+  // Client-side sign-out (no reload): the heureum_locale cookie still says "it".
+  await page.getByTestId("user-menu-button").click();
+  await page.getByRole("button", { name: "Esci" }).click();
+  await page.waitForURL(/\/login/);
+  await page.getByLabel(/email/i).fill(DEV.email);
+  await page.getByLabel(/password/i).fill(DEV.password);
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL(/\/app\/projects/);
+  await expectEnglishNav(page);
+});
+
 test.describe("Italian browser (it-IT)", () => {
   test.use({ locale: "it-IT" });
 

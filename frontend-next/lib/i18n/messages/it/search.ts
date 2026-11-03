@@ -40,7 +40,7 @@ export const search: Catalog<typeof en> = {
   },
   people: {
     search: "Cerca persone",
-    searchFor: "Cerca persone per {key}",
+    searchFor: "Cerca assegnatario per {key}",
     placeholder: "Cerca persone…",
     noMatches: "Nessuna persona trovata",
   },

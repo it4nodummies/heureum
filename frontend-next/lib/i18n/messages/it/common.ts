@@ -17,6 +17,5 @@ export const common: Catalog<typeof en> = {
   loading: "Caricamento…",
   never: "mai",
   error: "Si è verificato un errore",
-  comingSoon: "Presto disponibile",
   issueCount: { one: "{count} ticket", other: "{count} ticket" },
 };

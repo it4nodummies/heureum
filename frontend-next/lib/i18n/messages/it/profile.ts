@@ -26,7 +26,7 @@ export const profile: Catalog<typeof en> = {
     revoke: "Revoca",
     revokeConfirm: "Revocare il token \"{name}\"? I client che lo usano smetteranno di funzionare.",
     revokeFailed: "Revoca non riuscita",
-    empty: "Ancora nessun token API",
+    empty: "Nessun token API",
     createdNotice: "Token \"{label}\" creato: copialo ora, non verrà più mostrato.",
     label: "Etichetta",
     labelAria: "Etichetta del token",

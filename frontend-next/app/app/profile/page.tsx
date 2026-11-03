@@ -180,9 +180,9 @@ function ProfileDetails({ me }: { me: JiraUser }) {
       qc.setQueryData(["myself"], updated);
       qc.invalidateQueries({ queryKey: ["myself"] });
       qc.invalidateQueries({ queryKey: ["profile", "me"] });
-      // Apply immediately. "Default" follows the browser (not the cookie, which
-      // still holds the previously chosen language).
-      applyLocale(locale ? resolveLocale({ user: locale }) : resolveLocale({ browser: navigator.language }));
+      // Apply immediately, resolving exactly like LocaleSync (saved locale →
+      // browser; never the cookie): "Default" follows the browser.
+      applyLocale(resolveLocale({ user: locale, browser: navigator.language }));
     },
   });
 

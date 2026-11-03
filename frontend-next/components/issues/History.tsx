@@ -1,28 +1,9 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { issues, type ChangeItem, type Changelog } from "@/lib/api";
-import { useFormat, useT, type MessageKey } from "@/lib/i18n";
-import { issues as enIssues } from "@/lib/i18n/messages/en/issues";
-
-// Changelog field ids (`status`, `assignee`, `story_points`…) are mapped to a
-// translated label; an id the catalogue doesn't know is shown raw.
-function fieldLabel(t: (key: MessageKey) => string, field: string): string {
-  return Object.prototype.hasOwnProperty.call(enIssues.history.fields, field)
-    ? t(`issues.history.fields.${field}` as MessageKey)
-    : field;
-}
-
-// Placeholder marker: the sentence comes from the catalogue as one string, the
-// author and field names are spliced back in as styled nodes.
-const MARK = "\u0001";
-const stripMark = (s: string) => s.split(MARK).join("");
-function richSentence(text: string, nodes: Record<string, ReactNode>): ReactNode[] {
-  return text
-    .split(MARK)
-    .map((part, i) => (i % 2 === 1 ? <Fragment key={i}>{nodes[part] ?? part}</Fragment> : part));
-}
+import { useFormat, useT } from "@/lib/i18n";
+import { historyFieldLabel, richSentence, slot, stripMark } from "./historyText";
 
 // Flattens a changelog entry (author/created + one or more field changes)
 // into one row per changed field, keeping the entry's author/created/id so
@@ -87,15 +68,15 @@ export function History({ issueKey }: { issueKey: string }) {
           <li key={row.key} data-testid="history-row" className="text-sm text-[#1a1f36]">
             {richSentence(
               t(row.item.field === "created" ? "issues.history.createdIssue" : "issues.history.changed", {
-                author: `${MARK}author${MARK}`,
-                field: `${MARK}field${MARK}`,
+                author: slot("author"),
+                field: slot("field"),
                 // Values are data: drop the marker so they can't inject a node.
                 from: fromStr && fromStr.length ? stripMark(fromStr) : "—",
                 to: toStr && toStr.length ? stripMark(toStr) : "—",
               }),
               {
                 author: <span className="font-semibold">{row.authorName}</span>,
-                field: <span className="font-medium">{fieldLabel(t, row.item.field)}</span>,
+                field: <span className="font-medium">{historyFieldLabel(t, row.item.field)}</span>,
               },
             )}{" "}
             <span className="text-xs text-slate-400" title={fmt.dateTime(row.created)}>

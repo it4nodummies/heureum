@@ -49,6 +49,11 @@ export function translate(locale: Locale, key: MessageKey | string, params?: Mes
   if (value === undefined && locale !== "en") value = lookup(messages.en, key);
   if (typeof value === "string") return interpolate(value, params);
   if (isPlural(value)) {
+    if (process.env.NODE_ENV !== "production" && typeof params?.count !== "number") {
+      // A plural without a numeric `count` silently picks a form and leaves a
+      // raw `{count}` in the text — always a call-site bug.
+      console.warn(`[i18n] plural key "${key}" used without a numeric count`);
+    }
     const count = Number(params?.count ?? 0);
     const form = pluralRules(locale).select(count) === "one" ? value.one : value.other;
     return interpolate(form, params);

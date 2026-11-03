@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -19,16 +20,34 @@ func NewReportHandler(svc *report.Service, projectSvc *project.Service) *ReportH
 	return &ReportHandler{svc: svc, projectSvc: projectSvc}
 }
 
+// resolveSprint maps ?sprintId= (the sprint's public seq id) of projectID to
+// its internal id; writes 404 when it is not a sprint of the project.
+func (h *ReportHandler) resolveSprint(w http.ResponseWriter, projectID, ref string) (string, bool) {
+	id, err := h.svc.ResolveSprintID(projectID, ref)
+	if errors.Is(err, report.ErrSprintNotFound) {
+		http.Error(w, `{"error":"sprint not found"}`, http.StatusNotFound)
+		return "", false
+	}
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return "", false
+	}
+	return id, true
+}
+
 func (h *ReportHandler) Burndown(w http.ResponseWriter, r *http.Request) {
 	p, err := h.projectSvc.GetByKey(r.PathValue("key"))
 	if err != nil {
 		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
 		return
 	}
-	_ = p
-	sprintID := r.URL.Query().Get("sprintId")
-	if sprintID == "" {
+	sprintRef := r.URL.Query().Get("sprintId")
+	if sprintRef == "" {
 		http.Error(w, `{"error":"sprintId query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
+	sprintID, ok := h.resolveSprint(w, p.ID, sprintRef)
+	if !ok {
 		return
 	}
 	data, err := h.svc.GetBurndownData(sprintID)
@@ -61,10 +80,13 @@ func (h *ReportHandler) Burnup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
 		return
 	}
-	_ = p
-	sprintID := r.URL.Query().Get("sprintId")
-	if sprintID == "" {
+	sprintRef := r.URL.Query().Get("sprintId")
+	if sprintRef == "" {
 		http.Error(w, `{"error":"sprintId query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
+	sprintID, ok := h.resolveSprint(w, p.ID, sprintRef)
+	if !ok {
 		return
 	}
 	data, err := h.svc.GetBurnupData(sprintID)

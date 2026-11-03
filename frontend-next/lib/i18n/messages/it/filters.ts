@@ -6,7 +6,7 @@ export const filters: Catalog<typeof en> = {
   filterName: "Nome filtro",
   shareWithTeam: "Condividi con il team",
   save: "Salva filtro",
-  invalidJql: "JQL non valida",
+  invalidJql: "Query JQL non valida",
   saved: "Filtri salvati",
   noneYet: "Nessun filtro salvato",
   resultCount: { one: "{count} risultato", other: "{count} risultati" },
