@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projects as projectsApi, boards as boardsApi } from "@/lib/api";
 import { ProjectAvatar } from "@/components/projects/ProjectAvatar";
 import { CreateIssueModal } from "@/components/issues/CreateIssueModal";
+import { useT } from "@/lib/i18n";
 
 type ActiveTab =
   | "overview"
@@ -64,6 +65,7 @@ function TabLink({
  */
 export function ProjectHeader({ projectKey, active }: Props) {
   const qc = useQueryClient();
+  const t = useT();
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
 
   const project = useQuery({
@@ -81,7 +83,7 @@ export function ProjectHeader({ projectKey, active }: Props) {
     return (
       <div className="px-8 pt-8 pb-5 flex items-center gap-3">
         <div className="w-6 h-6 rounded-full border-2 border-[#0052cc] border-t-transparent animate-spin" />
-        <span className="text-sm text-slate-400">Loading project…</span>
+        <span className="text-sm text-slate-400">{t("projects.header.loading")}</span>
       </div>
     );
   }
@@ -90,7 +92,7 @@ export function ProjectHeader({ projectKey, active }: Props) {
     return (
       <div className="px-8 py-8">
         <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl">
-          {project.error instanceof Error ? project.error.message : "Project not found."}
+          {project.error instanceof Error ? project.error.message : t("projects.header.notFound")}
         </div>
       </div>
     );
@@ -111,11 +113,11 @@ export function ProjectHeader({ projectKey, active }: Props) {
           <p className="text-sm text-slate-400 mt-0.5">
             <span className="font-mono">{p.key}</span>
             {" · "}
-            {p.projectTypeKey === "software" ? "Software" : "Business"}
+            {p.projectTypeKey === "software" ? t("projects.types.software") : t("projects.types.business")}
             {p.lead && (
               <>
-                {" · Lead: "}
-                {p.lead.displayName || p.lead.emailAddress}
+                {" · "}
+                {t("projects.header.lead", { name: p.lead.displayName || p.lead.emailAddress || "" })}
               </>
             )}
           </p>
@@ -131,7 +133,7 @@ export function ProjectHeader({ projectKey, active }: Props) {
               clipRule="evenodd"
             />
           </svg>
-          Create issue
+          {t("projects.header.createIssue")}
         </button>
       </div>
 
@@ -140,33 +142,33 @@ export function ProjectHeader({ projectKey, active }: Props) {
           <TabLink
             href={board ? `/app/boards/${board.id}` : undefined}
             disabled={!board}
-            title={!board ? "No board yet" : undefined}
+            title={!board ? t("projects.header.noBoard") : undefined}
             active={active === "board"}
           >
-            Board
+            {t("projects.header.tabs.board")}
           </TabLink>
           <TabLink
             href={board ? `/app/boards/${board.id}/backlog` : undefined}
             disabled={!board}
-            title={!board ? "No board yet" : undefined}
+            title={!board ? t("projects.header.noBoard") : undefined}
             active={active === "backlog"}
           >
-            Backlog
+            {t("projects.header.tabs.backlog")}
           </TabLink>
           <TabLink href={`/app/projects/${projectKey}/timeline`} active={active === "timeline"}>
-            Timeline
+            {t("projects.header.tabs.timeline")}
           </TabLink>
           <TabLink href={`/app/projects/${projectKey}/calendar`} active={active === "calendar"}>
-            Calendar
+            {t("projects.header.tabs.calendar")}
           </TabLink>
           <TabLink href={`/app/projects/${projectKey}/releases`} active={active === "releases"}>
-            Releases
+            {t("projects.header.tabs.releases")}
           </TabLink>
           <TabLink href={`/app/projects/${projectKey}/reports`} active={active === "reports"}>
-            Reports
+            {t("projects.header.tabs.reports")}
           </TabLink>
           <TabLink href={`/app/projects/${projectKey}/settings`} active={active === "settings"}>
-            Settings
+            {t("projects.header.tabs.settings")}
           </TabLink>
         </nav>
       </div>

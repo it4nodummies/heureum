@@ -2,19 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { reports } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 export function ProjectSummary({ projectKey }: { projectKey: string }) {
+  const t = useT();
   const summary = useQuery({ queryKey: ["summary", projectKey], queryFn: () => reports.summary(projectKey) });
   const s = summary.data;
   return (
     <div className="space-y-4" data-testid="project-summary">
       <div className="grid grid-cols-3 gap-3">
-        <Stat label="Created (7d)" value={s?.created_last_7_days ?? 0} />
-        <Stat label="Updated (7d)" value={s?.updated_last_7_days ?? 0} />
-        <Stat label="Completed (7d)" value={s?.completed_last_7_days ?? 0} />
+        <Stat label={t("projects.summary.created7d")} value={s?.created_last_7_days ?? 0} />
+        <Stat label={t("projects.summary.updated7d")} value={s?.updated_last_7_days ?? 0} />
+        <Stat label={t("projects.summary.completed7d")} value={s?.completed_last_7_days ?? 0} />
       </div>
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-slate-700">Issues by status</h3>
+        <h3 className="mb-2 text-sm font-semibold text-slate-700">{t("projects.summary.byStatus")}</h3>
         <ul className="text-sm" data-testid="summary-status-counts">
           {Object.entries(s?.issue_count_by_status ?? {}).map(([name, n]) => (
             <li key={name} className="flex justify-between border-b border-slate-100 py-1">
@@ -26,7 +28,7 @@ export function ProjectSummary({ projectKey }: { projectKey: string }) {
       </div>
       {s?.active_sprint && (
         <p className="text-sm text-slate-600">
-          Active sprint: <strong>{s.active_sprint.name}</strong>
+          {t("projects.summary.activeSprint")} <strong>{s.active_sprint.name}</strong>
         </p>
       )}
     </div>
