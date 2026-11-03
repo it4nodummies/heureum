@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { boards, workflow, type WorkflowStatus } from "@/lib/api";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
+import { useT } from "@/lib/i18n";
 
 interface EditColumn {
   name: string;
@@ -22,6 +23,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   const { boardId } = use(params);
   const id = Number(boardId);
   const qc = useQueryClient();
+  const t = useT();
 
   const board = useQuery({ queryKey: ["board", id], queryFn: () => boards.get(id) });
   const projectKey = board.data?.location?.projectKey;
@@ -79,16 +81,16 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
   // Client-side validation: block save on empty/duplicate column names or no
   // columns (the server would otherwise persist a broken board layout).
   const validationError = useMemo(() => {
-    if (columns.length === 0) return "Add at least one column.";
-    if (columns.some((c) => c.name.trim() === "")) return "Column names cannot be empty.";
+    if (columns.length === 0) return t("boards.settings.validation.noColumns");
+    if (columns.some((c) => c.name.trim() === "")) return t("boards.settings.validation.emptyName");
     const seen = new Set<string>();
     for (const c of columns) {
       const key = c.name.trim().toLowerCase();
-      if (seen.has(key)) return "Column names must be unique.";
+      if (seen.has(key)) return t("boards.settings.validation.duplicateName");
       seen.add(key);
     }
     return null;
-  }, [columns]);
+  }, [columns, t]);
 
   function renameColumn(idx: number, name: string) {
     setSaved(false);
@@ -111,7 +113,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
   function addColumn() {
     setSaved(false);
-    setColumns((cols) => [...cols, { name: `Column ${cols.length + 1}`, statusIds: [] }]);
+    setColumns((cols) => [...cols, { name: t("boards.settings.defaultColumnName", { number: cols.length + 1 }), statusIds: [] }]);
   }
 
   function removeColumn(idx: number) {
@@ -137,22 +139,22 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
       {projectKey && <ProjectHeader projectKey={projectKey} active="board" />}
       <div className="p-8" data-testid="board-settings">
         <div className="mb-6 flex items-center gap-3">
-          <h2 className="text-xl font-bold text-[#1a1f36]">Board settings</h2>
+          <h2 className="text-xl font-bold text-[#1a1f36]">{t("boards.settings.title")}</h2>
           <Link
             href={`/app/boards/${id}`}
             className="ml-auto text-sm font-medium text-[#0052cc] hover:underline"
           >
-            Back to board
+            {t("boards.settings.back")}
           </Link>
         </div>
 
         {(config.isLoading || wf.isLoading) && (
-          <p className="text-sm text-slate-400">Loading board configuration…</p>
+          <p className="text-sm text-slate-400">{t("boards.settings.loading")}</p>
         )}
 
         {config.isError && (
           <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {config.error instanceof Error ? config.error.message : "Failed to load config."}
+            {config.error instanceof Error ? config.error.message : t("boards.settings.loadFailed")}
           </div>
         )}
 
@@ -161,18 +163,17 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
             {/* Columns + status mapping */}
             <section>
               <div className="mb-3 flex items-center gap-3">
-                <h3 className="text-base font-semibold text-[#1a1f36]">Columns</h3>
+                <h3 className="text-base font-semibold text-[#1a1f36]">{t("boards.settings.columns")}</h3>
                 <button
                   type="button"
                   onClick={addColumn}
                   className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Add column
+                  {t("boards.settings.addColumn")}
                 </button>
               </div>
               <p className="mb-4 text-sm text-slate-500">
-                Each column maps a set of workflow statuses. An issue appears in the column whose set
-                contains its status.
+                {t("boards.settings.columnsHelp")}
               </p>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {columns.map((col, colIdx) => (
@@ -183,11 +184,11 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                   >
                     <div className="mb-3 flex items-center gap-2">
                       <label className="sr-only" htmlFor={`col-name-${colIdx}`}>
-                        Column name
+                        {t("boards.settings.columnName")}
                       </label>
                       <input
                         id={`col-name-${colIdx}`}
-                        aria-label="Column name"
+                        aria-label={t("boards.settings.columnName")}
                         value={col.name}
                         onChange={(e) => renameColumn(colIdx, e.target.value)}
                         className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-semibold"
@@ -195,10 +196,10 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                       <button
                         type="button"
                         onClick={() => removeColumn(colIdx)}
-                        aria-label={`Remove column ${col.name}`}
+                        aria-label={t("boards.settings.removeColumn", { name: col.name })}
                         className="shrink-0 rounded-lg px-2 py-1 text-sm text-red-600 hover:bg-red-50"
                       >
-                        Remove
+                        {t("boards.actions.remove")}
                       </button>
                     </div>
                     <div className="space-y-1.5">
@@ -223,13 +224,13 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
 
             {/* Swimlanes */}
             <section>
-              <h3 className="mb-3 text-base font-semibold text-[#1a1f36]">Swimlanes</h3>
+              <h3 className="mb-3 text-base font-semibold text-[#1a1f36]">{t("boards.settings.swimlanes")}</h3>
               <label className="mr-2 text-sm text-slate-700" htmlFor="swimlane-select">
-                Group rows by
+                {t("boards.settings.groupRowsBy")}
               </label>
               <select
                 id="swimlane-select"
-                aria-label="Swimlane"
+                aria-label={t("boards.settings.swimlane")}
                 value={swimlane}
                 onChange={(e) => {
                   setSaved(false);
@@ -237,18 +238,18 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                 }}
                 className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
               >
-                <option value="none">None</option>
-                <option value="assignee">Assignee</option>
-                <option value="epic">Epic</option>
+                <option value="none">{t("boards.settings.swimlaneNone")}</option>
+                <option value="assignee">{t("boards.settings.swimlaneAssignee")}</option>
+                <option value="epic">{t("boards.settings.swimlaneEpic")}</option>
               </select>
             </section>
 
             {/* Quick filters */}
             <section>
-              <h3 className="mb-3 text-base font-semibold text-[#1a1f36]">Quick filters</h3>
+              <h3 className="mb-3 text-base font-semibold text-[#1a1f36]">{t("boards.settings.quickFilters")}</h3>
               <ul className="mb-4 space-y-2" data-testid="quick-filter-list">
                 {quickFilters.length === 0 && (
-                  <li className="text-sm text-slate-400">No quick filters yet.</li>
+                  <li className="text-sm text-slate-400">{t("boards.settings.noQuickFilters")}</li>
                 )}
                 {quickFilters.map((qf, idx) => (
                   <li
@@ -261,10 +262,10 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                     <button
                       type="button"
                       onClick={() => removeQuickFilter(idx)}
-                      aria-label={`Remove quick filter ${qf.name}`}
+                      aria-label={t("boards.settings.removeQuickFilter", { name: qf.name })}
                       className="ml-auto rounded px-2 py-1 text-red-600 hover:bg-red-50"
                     >
-                      Remove
+                      {t("boards.actions.remove")}
                     </button>
                   </li>
                 ))}
@@ -272,11 +273,11 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-500" htmlFor="qf-name">
-                    Name
+                    {t("boards.settings.name")}
                   </label>
                   <input
                     id="qf-name"
-                    aria-label="Quick filter name"
+                    aria-label={t("boards.settings.quickFilterName")}
                     value={newFilterName}
                     onChange={(e) => setNewFilterName(e.target.value)}
                     className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
@@ -288,7 +289,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                   </label>
                   <input
                     id="qf-jql"
-                    aria-label="Quick filter JQL"
+                    aria-label={t("boards.settings.quickFilterJql")}
                     value={newFilterJql}
                     onChange={(e) => setNewFilterJql(e.target.value)}
                     placeholder="assignee = currentUser()"
@@ -300,7 +301,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                   onClick={addQuickFilter}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Add filter
+                  {t("boards.settings.addFilter")}
                 </button>
               </div>
             </section>
@@ -315,7 +316,7 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
                 disabled={save.isPending || validationError !== null}
                 className="rounded-lg bg-[#0052cc] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0065ff] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {save.isPending ? "Saving…" : "Save board settings"}
+                {save.isPending ? t("boards.settings.saving") : t("boards.settings.save")}
               </button>
               {validationError && (
                 <span data-testid="board-settings-validation" className="text-sm text-amber-600">
@@ -324,12 +325,12 @@ export default function BoardSettingsPage({ params }: { params: Promise<{ boardI
               )}
               {saved && !validationError && (
                 <span data-testid="board-settings-saved" className="text-sm font-medium text-green-600">
-                  Saved
+                  {t("boards.settings.saved")}
                 </span>
               )}
               {save.isError && (
                 <span className="text-sm text-red-600">
-                  {save.error instanceof Error ? save.error.message : "Save failed"}
+                  {save.error instanceof Error ? save.error.message : t("boards.settings.saveFailed")}
                 </span>
               )}
             </div>

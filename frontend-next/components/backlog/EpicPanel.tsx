@@ -13,6 +13,7 @@ import { closestCenter, pointerWithin, useDroppable, type CollisionDetection } f
 import { boards, hierarchyLevelOf, issues as issuesApi, projects, type AgileEpic, type SearchIssue } from "@/lib/api";
 import { epicColorHex } from "@/lib/epicColors";
 import { epicProgress, type EpicFilter } from "@/lib/epicHierarchy";
+import { useT } from "@/lib/i18n";
 
 export const EPIC_DROP_PREFIX = "epic:";
 export const EPIC_DROP_NONE = `${EPIC_DROP_PREFIX}none`;
@@ -120,6 +121,7 @@ export function EpicPanel({
   onChange: (filter: EpicFilter) => void;
 }) {
   const qc = useQueryClient();
+  const t = useT();
   const [open, setOpen] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -148,7 +150,7 @@ export function EpicPanel({
         qc.invalidateQueries({ queryKey: ["sprint"] }),
       ]);
     },
-    onError: (err) => setCreateError(err instanceof Error ? err.message : "Failed to create epic"),
+    onError: (err) => setCreateError(err instanceof Error ? err.message : t("boards.epics.createFailed")),
   });
 
   const submitCreate = (e: FormEvent) => {
@@ -161,7 +163,7 @@ export function EpicPanel({
   const values = epics.data?.values ?? [];
 
   return (
-    <aside className={`shrink-0 ${open ? "w-64" : "w-auto"}`} aria-label="Epics">
+    <aside className={`shrink-0 ${open ? "w-64" : "w-auto"}`} aria-label={t("boards.epics.panel")}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -169,12 +171,12 @@ export function EpicPanel({
         data-testid="epic-panel-toggle"
         className="mb-2 rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
       >
-        {open ? "Hide epics" : "Epics"}
+        {open ? t("boards.epics.hide") : t("boards.epics.show")}
       </button>
       {open && (
         <div data-testid="epic-panel" className="rounded border border-slate-200 p-2">
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-500">Epics</span>
+            <span className="text-sm font-semibold text-slate-500">{t("boards.epics.title")}</span>
             {epicType && projectKey && !creating && (
               <button
                 type="button"
@@ -182,7 +184,7 @@ export function EpicPanel({
                 data-testid="epic-panel-create"
                 className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50"
               >
-                Create epic
+                {t("boards.epics.create")}
               </button>
             )}
           </div>
@@ -190,10 +192,10 @@ export function EpicPanel({
             <form onSubmit={submitCreate} className="mb-2 space-y-1">
               <input
                 autoFocus
-                aria-label="New epic name"
+                aria-label={t("boards.epics.newName")}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="Epic name"
+                placeholder={t("boards.epics.namePlaceholder")}
                 data-testid="epic-panel-create-input"
                 className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
               />
@@ -204,7 +206,7 @@ export function EpicPanel({
                   data-testid="epic-panel-create-submit"
                   className="rounded bg-[#0052cc] px-2 py-0.5 text-xs text-white disabled:opacity-60"
                 >
-                  Create
+                  {t("boards.actions.create")}
                 </button>
                 <button
                   type="button"
@@ -215,7 +217,7 @@ export function EpicPanel({
                   }}
                   className="rounded border border-slate-300 px-2 py-0.5 text-xs"
                 >
-                  Cancel
+                  {t("boards.actions.cancel")}
                 </button>
               </div>
               {createError && (
@@ -227,10 +229,10 @@ export function EpicPanel({
           )}
           <div className="space-y-0.5">
             <DropRow testId="epic-panel-item-all" active={active === "all"} onClick={() => onChange("all")}>
-              All issues
+              {t("boards.epics.all")}
             </DropRow>
             <DropRow dropId={EPIC_DROP_NONE} testId="epic-panel-item-none" active={active === "none"} onClick={() => onChange("none")}>
-              Issues without epic
+              {t("boards.epics.none")}
             </DropRow>
             {values.map((epic) => (
               <EpicRow
@@ -242,7 +244,7 @@ export function EpicPanel({
               />
             ))}
             {epics.isSuccess && values.length === 0 && (
-              <p className="px-2 py-1 text-xs text-slate-400">No epics yet</p>
+              <p className="px-2 py-1 text-xs text-slate-400">{t("boards.epics.empty")}</p>
             )}
           </div>
         </div>

@@ -27,9 +27,20 @@ import { ProjectHeader } from "@/components/projects/ProjectHeader";
 import { DroppableList } from "@/components/backlog/DroppableList";
 import { EpicPanel, epicAwareCollision, epicDropTarget } from "@/components/backlog/EpicPanel";
 import { epicOf, indexEpics, indexIssues, matchesEpicFilter, type EpicFilter } from "@/lib/epicHierarchy";
+import { useFormat, useT, type MessageKey } from "@/lib/i18n";
 
 const BACKLOG_ID = "backlog";
 const sprintContainerId = (sprintId: number) => `sprint-${sprintId}`;
+
+// Sprint dates are calendar days: format the YYYY-MM-DD part in UTC so the
+// shown day never shifts with the viewer's timezone.
+const SPRINT_DATE: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" };
+
+const SPRINT_STATE_KEYS: Record<string, MessageKey> = {
+  future: "boards.sprint.state.future",
+  active: "boards.sprint.state.active",
+  closed: "boards.sprint.state.closed",
+};
 
 function findContainer(itemsMap: Record<string, string[]>, id: string): string | undefined {
   if (id in itemsMap) return id;
@@ -39,6 +50,9 @@ function findContainer(itemsMap: Record<string, string[]>, id: string): string |
 export function ScrumBacklog({ boardId }: { boardId: number }) {
   const id = boardId;
   const qc = useQueryClient();
+  const t = useT();
+  const fmt = useFormat();
+  const sprintDate = (d?: string) => (d ? fmt.date(d.slice(0, 10), SPRINT_DATE) : t("boards.sprint.dateUnset"));
   const [newSprint, setNewSprint] = useState("");
   const [newGoal, setNewGoal] = useState("");
   const [newStart, setNewStart] = useState("");
@@ -194,7 +208,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
       await invalidate();
     },
     onError: async (err) => {
-      setDragError(err instanceof Error ? err.message : "Failed to move issue(s)");
+      setDragError(err instanceof Error ? err.message : t("boards.backlog.errors.move"));
       await invalidate();
     },
   });
@@ -205,7 +219,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
     mutationFn: async ({ keys, epicKey }: { keys: string[]; epicKey: string | null }) => {
       const rejected = keys.filter((k) => hierarchyLevelOf(issuesByKey[k]?.fields.issuetype) !== 0);
       if (rejected.length > 0) {
-        throw new Error(`Only stories, tasks and bugs can be moved into an epic (${rejected.join(", ")})`);
+        throw new Error(t("boards.backlog.errors.onlyLevelZero", { keys: rejected.join(", ") }));
       }
       for (const k of keys) await issuesApi.setParent(k, epicKey);
     },
@@ -215,7 +229,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
       await invalidate();
     },
     onError: async (err) => {
-      setDragError(fieldError(err, "parent") ?? (err instanceof Error ? err.message : "Failed to move issue(s) into epic"));
+      setDragError(fieldError(err, "parent") ?? (err instanceof Error ? err.message : t("boards.backlog.errors.moveIntoEpic")));
       await invalidate();
     },
   });
@@ -398,10 +412,10 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
             data-testid="backlog-drag-error"
             className="mb-2 flex items-center gap-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
           >
-            <span>Move failed: {dragError}</span>
+            <span>{t("boards.moveFailedWith", { message: dragError })}</span>
             <button
               onClick={() => setDragError(null)}
-              aria-label="Dismiss error"
+              aria-label={t("boards.actions.dismissError")}
               className="ml-auto text-red-700 hover:underline"
             >
               ×
@@ -433,27 +447,27 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                   selected={selected}
                   onToggleSelect={toggleSelect}
                   resolveEpic={resolveEpic}
-                  emptyLabel="No issues in this sprint"
+                  emptyLabel={t("boards.sprint.empty")}
                   testId={sprintContainerId(sp.id)}
                   header={
                     <div className="mb-1">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-semibold text-[#1a1f36]">
-                          {sp.name} <span className="text-xs font-normal text-slate-400">({sp.state})</span>
+                          {sp.name} <span className="text-xs font-normal text-slate-400">({SPRINT_STATE_KEYS[sp.state] ? t(SPRINT_STATE_KEYS[sp.state]) : sp.state})</span>
                         </span>
                         <span className="flex gap-2">
                           <button
                             onClick={() => openEdit(sp)}
                             className="rounded border border-slate-300 px-2 py-0.5 text-xs"
                           >
-                            Edit sprint
+                            {t("boards.sprint.edit")}
                           </button>
                           {sp.state === "future" && (
                             <button
                               onClick={() => setState.mutate({ sprintId: sp.id, state: "active" })}
                               className="rounded border border-slate-300 px-2 py-0.5 text-xs"
                             >
-                              Start sprint
+                              {t("boards.sprint.start")}
                             </button>
                           )}
                           {sp.state === "active" && (
@@ -461,7 +475,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                               onClick={() => openComplete(sp.id)}
                               className="rounded border border-slate-300 px-2 py-0.5 text-xs"
                             >
-                              Complete sprint
+                              {t("boards.sprint.complete")}
                             </button>
                           )}
                         </span>
@@ -471,7 +485,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                           {sp.goal && <span>{sp.goal}</span>}
                           {(sp.startDate || sp.endDate) && (
                             <span className="ml-2 text-slate-400">
-                              {sp.startDate ? sp.startDate.slice(0, 10) : "…"} → {sp.endDate ? sp.endDate.slice(0, 10) : "…"}
+                              {sprintDate(sp.startDate)} → {sprintDate(sp.endDate)}
                             </span>
                           )}
                         </div>
@@ -482,30 +496,30 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                           className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50 p-2"
                         >
                           <input
-                            aria-label="Edit sprint name"
+                            aria-label={t("boards.sprint.editName")}
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
-                            placeholder="Sprint name"
+                            placeholder={t("boards.sprint.namePlaceholder")}
                             className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
                           />
                           <input
-                            aria-label="Edit sprint goal"
+                            aria-label={t("boards.sprint.editGoal")}
                             value={editGoal}
                             onChange={(e) => setEditGoal(e.target.value)}
-                            placeholder="Sprint goal"
+                            placeholder={t("boards.sprint.goalPlaceholder")}
                             className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
                           />
                           <div className="flex gap-2">
                             <input
                               type="date"
-                              aria-label="Edit start date"
+                              aria-label={t("boards.sprint.editStart")}
                               value={editStart}
                               onChange={(e) => setEditStart(e.target.value)}
                               className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
                             />
                             <input
                               type="date"
-                              aria-label="Edit end date"
+                              aria-label={t("boards.sprint.editEnd")}
                               value={editEnd}
                               onChange={(e) => setEditEnd(e.target.value)}
                               className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
@@ -527,13 +541,13 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                               disabled={updateSprint.isPending}
                               className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
                             >
-                              Save
+                              {t("boards.actions.save")}
                             </button>
                             <button
                               onClick={() => setEditing(null)}
                               className="rounded border border-slate-300 px-3 py-1 text-xs"
                             >
-                              Cancel
+                              {t("boards.actions.cancel")}
                             </button>
                           </div>
                         </div>
@@ -550,13 +564,13 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                           return (
                             <div
                               role="dialog"
-                              aria-label="Complete sprint"
+                              aria-label={t("boards.sprint.complete")}
                               data-testid="complete-sprint-dialog"
                               className="mt-2 space-y-2 rounded border border-slate-200 bg-white p-3 shadow"
                             >
-                              <div className="text-sm font-semibold text-[#1a1f36]">Complete {sp.name}</div>
+                              <div className="text-sm font-semibold text-[#1a1f36]">{t("boards.sprint.completeTitle", { name: sp.name })}</div>
                               <div data-testid="incomplete-count" className="text-xs text-slate-500">
-                                {incomplete.length} incomplete issue{incomplete.length === 1 ? "" : "s"} will be moved.
+                                {t("boards.sprint.incomplete", { count: incomplete.length })}
                               </div>
                               <label className="flex items-center gap-2 text-sm">
                                 <input
@@ -565,7 +579,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                                   checked={moveMode === "backlog"}
                                   onChange={() => setMoveMode("backlog")}
                                 />
-                                Move to Backlog
+                                {t("boards.sprint.moveToBacklog")}
                               </label>
                               <label className="flex items-center gap-2 text-sm">
                                 <input
@@ -575,15 +589,15 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                                   onChange={() => setMoveMode("sprint")}
                                   disabled={otherSprints.length === 0}
                                 />
-                                Move to sprint
+                                {t("boards.sprint.moveToSprint")}
                                 <select
-                                  aria-label="Target sprint"
+                                  aria-label={t("boards.sprint.targetSprint")}
                                   value={moveTarget}
                                   onChange={(e) => setMoveTarget(e.target.value ? Number(e.target.value) : "")}
                                   disabled={moveMode !== "sprint" || otherSprints.length === 0}
                                   className="rounded border border-slate-300 px-2 py-0.5 text-sm"
                                 >
-                                  <option value="">Select sprint…</option>
+                                  <option value="">{t("boards.sprint.selectSprint")}</option>
                                   {otherSprints.map((o) => (
                                     <option key={o.id} value={o.id}>
                                       {o.name}
@@ -605,13 +619,13 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                                   disabled={completeSprint.isPending || (moveMode === "sprint" && !moveTarget)}
                                   className="rounded bg-[#0052cc] px-3 py-1 text-xs text-white disabled:opacity-60"
                                 >
-                                  Complete sprint
+                                  {t("boards.sprint.complete")}
                                 </button>
                                 <button
                                   onClick={() => setCompleting(null)}
                                   className="rounded border border-slate-300 px-3 py-1 text-xs"
                                 >
-                                  Cancel
+                                  {t("boards.actions.cancel")}
                                 </button>
                               </div>
                             </div>
@@ -625,10 +639,10 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
               <div className="my-3 space-y-2 rounded border border-slate-200 p-2">
                 <div className="flex gap-2">
                   <input
-                    aria-label="New sprint name"
+                    aria-label={t("boards.sprint.newName")}
                     value={newSprint}
                     onChange={(e) => setNewSprint(e.target.value)}
-                    placeholder="Sprint name"
+                    placeholder={t("boards.sprint.namePlaceholder")}
                     className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
                   />
                   <button
@@ -636,27 +650,27 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                     className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
                     disabled={createSprint.isPending}
                   >
-                    Create sprint
+                    {t("boards.sprint.create")}
                   </button>
                 </div>
                 <input
-                  aria-label="Sprint goal"
+                  aria-label={t("boards.sprint.goal")}
                   value={newGoal}
                   onChange={(e) => setNewGoal(e.target.value)}
-                  placeholder="Sprint goal (optional)"
+                  placeholder={t("boards.sprint.goalOptional")}
                   className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm"
                 />
                 <div className="flex gap-2">
                   <input
                     type="date"
-                    aria-label="Start date"
+                    aria-label={t("boards.sprint.startDate")}
                     value={newStart}
                     onChange={(e) => setNewStart(e.target.value)}
                     className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
                   />
                   <input
                     type="date"
-                    aria-label="End date"
+                    aria-label={t("boards.sprint.endDate")}
                     value={newEnd}
                     onChange={(e) => setNewEnd(e.target.value)}
                     className="flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
@@ -671,11 +685,11 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                 selected={selected}
                 onToggleSelect={toggleSelect}
                 resolveEpic={resolveEpic}
-                emptyLabel="Backlog is empty"
+                emptyLabel={t("boards.backlog.empty")}
                 testId="backlog-list"
                 header={
                   <div className="mb-1 text-sm font-semibold text-slate-500">
-                    Backlog ({visible(items[BACKLOG_ID] ?? []).length})
+                    {t("boards.backlog.header", { count: visible(items[BACKLOG_ID] ?? []).length })}
                   </div>
                 }
               />
@@ -689,7 +703,7 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
                 <span className="text-[#1a1f36]">{activeIssue.fields.summary}</span>
                 {activeCount > 1 && (
                   <span className="ml-2 rounded bg-[#0052cc] px-1.5 py-0.5 text-xs text-white">
-                    +{activeCount - 1} more
+                    {t("boards.backlog.moreDragged", { count: activeCount - 1 })}
                   </span>
                 )}
               </div>
