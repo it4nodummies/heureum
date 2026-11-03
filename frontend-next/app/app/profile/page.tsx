@@ -4,20 +4,25 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { auth, profile, notifications, type NotificationSetting, type JiraUser } from "@/lib/api";
 import { ThemeToggle } from "@/components/layout/ThemeProvider";
+import { normalizeLocale, resolveLocale, useFormat, useLocale, useT, type MessageKey } from "@/lib/i18n";
 
 const inputCls =
   "rounded border border-slate-300 px-2 py-1 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]";
 
-function formatDate(iso?: string): string {
-  if (!iso) return "never";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
+// Notification event codes offered in the preferences form (values sent to the API).
+const EVENT_TYPES = ["assignment", "comment", "mention", "status_change", "sprint_started", "sprint_completed"] as const;
+
+function eventLabelKey(code: string): MessageKey | null {
+  return (EVENT_TYPES as readonly string[]).includes(code) ? (`profile.prefs.events.${code}` as MessageKey) : null;
 }
 
 // Personal API tokens: list / create (plaintext shown once) / revoke. The list
 // never carries the hash or the plaintext — only metadata from the server.
 function ApiTokens() {
   const qc = useQueryClient();
+  const t = useT();
+  const fmt = useFormat();
+  const formatDate = (iso?: string) => (iso ? fmt.date(iso) : t("common.never"));
   const tokens = useQuery({ queryKey: ["profile", "api-tokens"], queryFn: auth.listApiTokens });
   const [label, setLabel] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("");
@@ -28,8 +33,8 @@ function ApiTokens() {
       const days = expiresInDays.trim() === "" ? undefined : Number(expiresInDays);
       return auth.createApiToken(label.trim(), days);
     },
-    onSuccess: (t) => {
-      setJustCreated({ label: t.label, token: t.token });
+    onSuccess: (created) => {
+      setJustCreated({ label: created.label, token: created.token });
       setLabel("");
       setExpiresInDays("");
       qc.invalidateQueries({ queryKey: ["profile", "api-tokens"] });
@@ -48,46 +53,45 @@ function ApiTokens() {
       className="mb-6 rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]"
       data-testid="api-tokens"
     >
-      <h2 className="mb-1 text-sm font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">API tokens</h2>
+      <h2 className="mb-1 text-sm font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">{t("profile.tokens.title")}</h2>
       <p className="mb-3 text-xs text-slate-500 dark:text-[#8b95a5]">
-        Use a token as the password with Basic auth (email + token), like a Jira Cloud API token.
-        The token is shown only once, at creation.
+        {t("profile.tokens.help")}
       </p>
 
       <ul className="space-y-1 text-sm">
-        {(tokens.data ?? []).map((t) => (
+        {(tokens.data ?? []).map((tk) => (
           <li
-            key={t.id}
-            data-testid={`api-token-row-${t.id}`}
+            key={tk.id}
+            data-testid={`api-token-row-${tk.id}`}
             className="flex items-center justify-between gap-3 border-b border-slate-100 py-1 dark:border-[#2a3142]"
           >
             <span className="min-w-0 text-[#1a1f36] dark:text-[#e6e8eb]">
-              <span className="font-medium">{t.label || "(no label)"}</span>
+              <span className="font-medium">{tk.label || t("profile.tokens.noLabel")}</span>
               <span className="text-slate-400">
                 {" "}
-                · created {formatDate(t.created_at)} · expires{" "}
-                <span data-testid={`api-token-expires-${t.id}`}>{formatDate(t.expires_at)}</span>
+                · {t("profile.tokens.created", { date: formatDate(tk.created_at) })} · {t("profile.tokens.expires")}{" "}
+                <span data-testid={`api-token-expires-${tk.id}`}>{formatDate(tk.expires_at)}</span>
               </span>
             </span>
             <button
               type="button"
-              data-testid={`api-token-revoke-${t.id}`}
+              data-testid={`api-token-revoke-${tk.id}`}
               disabled={revoke.isPending}
               onClick={() => {
-                if (window.confirm(`Revoke token "${t.label || t.id}"? Clients using it will stop working.`)) {
-                  revoke.mutate(t.id);
+                if (window.confirm(t("profile.tokens.revokeConfirm", { name: tk.label || tk.id }))) {
+                  revoke.mutate(tk.id);
                 }
               }}
               className="shrink-0 rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
             >
-              Revoke
+              {t("profile.tokens.revoke")}
             </button>
           </li>
         ))}
-        {tokens.data && tokens.data.length === 0 && <li className="py-2 text-slate-400">No API tokens yet</li>}
+        {tokens.data && tokens.data.length === 0 && <li className="py-2 text-slate-400">{t("profile.tokens.empty")}</li>}
       </ul>
       {revoke.isError && (
-        <p className="mt-1 text-xs text-red-600">{(revoke.error as Error)?.message ?? "Revoke failed"}</p>
+        <p className="mt-1 text-xs text-red-600">{(revoke.error as Error)?.message ?? t("profile.tokens.revokeFailed")}</p>
       )}
 
       {justCreated && (
@@ -95,7 +99,7 @@ function ApiTokens() {
           data-testid="api-token-created"
           className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
         >
-          <p className="mb-1 font-semibold">Token &quot;{justCreated.label}&quot; created — copy it now, it will not be shown again.</p>
+          <p className="mb-1 font-semibold">{t("profile.tokens.createdNotice", { label: justCreated.label })}</p>
           <code data-testid="api-token-plaintext" className="block select-all break-all font-mono">
             {justCreated.token}
           </code>
@@ -111,28 +115,28 @@ function ApiTokens() {
         }}
       >
         <div>
-          <label className="mb-1 block text-xs font-semibold text-slate-500">Label</label>
+          <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.tokens.label")}</label>
           <input
-            aria-label="Token label"
+            aria-label={t("profile.tokens.labelAria")}
             data-testid="api-token-label-input"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="CI, laptop, …"
+            placeholder={t("profile.tokens.labelPlaceholder")}
             maxLength={255}
             className={inputCls}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold text-slate-500">Expires in (days)</label>
+          <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.tokens.expiresIn")}</label>
           <input
-            aria-label="Expires in days"
+            aria-label={t("profile.tokens.expiresInAria")}
             data-testid="api-token-expires-input"
             type="number"
             min={1}
             step={1}
             value={expiresInDays}
             onChange={(e) => setExpiresInDays(e.target.value)}
-            placeholder="never"
+            placeholder={t("common.never")}
             className={`${inputCls} w-28`}
           />
         </div>
@@ -142,11 +146,11 @@ function ApiTokens() {
           disabled={create.isPending || daysInvalid}
           className="rounded bg-[#0052cc] px-3 py-1.5 text-sm text-white disabled:opacity-60"
         >
-          Create token
+          {t("profile.tokens.create")}
         </button>
-        {daysInvalid && <span className="pb-1.5 text-xs text-red-600">Days must be a positive number</span>}
+        {daysInvalid && <span className="pb-1.5 text-xs text-red-600">{t("profile.tokens.daysInvalid")}</span>}
         {create.isError && (
-          <span className="pb-1.5 text-xs text-red-600">{(create.error as Error)?.message ?? "Create failed"}</span>
+          <span className="pb-1.5 text-xs text-red-600">{(create.error as Error)?.message ?? t("profile.tokens.createFailed")}</span>
         )}
       </form>
     </section>
@@ -160,13 +164,26 @@ function ApiTokens() {
 // which otherwise races fast programmatic input.
 function ProfileDetails({ me }: { me: JiraUser }) {
   const qc = useQueryClient();
+  const t = useT();
+  const { setLocale: applyLocale } = useLocale();
   const [displayName, setDisplayName] = useState(me.displayName ?? "");
   const [timeZone, setTimeZone] = useState(me.timeZone ?? "");
-  const [locale, setLocale] = useState(me.locale ?? "");
+  // Only Default ("") / English / Italiano are offered; a legacy stored value
+  // (es, fr, de, pt, …) is shown — and saved back — as Default.
+  const [locale, setLocale] = useState<string>(normalizeLocale(me.locale) ?? "");
 
   const save = useMutation({
     mutationFn: () => profile.update({ displayName, timeZone, locale }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["profile", "me"] }),
+    onSuccess: (updated) => {
+      // Keep the ["myself"] cache (read by LocaleSync) in step BEFORE switching,
+      // so LocaleSync never re-applies the previous saved locale.
+      qc.setQueryData(["myself"], updated);
+      qc.invalidateQueries({ queryKey: ["myself"] });
+      qc.invalidateQueries({ queryKey: ["profile", "me"] });
+      // Apply immediately. "Default" follows the browser (not the cookie, which
+      // still holds the previously chosen language).
+      applyLocale(locale ? resolveLocale({ user: locale }) : resolveLocale({ browser: navigator.language }));
+    },
   });
 
   const uploadAvatar = useMutation({
@@ -184,13 +201,13 @@ function ProfileDetails({ me }: { me: JiraUser }) {
 
   return (
     <section className="mb-6 rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]">
-      <label className="mb-1 block text-xs font-semibold text-slate-500">Avatar</label>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.details.avatar")}</label>
       <div className="mb-3 flex items-center gap-3">
         {me.avatarUrls?.["48x48"] ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={me.avatarUrls["48x48"]}
-            alt="Avatar"
+            alt={t("profile.details.avatar")}
             className="h-12 w-12 rounded-full border border-slate-200 object-cover"
           />
         ) : (
@@ -200,7 +217,7 @@ function ProfileDetails({ me }: { me: JiraUser }) {
         )}
         <div>
           <label className="inline-block cursor-pointer rounded border border-slate-300 px-3 py-1.5 text-sm text-[#1a1f36] hover:bg-slate-50 dark:border-[#2a3142] dark:text-[#e6e8eb] dark:hover:bg-[#232a3a]">
-            {uploadAvatar.isPending ? "Uploading…" : "Upload avatar"}
+            {uploadAvatar.isPending ? t("profile.details.uploading") : t("profile.details.uploadAvatar")}
             <input
               data-testid="avatar-upload"
               type="file"
@@ -215,49 +232,46 @@ function ProfileDetails({ me }: { me: JiraUser }) {
           </label>
           {uploadAvatar.isError && (
             <p className="mt-1 text-xs text-red-600">
-              {(uploadAvatar.error as Error)?.message ?? "Upload failed"}
+              {(uploadAvatar.error as Error)?.message ?? t("profile.details.uploadFailed")}
             </p>
           )}
         </div>
       </div>
 
-      <label className="mb-1 block text-xs font-semibold text-slate-500">Display name</label>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.details.displayName")}</label>
       <input
-        aria-label="Display name"
+        aria-label={t("profile.details.displayName")}
         value={displayName}
         onChange={(e) => setDisplayName(e.target.value)}
         className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
       />
-      <label className="mb-1 block text-xs font-semibold text-slate-500">Time zone</label>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.details.timeZone")}</label>
       <input
-        aria-label="Time zone"
+        aria-label={t("profile.details.timeZone")}
         value={timeZone}
         onChange={(e) => setTimeZone(e.target.value)}
         placeholder="Europe/Rome"
         className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
       />
-      <label className="mb-1 block text-xs font-semibold text-slate-500">Language</label>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.details.language")}</label>
       <select
         data-testid="profile-locale"
-        aria-label="Language"
+        aria-label={t("profile.details.language")}
         value={locale}
         onChange={(e) => setLocale(e.target.value)}
         className="mb-3 w-full rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
       >
-        <option value="">Default</option>
+        <option value="">{t("profile.details.languageDefault")}</option>
+        {/* Language names are shown in their own language, whatever the UI locale. */}
         <option value="en">English</option>
         <option value="it">Italiano</option>
-        <option value="es">Español</option>
-        <option value="fr">Français</option>
-        <option value="de">Deutsch</option>
-        <option value="pt">Português</option>
       </select>
       <button
         onClick={() => save.mutate()}
         disabled={save.isPending}
         className="rounded bg-[#0052cc] px-4 py-1.5 text-sm text-white disabled:opacity-60"
       >
-        Save profile
+        {t("profile.details.save")}
       </button>
       <p className="mt-2 text-xs text-slate-500">{me.emailAddress}</p>
     </section>
@@ -266,6 +280,11 @@ function ProfileDetails({ me }: { me: JiraUser }) {
 
 export default function ProfilePage() {
   const qc = useQueryClient();
+  const t = useT();
+  const eventLabel = (code: string) => {
+    const key = eventLabelKey(code);
+    return key ? t(key) : code;
+  };
   const me = useQuery({ queryKey: ["profile", "me"], queryFn: profile.me });
 
   const settings = useQuery({ queryKey: ["notif", "settings"], queryFn: notifications.settings });
@@ -291,13 +310,13 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-xl font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">Profile</h1>
+      <h1 className="mb-4 text-xl font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">{t("profile.title")}</h1>
 
       <section className="mb-6 rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]">
-        <label className="mb-1 block text-xs font-semibold text-slate-500">Appearance</label>
+        <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.appearance")}</label>
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <span className="text-sm text-slate-500 dark:text-[#8b95a5]">Toggle light / dark theme</span>
+          <span className="text-sm text-slate-500 dark:text-[#8b95a5]">{t("profile.themeHint")}</span>
         </div>
       </section>
 
@@ -305,14 +324,14 @@ export default function ProfilePage() {
         <ProfileDetails me={me.data} />
       ) : (
         <section className="mb-6 rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]">
-          <p className="text-sm text-slate-400">Loading profile…</p>
+          <p className="text-sm text-slate-400">{t("profile.loading")}</p>
         </section>
       )}
 
       <ApiTokens />
 
       <section className="rounded border border-slate-200 bg-white p-4 dark:border-[#2a3142] dark:bg-[#1a1f2e]" data-testid="notif-prefs">
-        <h2 className="mb-2 text-sm font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">Notification preferences</h2>
+        <h2 className="mb-2 text-sm font-semibold text-[#1a1f36] dark:text-[#e6e8eb]">{t("profile.prefs.title")}</h2>
         <ul className="space-y-1 text-sm">
           {(settings.data ?? []).map((s) => (
             <li
@@ -322,21 +341,21 @@ export default function ProfilePage() {
               className="flex items-center justify-between border-b border-slate-100 py-1 dark:border-[#2a3142]"
             >
               <span className="text-[#1a1f36] dark:text-[#e6e8eb]">
-                <span className="font-medium">{s.event_type}</span>
-                <span className="text-slate-400"> · {s.project_id ? "Project-scoped" : "All projects"}</span>
+                <span className="font-medium">{eventLabel(s.event_type)}</span>
+                <span className="text-slate-400"> · {s.project_id ? t("profile.prefs.projectScoped") : t("profile.prefs.allProjects")}</span>
               </span>
               <span className="flex gap-3">
                 <label className="flex items-center gap-1 text-xs">
-                  <input type="checkbox" checked={s.via_app} onChange={(e) => toggleApp(s, e.target.checked)} /> app
+                  <input type="checkbox" checked={s.via_app} onChange={(e) => toggleApp(s, e.target.checked)} /> {t("profile.prefs.app")}
                 </label>
                 <label className="flex items-center gap-1 text-xs">
-                  <input type="checkbox" checked={s.via_email} onChange={(e) => toggleEmail(s, e.target.checked)} /> email
+                  <input type="checkbox" checked={s.via_email} onChange={(e) => toggleEmail(s, e.target.checked)} /> {t("profile.prefs.email")}
                 </label>
               </span>
             </li>
           ))}
           {settings.data && settings.data.length === 0 && (
-            <li className="py-2 text-slate-400">Default preferences (all channels on)</li>
+            <li className="py-2 text-slate-400">{t("profile.prefs.defaults")}</li>
           )}
         </ul>
 
@@ -349,39 +368,38 @@ export default function ProfilePage() {
           }}
         >
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-500">Event type</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.prefs.eventType")}</label>
             <select
-              aria-label="Event type"
+              aria-label={t("profile.prefs.eventType")}
               value={newEvent}
               onChange={(e) => setNewEvent(e.target.value)}
               className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-[#2a3142] dark:bg-[#0e1116] dark:text-[#e6e8eb]"
             >
-              <option value="assignment">assignment</option>
-              <option value="comment">comment</option>
-              <option value="mention">mention</option>
-              <option value="status_change">status_change</option>
-              <option value="sprint_started">sprint_started</option>
-              <option value="sprint_completed">sprint_completed</option>
+              {EVENT_TYPES.map((code) => (
+                <option key={code} value={code}>
+                  {eventLabel(code)}
+                </option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-500">Scope</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-500">{t("profile.prefs.scope")}</label>
             <span className="block rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm text-slate-500 dark:border-[#2a3142] dark:bg-[#0e1116]">
-              All projects
+              {t("profile.prefs.allProjects")}
             </span>
           </div>
           <label className="flex items-center gap-1 pb-1.5 text-xs">
-            <input type="checkbox" aria-label="App" checked={newApp} onChange={(e) => setNewApp(e.target.checked)} /> App
+            <input type="checkbox" aria-label={t("profile.prefs.appOption")} checked={newApp} onChange={(e) => setNewApp(e.target.checked)} /> {t("profile.prefs.appOption")}
           </label>
           <label className="flex items-center gap-1 pb-1.5 text-xs">
-            <input type="checkbox" aria-label="Email" checked={newEmail} onChange={(e) => setNewEmail(e.target.checked)} /> Email
+            <input type="checkbox" aria-label={t("profile.prefs.emailOption")} checked={newEmail} onChange={(e) => setNewEmail(e.target.checked)} /> {t("profile.prefs.emailOption")}
           </label>
           <button
             type="submit"
             disabled={updateSetting.isPending}
             className="rounded bg-[#0052cc] px-3 py-1.5 text-sm text-white disabled:opacity-60"
           >
-            Add preference
+            {t("profile.prefs.add")}
           </button>
         </form>
       </section>

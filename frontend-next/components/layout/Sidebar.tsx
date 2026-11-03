@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 interface NavItem {
-  label: string;
+  labelKey: MessageKey;
   href?: string;
   icon: React.ReactNode;
   badge?: string;
@@ -32,7 +33,7 @@ function JiraLogo() {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    label: "For you",
+    labelKey: "layout.nav.forYou",
     href: "/app",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -45,7 +46,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Recent",
+    labelKey: "layout.nav.recent",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path
@@ -57,7 +58,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Starred",
+    labelKey: "layout.nav.starred",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -65,7 +66,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Apps",
+    labelKey: "layout.nav.apps",
     comingSoon: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -74,7 +75,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Plans",
+    labelKey: "layout.nav.plans",
     comingSoon: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -87,7 +88,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Projects",
+    labelKey: "layout.nav.projects",
     href: "/app/projects",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -96,7 +97,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Filters",
+    labelKey: "layout.nav.filters",
     href: "/app/filters",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -109,7 +110,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Dashboards",
+    labelKey: "layout.nav.dashboards",
     href: "/app/dashboards",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -121,7 +122,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const BOTTOM_ITEMS: NavItem[] = [
   {
-    label: "Teams",
+    labelKey: "layout.nav.teams",
     href: "/app/groups",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -130,7 +131,7 @@ const BOTTOM_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Goals",
+    labelKey: "layout.nav.goals",
     comingSoon: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -146,6 +147,7 @@ const BOTTOM_ITEMS: NavItem[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const t = useT();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -180,7 +182,7 @@ export default function Sidebar() {
           <button
             onClick={() => setCollapsed(true)}
             className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-            title="Collapse sidebar"
+            title={t("layout.sidebar.collapse")}
           >
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path
@@ -195,7 +197,7 @@ export default function Sidebar() {
           <button
             onClick={() => setCollapsed(false)}
             className="absolute left-11 p-1.5 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
-            title="Expand sidebar"
+            title={t("layout.sidebar.expand")}
           >
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
               <path
@@ -211,12 +213,13 @@ export default function Sidebar() {
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
         {NAV_ITEMS.map((item) => {
+          const label = t(item.labelKey);
           if (item.comingSoon) {
             return (
               <span
-                key={item.label}
+                key={item.labelKey}
                 aria-disabled="true"
-                title={collapsed ? `${item.label} (Coming soon)` : "Coming soon"}
+                title={collapsed ? t("layout.sidebar.comingSoonItem", { label }) : t("layout.sidebar.comingSoon")}
                 className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium text-[#42526e] opacity-40 cursor-not-allowed select-none ${
                   collapsed ? "justify-center" : ""
                 }`}
@@ -224,9 +227,9 @@ export default function Sidebar() {
                 <span className="shrink-0 text-slate-400">{item.icon}</span>
                 {!collapsed && (
                   <span className="truncate flex items-center gap-1.5">
-                    {item.label}
+                    {label}
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 text-slate-400">
-                      Soon
+                      {t("layout.sidebar.soonBadge")}
                     </span>
                   </span>
                 )}
@@ -237,19 +240,19 @@ export default function Sidebar() {
           const Wrapper = item.href ? Link : "button";
           return (
             <Wrapper
-              key={item.label}
+              key={item.labelKey}
               href={item.href ?? "#"}
               className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium transition-colors group ${
                 isActive
                   ? "bg-[#e8f0fe] dark:bg-[#1c2b46] text-[#0052cc] dark:text-[#7aa7ff]"
                   : "text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-100 dark:hover:bg-[#232a3a] hover:text-[#1a1f36] dark:hover:text-white"
               } ${collapsed ? "justify-center" : ""}`}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? label : undefined}
             >
               <span className={`shrink-0 ${isActive ? "text-[#0052cc]" : "text-slate-400 group-hover:text-slate-500"}`}>
                 {item.icon}
               </span>
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="truncate">{label}</span>}
             </Wrapper>
           );
         })}
@@ -258,12 +261,13 @@ export default function Sidebar() {
       {/* Bottom items */}
       <div className="border-t border-slate-100 dark:border-[#2a3142] py-2 px-2 space-y-0.5">
         {BOTTOM_ITEMS.map((item) => {
+          const label = t(item.labelKey);
           if (item.comingSoon) {
             return (
               <span
-                key={item.label}
+                key={item.labelKey}
                 aria-disabled="true"
-                title={collapsed ? `${item.label} (Coming soon)` : "Coming soon"}
+                title={collapsed ? t("layout.sidebar.comingSoonItem", { label }) : t("layout.sidebar.comingSoon")}
                 className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium text-[#42526e] opacity-40 cursor-not-allowed select-none ${
                   collapsed ? "justify-center" : ""
                 }`}
@@ -271,9 +275,9 @@ export default function Sidebar() {
                 <span className="shrink-0 text-slate-400">{item.icon}</span>
                 {!collapsed && (
                   <span className="truncate flex items-center gap-1.5">
-                    {item.label}
+                    {label}
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 text-slate-400">
-                      Soon
+                      {t("layout.sidebar.soonBadge")}
                     </span>
                   </span>
                 )}
@@ -285,14 +289,14 @@ export default function Sidebar() {
             : false;
           return (
             <Link
-              key={item.label}
+              key={item.labelKey}
               href={item.href ?? "#"}
               className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium transition-colors group ${
                 isActive
                   ? "bg-[#e8f0fe] dark:bg-[#1c2b46] text-[#0052cc] dark:text-[#7aa7ff]"
                   : "text-[#42526e] dark:text-[#c3c9d3] hover:bg-slate-100 dark:hover:bg-[#232a3a] hover:text-[#1a1f36] dark:hover:text-white"
               } ${collapsed ? "justify-center" : ""}`}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? label : undefined}
             >
               <span
                 className={`shrink-0 ${
@@ -301,7 +305,7 @@ export default function Sidebar() {
               >
                 {item.icon}
               </span>
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="truncate">{label}</span>}
             </Link>
           );
         })}
@@ -315,7 +319,7 @@ export default function Sidebar() {
                 clipRule="evenodd"
               />
             </svg>
-            Customize sidebar
+            {t("layout.sidebar.customize")}
           </button>
         )}
       </div>
