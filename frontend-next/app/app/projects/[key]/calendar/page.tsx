@@ -81,7 +81,7 @@ export default function CalendarPage({ params }: { params: Promise<{ key: string
             </div>
           ))}
           {blanks.map((_, i) => (
-            <div key={`b${i}`} className="min-h-24 rounded bg-slate-50/50" />
+            <div key={`b${i}`} data-testid="calendar-blank" className="min-h-24 rounded bg-slate-50/50" />
           ))}
           {(q.data?.days ?? []).map((day) => (
             <div

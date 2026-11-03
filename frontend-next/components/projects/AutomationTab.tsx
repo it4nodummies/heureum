@@ -10,6 +10,12 @@ const TRIGGERS = ["issue_created", "issue_updated", "issue_transitioned"] as con
 const CONDITION_FIELDS = ["priority", "title_contains"] as const;
 const ACTION_TYPES = ["set_assignee", "add_label", "transition_issue", "add_comment"] as const;
 
+const RUN_STATUSES = ["success", "skipped", "error", "test"] as const;
+
+function isRunStatus(v: string): v is (typeof RUN_STATUSES)[number] {
+  return (RUN_STATUSES as readonly string[]).includes(v);
+}
+
 function isTrigger(v: string): v is (typeof TRIGGERS)[number] {
   return (TRIGGERS as readonly string[]).includes(v);
 }
@@ -45,7 +51,9 @@ function RunsView({ ruleId }: { ruleId: string }) {
       {rows.map((run: AutomationRun) => (
         <li key={run.id} className="flex flex-col gap-0.5 border-b border-slate-100 py-1 text-xs">
           <span className="flex items-center gap-2">
-            <span className="font-medium text-[#1a1f36]">{run.status}</span>
+            <span className="font-medium text-[#1a1f36]">
+              {isRunStatus(run.status) ? t(`projects.automation.runStatus.${run.status}`) : run.status}
+            </span>
             <span className="text-slate-400">{fmt.dateTime(run.triggered_at)}</span>
           </span>
           {run.log && <span className="text-slate-500">{run.log}</span>}

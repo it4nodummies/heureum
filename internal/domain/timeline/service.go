@@ -1,6 +1,7 @@
 package timeline
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -185,7 +186,7 @@ func (s *Service) generateHeaders(start, end time.Time, zoom string) []string {
 	case "quarters":
 		current = time.Date(start.Year(), time.Month(((int(start.Month())-1)/3)*3+1), 1, 0, 0, 0, 0, start.Location())
 		for current.Before(end) || current.Equal(end) {
-			headers = append(headers, current.Format("2006-Q1"))
+			headers = append(headers, fmt.Sprintf("%d-Q%d", current.Year(), (int(current.Month())-1)/3+1))
 			current = current.AddDate(0, 3, 0)
 		}
 	case "months":

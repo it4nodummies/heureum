@@ -5,6 +5,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { integrations, type Webhook } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 
+const EVENTS = ["issue_created", "issue_updated", "issue_transitioned"] as const;
+
+function isEvent(v: string): v is (typeof EVENTS)[number] {
+  return (EVENTS as readonly string[]).includes(v);
+}
+
 export function IntegrationsTab({ projectKey }: { projectKey: string }) {
   const qc = useQueryClient();
   const t = useT();
@@ -14,7 +20,7 @@ export function IntegrationsTab({ projectKey }: { projectKey: string }) {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["webhooks", projectKey] });
 
   const create = useMutation({
-    mutationFn: () => integrations.createWebhook(projectKey, url, ["issue_created", "issue_updated", "issue_transitioned"]),
+    mutationFn: () => integrations.createWebhook(projectKey, url, [...EVENTS]),
     onSuccess: () => { setUrl(""); invalidate(); },
   });
   const del = useMutation({ mutationFn: (id: string) => integrations.deleteWebhook(projectKey, id), onSuccess: invalidate });
@@ -28,7 +34,7 @@ export function IntegrationsTab({ projectKey }: { projectKey: string }) {
             <li key={h.id} className="flex items-center justify-between border-b border-slate-100 py-1 text-sm">
               <span className="truncate text-[#1a1f36]">{h.url}</span>
               <span className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">{h.events.join(", ")}</span>
+                <span className="text-xs text-slate-400">{h.events.map((e) => (isEvent(e) ? t(`projects.automation.triggers.${e}`) : e)).join(", ")}</span>
                 <button onClick={() => del.mutate(h.id)} className="text-xs text-red-600 hover:underline" aria-label={t("projects.integrations.deleteAria", { url: h.url })}>{t("projects.integrations.remove")}</button>
               </span>
             </li>

@@ -80,7 +80,14 @@ export default function TimelinePage({ params }: { params: Promise<{ key: string
   );
 }
 
+const BAR_TYPES = ["sprint", "epic", "version"] as const;
+
+function isBarType(v: string): v is (typeof BAR_TYPES)[number] {
+  return (BAR_TYPES as readonly string[]).includes(v);
+}
+
 function TimelineChart({ data }: { data: { start_date: string; end_date: string; bars: TimelineBar[]; headers: string[] } }) {
+  const t = useT();
   const min = new Date(data.start_date).getTime();
   const max = new Date(data.end_date).getTime();
   const formatHeader = useHeaderFormatter();
@@ -110,7 +117,7 @@ function TimelineChart({ data }: { data: { start_date: string; end_date: string;
                   data-testid="timeline-bar"
                   className="absolute top-0 flex h-5 items-center rounded px-1.5 text-[10px] font-medium text-white"
                   style={{ left: `${left}%`, width: `${width}%`, backgroundColor: bar.color }}
-                  title={`${bar.name} · ${bar.type}${bar.type === "sprint" ? ` · ${Math.round(bar.progress)}%` : ""}`}
+                  title={`${bar.name} · ${isBarType(bar.type) ? t(`projects.timeline.types.${bar.type}`) : bar.type}${bar.type === "sprint" ? ` · ${Math.round(bar.progress)}%` : ""}`}
                 >
                   {bar.type === "sprint" ? `${Math.round(bar.progress)}%` : ""}
                 </div>

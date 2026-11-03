@@ -58,6 +58,22 @@ test.beforeAll(async ({ playwright }) => {
   });
   expect(project.status(), `create project ${projectKey}`).toBe(201);
 
+  // A dated sprint (Jan–Feb 2026) on the project's board, so the timeline
+  // ruler has month and quarter headers to localise.
+  let boardId = 0;
+  for (let startAt = 0; !boardId; startAt += 100) {
+    const page = await request.get(`${API}/rest/agile/1.0/board?startAt=${startAt}&maxResults=100`, { headers });
+    expect(page.status(), "list boards").toBe(200);
+    const body = (await page.json()) as { values: { id: number; location?: { projectKey?: string } }[]; isLast?: boolean; total?: number };
+    boardId = body.values.find((b) => b.location?.projectKey === projectKey)?.id ?? 0;
+    if (!boardId && body.values.length === 0) throw new Error(`no board for ${projectKey}`);
+  }
+  const sprint = await request.post(`${API}/rest/agile/1.0/sprint`, {
+    headers,
+    data: { name: `Sprint I18N ${stamp}`, originBoardId: boardId, startDate: "2026-01-10", endDate: "2026-02-20" },
+  });
+  expect(sprint.status(), "create sprint").toBe(201);
+
   const version = await request.post(`${API}/rest/api/3/version`, {
     headers,
     data: { project: projectKey, name: releaseName, releaseDate: "2026-12-31" },
@@ -167,7 +183,7 @@ test("releases in Italian, with an Italian date", async ({ page }) => {
 test("reports in Italian (titles, empty states, pie fields)", async ({ page }) => {
   await login(page);
   await page.goto(`/app/projects/${projectKey}/reports`);
-  for (const name of ["Burndown", "Burnup", "Velocità", "Flusso cumulativo", "Creati e risolti (14 g)", "Ripartizione"]) {
+  for (const name of ["Burndown", "Burnup", "Velocità", "Flusso cumulativo", "Creati e risolti (ultimi 14 giorni)", "Ripartizione"]) {
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   }
   await expect(page.getByText("Nessuno sprint completato")).toBeVisible();
@@ -176,6 +192,11 @@ test("reports in Italian (titles, empty states, pie fields)", async ({ page }) =
   await expect(pie.locator("option")).toHaveText(["Stato", "Priorità", "Assegnatario", "Tipo"]);
   await expect(page.getByTestId("cfd-chart")).toContainText("Da fare");
 });
+
+function itMonthTitle(d: Date): string {
+  const s = new Intl.DateTimeFormat("it", { month: "long", year: "numeric" }).format(d);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 test("calendar month and weekday names from Intl, Monday first", async ({ page }) => {
   await login(page);
@@ -190,6 +211,26 @@ test("calendar month and weekday names from Intl, Monday first", async ({ page }
   await expect(headers.last()).toHaveText("dom");
   await expect(page.getByRole("button", { name: "Mese precedente" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Mese successivo" })).toBeVisible();
+
+  // Walk to March 2026: 1 March 2026 is a Sunday, so with Monday first there
+  // are 6 leading blanks and day 1 sits in the 7th column, under "dom".
+  const title = page.getByTestId("calendar-title");
+  const cursor = new Date(now.getFullYear(), now.getMonth(), 1);
+  const target = new Date(2026, 2, 1);
+  while (cursor.getTime() !== target.getTime()) {
+    const back = cursor > target;
+    cursor.setMonth(cursor.getMonth() + (back ? -1 : 1));
+    await page.getByRole("button", { name: back ? "Mese precedente" : "Mese successivo" }).click();
+    await expect(title).toHaveText(itMonthTitle(cursor));
+  }
+  await expect(title).toHaveText("Marzo 2026");
+  await expect(page.getByTestId("calendar-blank")).toHaveCount(6);
+  const grid = page.getByTestId("calendar-grid");
+  // 7 weekday headers + 6 blanks → the 14th cell is day 1, in the "dom" column.
+  const dayOne = grid.locator(":scope > :nth-child(14)");
+  await expect(dayOne).toHaveAttribute("data-testid", "calendar-day");
+  await expect(dayOne.locator("div").first()).toHaveText("1");
+  await expect(grid.locator(":scope > :nth-child(7)")).toHaveText("dom");
 });
 
 test("timeline in Italian", async ({ page }) => {
@@ -198,4 +239,18 @@ test("timeline in Italian", async ({ page }) => {
   const zoom = page.getByLabel("Zoom della timeline");
   await expect(zoom.locator("option")).toHaveText(["Settimane", "Mesi", "Trimestri"]);
   await expect(page.getByText("Zoom", { exact: true })).toBeVisible();
+
+  // Ruler headers come from the server in English; they are re-formatted.
+  const chart = page.getByTestId("timeline-chart");
+  await zoom.selectOption("months");
+  await expect(chart).toContainText("gen 2026");
+  await expect(chart).toContainText("feb 2026");
+  await expect(chart).not.toContainText("Jan 2026");
+  await zoom.selectOption("quarters");
+  await expect(chart).toContainText("T1 2026");
+  // The release (31 Dec 2026) stretches the range across the year.
+  await expect(chart).toContainText("T2 2026");
+  await expect(chart).not.toContainText("2026-Q");
+  // Bar tooltip: the type is chrome too (sprint stays per the glossary).
+  await expect(chart.getByTestId("timeline-bar").first()).toHaveAttribute("title", /· (sprint|epic|release)/);
 });
