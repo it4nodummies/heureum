@@ -4,7 +4,7 @@ import type { profile as en } from "../en/profile";
 export const profile: Catalog<typeof en> = {
   title: "Profilo",
   appearance: "Aspetto",
-  themeHint: "Alterna tema chiaro / scuro",
+  themeHint: "Alterna tema chiaro e scuro",
   loading: "Caricamento del profilo…",
   details: {
     avatar: "Avatar",

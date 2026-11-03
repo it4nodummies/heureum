@@ -20,7 +20,7 @@ export const issues: Catalog<typeof en> = {
   assigned: "Assegnato",
   none: "Nessuna",
   detail: {
-    loading: "Caricamento ticket…",
+    loading: "Caricamento del ticket…",
     notFound: "Il ticket non esiste o non hai i permessi per vederlo.",
     missing: "Ticket non trovato.",
     breadcrumbProjects: "Progetti",
@@ -84,7 +84,7 @@ export const issues: Catalog<typeof en> = {
     history: "Cronologia",
   },
   history: {
-    loading: "Caricamento cronologia…",
+    loading: "Caricamento della cronologia…",
     empty: "Nessuna modifica registrata.",
     system: "Sistema",
     changed: "{author} ha modificato {field} da «{from}» a «{to}»",
@@ -222,6 +222,6 @@ export const issues: Catalog<typeof en> = {
     searchPeople: "Cerca persone",
     searchPeoplePlaceholder: "Cerca persone…",
     assignToMe: "Assegna a me",
-    noMatches: "Nessuna persona corrispondente",
+    noMatches: "Nessuna persona trovata",
   },
 };
