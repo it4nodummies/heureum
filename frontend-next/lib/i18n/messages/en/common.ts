@@ -8,13 +8,8 @@ export const common = {
     create: "Create",
     edit: "Edit",
     close: "Close",
-    add: "Add",
     remove: "Remove",
-    confirm: "Confirm",
     search: "Search",
   },
-  loading: "Loading…",
   never: "never",
-  error: "An error occurred",
-  issueCount: { one: "{count} issue", other: "{count} issues" },
 } as const;

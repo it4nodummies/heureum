@@ -8,7 +8,7 @@ export const filters: Catalog<typeof en> = {
   save: "Salva filtro",
   invalidJql: "Query JQL non valida",
   saved: "Filtri salvati",
-  noneYet: "Nessun filtro salvato",
+  noneYet: "Ancora nessun filtro salvato",
   resultCount: { one: "{count} risultato", other: "{count} risultati" },
   prev: "Precedente",
   next: "Successiva",

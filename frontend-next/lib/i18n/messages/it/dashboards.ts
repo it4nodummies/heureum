@@ -5,7 +5,7 @@ export const dashboards: Catalog<typeof en> = {
   title: "Dashboard",
   newName: "Nome della nuova dashboard",
   namePlaceholder: "Nome dashboard",
-  empty: "Nessuna dashboard",
+  empty: "Ancora nessuna dashboard",
   detail: {
     fallbackTitle: "Dashboard",
     gadgetType: "Tipo di gadget",

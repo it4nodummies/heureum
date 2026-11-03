@@ -4,6 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { reports } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 
+// COALESCE(ws.name, 'No Status') in internal/domain/report/service.go.
+const NO_STATUS = "No Status";
+
 export function ProjectSummary({ projectKey }: { projectKey: string }) {
   const t = useT();
   const summary = useQuery({ queryKey: ["summary", projectKey], queryFn: () => reports.summary(projectKey) });
@@ -20,7 +23,10 @@ export function ProjectSummary({ projectKey }: { projectKey: string }) {
         <ul className="text-sm" data-testid="summary-status-counts">
           {Object.entries(s?.issue_count_by_status ?? {}).map(([name, n]) => (
             <li key={name} className="flex justify-between border-b border-slate-100 py-1">
-              <span className="text-[#1a1f36]">{name}</span>
+              <span className="text-[#1a1f36]">
+                {/* "No Status" is the backend's fallback bucket, not a status name. */}
+                {name === NO_STATUS ? t("projects.summary.noStatus") : name}
+              </span>
               <span className="text-slate-500">{n}</span>
             </li>
           ))}

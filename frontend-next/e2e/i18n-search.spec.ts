@@ -192,7 +192,7 @@ test("teams page in Italian", async ({ page }) => {
   await expect(list.getByText(team, { exact: true })).toBeVisible();
 
   await list.getByText(team, { exact: true }).click();
-  await expect(page.getByText("Nessun membro")).toBeVisible();
+  await expect(page.getByText("Ancora nessun membro")).toBeVisible();
   await expect(page.getByLabel(`Aggiungi utente a ${team}`)).toHaveAttribute(
     "placeholder",
     "Cerca persone da aggiungere…",

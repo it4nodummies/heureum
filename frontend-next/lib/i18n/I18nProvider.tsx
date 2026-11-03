@@ -18,7 +18,13 @@ export function readLocaleCookie(): string | null {
   const prefix = `${LOCALE_COOKIE}=`;
   for (const part of document.cookie.split(";")) {
     const c = part.trim();
-    if (c.startsWith(prefix)) return decodeURIComponent(c.slice(prefix.length));
+    if (c.startsWith(prefix)) {
+      try {
+        return decodeURIComponent(c.slice(prefix.length));
+      } catch {
+        return null; // malformed cookie: treat as absent
+      }
+    }
   }
   return null;
 }

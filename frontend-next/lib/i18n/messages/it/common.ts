@@ -9,13 +9,8 @@ export const common: Catalog<typeof en> = {
     create: "Crea",
     edit: "Modifica",
     close: "Chiudi",
-    add: "Aggiungi",
     remove: "Rimuovi",
-    confirm: "Conferma",
     search: "Cerca",
   },
-  loading: "Caricamento…",
   never: "mai",
-  error: "Si è verificato un errore",
-  issueCount: { one: "{count} ticket", other: "{count} ticket" },
 };

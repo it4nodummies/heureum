@@ -17,7 +17,7 @@ export const notifications: Catalog<typeof en> = {
     mention: "Ti hanno menzionato in {key}",
     sprint_started: "Sprint avviato",
     sprint_completed: "Sprint completato",
-    status_change: "Stato modificato su {key}",
+    status_change: "Stato cambiato su {key}",
   },
   bodies: {
     assignment: "Ti è stato assegnato {key}: {summary}",

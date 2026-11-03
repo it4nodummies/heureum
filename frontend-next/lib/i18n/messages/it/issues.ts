@@ -4,12 +4,12 @@ import type { issues as en } from "../en/issues";
 export const issues: Catalog<typeof en> = {
   actions: {
     save: "Salva",
-    saving: "Salvataggio…",
+    saving: "Salvataggio in corso…",
     cancel: "Annulla",
     add: "Aggiungi",
     adding: "Aggiunta in corso…",
     delete: "Elimina",
-    deleting: "Eliminazione…",
+    deleting: "Eliminazione in corso…",
     remove: "Rimuovi",
     edit: "Modifica",
     select: "Seleziona…",
@@ -69,7 +69,7 @@ export const issues: Catalog<typeof en> = {
     failed: "Impossibile creare il ticket",
     done: "Chiudi",
     cancel: "Annulla",
-    creating: "Creazione…",
+    creating: "Creazione in corso…",
     create: "Crea",
   },
   comments: {
@@ -85,7 +85,7 @@ export const issues: Catalog<typeof en> = {
   },
   history: {
     loading: "Caricamento della cronologia…",
-    empty: "Nessuna modifica registrata.",
+    empty: "Ancora nessuna modifica registrata.",
     system: "Sistema",
     changed: "{author} ha modificato {field} da «{from}» a «{to}»",
     createdIssue: "{author} ha creato il ticket",
@@ -154,7 +154,7 @@ export const issues: Catalog<typeof en> = {
   timeTracking: {
     title: "Monitoraggio del tempo",
     logWork: "Registra lavoro",
-    logging: "Registrazione…",
+    logging: "Registrazione in corso…",
     summary: "{logged} registrato / {estimated} stimato",
     remaining: " · {remaining} residuo",
     loggedNoEstimate: "{logged} registrato · nessuna stima impostata",
@@ -172,7 +172,7 @@ export const issues: Catalog<typeof en> = {
     dropzone: "Trascina qui i file oppure",
     browse: "sfoglia",
     upload: "Carica allegato",
-    uploading: "Caricamento di {name}…",
+    uploading: "Caricamento di {name} in corso…",
     uploadFailed: "Impossibile caricare il file.",
     empty: "Ancora nessun allegato.",
     download: "Scarica",

@@ -109,6 +109,8 @@ export const projects = {
     completed7d: "Completed (7d)",
     byStatus: "Issues by status",
     activeSprint: "Active sprint:",
+    // Backend fallback bucket for issues without a status (report.Service.GetProjectSummary).
+    noStatus: "No Status",
   },
   integrations: {
     title: "Outgoing webhooks",

@@ -10,8 +10,8 @@ export const boards: Catalog<typeof en> = {
     remove: "Rimuovi",
     dismissError: "Chiudi l'errore",
   },
-  moveFailed: "Spostamento non riuscito",
-  moveFailedWith: "Spostamento non riuscito: {message}",
+  moveFailed: "Impossibile spostare il ticket",
+  moveFailedWith: "Impossibile spostare il ticket: {message}",
   board: {
     epicFilter: "Filtro epic",
     allEpics: "Tutte le epic",
@@ -113,10 +113,10 @@ export const boards: Catalog<typeof en> = {
     quickFilterName: "Nome del filtro rapido",
     quickFilterJql: "JQL del filtro rapido",
     addFilter: "Aggiungi filtro",
-    saving: "Salvataggio…",
+    saving: "Salvataggio in corso…",
     save: "Salva impostazioni board",
     saved: "Salvato",
-    saveFailed: "Salvataggio non riuscito",
+    saveFailed: "Impossibile salvare le impostazioni della board",
     validation: {
       noColumns: "Aggiungi almeno una colonna.",
       emptyName: "I nomi delle colonne non possono essere vuoti.",
