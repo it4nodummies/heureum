@@ -1,11 +1,40 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { timeline, type TimelineBar } from "@/lib/api";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
+import { useLocale, useT } from "@/lib/i18n";
 
 type Zoom = "weeks" | "months" | "quarters";
+
+const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The server formats ruler headers in English ("Jan 2026" for months,
+ * "Jan 02" for weeks, "2026-Q1" for quarters). Outside English, re-format the
+ * month/week ones with Intl; anything unrecognised is shown as received.
+ */
+function useHeaderFormatter(): (h: string) => string {
+  const { locale } = useLocale();
+  const t = useT();
+  return useMemo(() => {
+    if (locale === "en") return (h: string) => h;
+    const monthYear = new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" });
+    const dayMonth = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" });
+    return (h: string) => {
+      const q = /^(\d{4})-Q([1-4])$/.exec(h);
+      if (q) return t("projects.timeline.quarter", { year: q[1], q: q[2] });
+      const m = /^([A-Z][a-z]{2}) (\d{2}|\d{4})$/.exec(h);
+      const month = m ? EN_MONTHS.indexOf(m[1]) : -1;
+      if (!m || month < 0) return h;
+      // Week headers carry no year: 2000 is a leap year, so "Feb 29" stays valid.
+      return m[2].length === 4
+        ? monthYear.format(new Date(Number(m[2]), month, 1))
+        : dayMonth.format(new Date(2000, month, Number(m[2])));
+    };
+  }, [locale, t]);
+}
 
 function pct(value: number, min: number, max: number): number {
   if (max <= min) return 0;
@@ -14,6 +43,7 @@ function pct(value: number, min: number, max: number): number {
 
 export default function TimelinePage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params);
+  const t = useT();
   const [zoom, setZoom] = useState<Zoom>("weeks");
   const q = useQuery({
     queryKey: ["timeline", key, zoom],
@@ -25,22 +55,22 @@ export default function TimelinePage({ params }: { params: Promise<{ key: string
       <ProjectHeader projectKey={key} active="timeline" />
       <div className="mx-auto max-w-5xl p-6">
         <div className="mb-4 flex items-center gap-2">
-          <label className="text-sm text-slate-500">Zoom</label>
+          <label className="text-sm text-slate-500">{t("projects.timeline.zoom")}</label>
           <select
-            aria-label="Timeline zoom"
+            aria-label={t("projects.timeline.zoomAria")}
             value={zoom}
             onChange={(e) => setZoom(e.target.value as Zoom)}
             className="rounded border border-slate-300 px-2 py-1 text-sm"
           >
-            <option value="weeks">Weeks</option>
-            <option value="months">Months</option>
-            <option value="quarters">Quarters</option>
+            <option value="weeks">{t("projects.timeline.zooms.weeks")}</option>
+            <option value="months">{t("projects.timeline.zooms.months")}</option>
+            <option value="quarters">{t("projects.timeline.zooms.quarters")}</option>
           </select>
         </div>
 
-        {q.isLoading && <p className="text-sm text-slate-400">Loading timeline…</p>}
+        {q.isLoading && <p className="text-sm text-slate-400">{t("projects.timeline.loading")}</p>}
         {q.data && q.data.bars.length === 0 && (
-          <p className="text-sm text-slate-400">No epics or sprints with dates yet.</p>
+          <p className="text-sm text-slate-400">{t("projects.timeline.empty")}</p>
         )}
         {q.data && q.data.bars.length > 0 && (
           <TimelineChart data={q.data} />
@@ -50,16 +80,24 @@ export default function TimelinePage({ params }: { params: Promise<{ key: string
   );
 }
 
+const BAR_TYPES = ["sprint", "epic", "version"] as const;
+
+function isBarType(v: string): v is (typeof BAR_TYPES)[number] {
+  return (BAR_TYPES as readonly string[]).includes(v);
+}
+
 function TimelineChart({ data }: { data: { start_date: string; end_date: string; bars: TimelineBar[]; headers: string[] } }) {
+  const t = useT();
   const min = new Date(data.start_date).getTime();
   const max = new Date(data.end_date).getTime();
+  const formatHeader = useHeaderFormatter();
 
   return (
     <div data-testid="timeline-chart" className="rounded border border-slate-200 bg-white">
       {/* Header ruler */}
       <div className="flex border-b border-slate-100 px-3 py-2 text-[10px] text-slate-400">
         {data.headers.map((h, i) => (
-          <div key={i} className="flex-1 text-center">{h}</div>
+          <div key={i} className="flex-1 text-center">{formatHeader(h)}</div>
         ))}
       </div>
       {/* Bars */}
@@ -79,7 +117,7 @@ function TimelineChart({ data }: { data: { start_date: string; end_date: string;
                   data-testid="timeline-bar"
                   className="absolute top-0 flex h-5 items-center rounded px-1.5 text-[10px] font-medium text-white"
                   style={{ left: `${left}%`, width: `${width}%`, backgroundColor: bar.color }}
-                  title={`${bar.name} · ${bar.type}${bar.type === "sprint" ? ` · ${Math.round(bar.progress)}%` : ""}`}
+                  title={`${bar.name} · ${isBarType(bar.type) ? t(`projects.timeline.types.${bar.type}`) : bar.type}${bar.type === "sprint" ? ` · ${Math.round(bar.progress)}%` : ""}`}
                 >
                   {bar.type === "sprint" ? `${Math.round(bar.progress)}%` : ""}
                 </div>

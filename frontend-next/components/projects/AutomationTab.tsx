@@ -3,24 +3,22 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { integrations, type AutomationRule, type AutomationRun } from "@/lib/api";
+import { useFormat, useT } from "@/lib/i18n";
 
-const TRIGGERS = [
-  { value: "issue_created", label: "Issue created" },
-  { value: "issue_updated", label: "Issue updated" },
-  { value: "issue_transitioned", label: "Issue transitioned" },
-] as const;
+// Stored values; the visible labels come from projects.automation.* in the catalogue.
+const TRIGGERS = ["issue_created", "issue_updated", "issue_transitioned"] as const;
+const CONDITION_FIELDS = ["priority", "title_contains"] as const;
+const ACTION_TYPES = ["set_assignee", "add_label", "transition_issue", "add_comment"] as const;
 
-const CONDITION_FIELDS = [
-  { value: "priority", label: "Priority" },
-  { value: "title_contains", label: "Title contains" },
-] as const;
+const RUN_STATUSES = ["success", "skipped", "error", "test"] as const;
 
-const ACTION_TYPES = [
-  { value: "set_assignee", label: "Set assignee" },
-  { value: "add_label", label: "Add label" },
-  { value: "transition_issue", label: "Transition issue" },
-  { value: "add_comment", label: "Add comment" },
-] as const;
+function isRunStatus(v: string): v is (typeof RUN_STATUSES)[number] {
+  return (RUN_STATUSES as readonly string[]).includes(v);
+}
+
+function isTrigger(v: string): v is (typeof TRIGGERS)[number] {
+  return (TRIGGERS as readonly string[]).includes(v);
+}
 
 interface ConditionRow {
   field: string;
@@ -32,18 +30,20 @@ interface ActionRow {
 }
 
 function RunsView({ ruleId }: { ruleId: string }) {
+  const t = useT();
+  const fmt = useFormat();
   const runs = useQuery({
     queryKey: ["automation-runs", ruleId],
     queryFn: () => integrations.automationRuns(ruleId),
   });
 
   if (runs.isLoading) {
-    return <p className="py-1 text-xs text-slate-400">Loading runs…</p>;
+    return <p className="py-1 text-xs text-slate-400">{t("projects.automation.loadingRuns")}</p>;
   }
 
   const rows = runs.data ?? [];
   if (rows.length === 0) {
-    return <p className="py-1 text-xs text-slate-400">No runs yet</p>;
+    return <p className="py-1 text-xs text-slate-400">{t("projects.automation.noRuns")}</p>;
   }
 
   return (
@@ -51,8 +51,10 @@ function RunsView({ ruleId }: { ruleId: string }) {
       {rows.map((run: AutomationRun) => (
         <li key={run.id} className="flex flex-col gap-0.5 border-b border-slate-100 py-1 text-xs">
           <span className="flex items-center gap-2">
-            <span className="font-medium text-[#1a1f36]">{run.status}</span>
-            <span className="text-slate-400">{new Date(run.triggered_at).toLocaleString()}</span>
+            <span className="font-medium text-[#1a1f36]">
+              {isRunStatus(run.status) ? t(`projects.automation.runStatus.${run.status}`) : run.status}
+            </span>
+            <span className="text-slate-400">{fmt.dateTime(run.triggered_at)}</span>
           </span>
           {run.log && <span className="text-slate-500">{run.log}</span>}
         </li>
@@ -63,6 +65,7 @@ function RunsView({ ruleId }: { ruleId: string }) {
 
 export function AutomationTab({ projectKey }: { projectKey: string }) {
   const qc = useQueryClient();
+  const t = useT();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [triggerType, setTriggerType] = useState<string>("issue_created");
@@ -121,13 +124,13 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
     <div className="space-y-6" data-testid="automation-tab">
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-700">Automation rules</h3>
+          <h3 className="text-sm font-semibold text-slate-700">{t("projects.automation.title")}</h3>
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
               className="rounded bg-[#0052cc] px-3 py-1 text-sm text-white"
             >
-              New rule
+              {t("projects.automation.newRule")}
             </button>
           )}
         </div>
@@ -137,30 +140,32 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
             <li key={rule.id} className="border-b border-slate-100 py-1.5 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-[#1a1f36]">{rule.name}</span>
-                <span className="text-xs text-slate-400">{rule.trigger_type}</span>
+                <span className="text-xs text-slate-400">
+                  {isTrigger(rule.trigger_type) ? t(`projects.automation.triggers.${rule.trigger_type}`) : rule.trigger_type}
+                </span>
                 <span className="ml-auto flex items-center gap-3">
                   <label className="flex items-center gap-1 text-xs text-slate-600">
                     <input
                       type="checkbox"
-                      aria-label={`Toggle rule ${rule.name}`}
+                      aria-label={t("projects.automation.toggleAria", { name: rule.name })}
                       checked={rule.is_active}
                       onChange={() => toggle.mutate(rule)}
                     />
-                    Active
+                    {t("projects.automation.active")}
                   </label>
                   <button
                     onClick={() => setExpanded(expanded === rule.id ? null : rule.id)}
                     className="text-xs text-[#0052cc] hover:underline"
-                    aria-label={`View runs for ${rule.name}`}
+                    aria-label={t("projects.automation.viewRunsAria", { name: rule.name })}
                   >
-                    View runs
+                    {t("projects.automation.viewRuns")}
                   </button>
                   <button
                     onClick={() => del.mutate(rule.id)}
                     className="text-xs text-red-600 hover:underline"
-                    aria-label={`Delete rule ${rule.name}`}
+                    aria-label={t("projects.automation.deleteAria", { name: rule.name })}
                   >
-                    Remove
+                    {t("projects.automation.remove")}
                   </button>
                 </span>
               </div>
@@ -172,50 +177,50 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
             </li>
           ))}
           {rules.data && rules.data.length === 0 && (
-            <li className="py-2 text-sm text-slate-400">No automation rules</li>
+            <li className="py-2 text-sm text-slate-400">{t("projects.automation.empty")}</li>
           )}
         </ul>
       </section>
 
       {showForm && (
         <section className="rounded-xl border border-slate-200 p-4 space-y-4">
-          <h3 className="text-sm font-semibold text-slate-700">New rule</h3>
+          <h3 className="text-sm font-semibold text-slate-700">{t("projects.automation.newRule")}</h3>
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
-              aria-label="Rule name"
+              aria-label={t("projects.automation.ruleName")}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Rule name"
+              placeholder={t("projects.automation.ruleName")}
               className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
             />
             <select
-              aria-label="Trigger"
+              aria-label={t("projects.automation.trigger")}
               value={triggerType}
               onChange={(e) => setTriggerType(e.target.value)}
               className="rounded border border-slate-300 px-2 py-1 text-sm"
             >
-              {TRIGGERS.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+              {TRIGGERS.map((v) => (
+                <option key={v} value={v}>{t(`projects.automation.triggers.${v}`)}</option>
               ))}
             </select>
           </div>
 
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">Conditions</span>
+              <span className="text-xs font-semibold text-slate-500">{t("projects.automation.conditions")}</span>
               <button
                 onClick={() => setConditions([...conditions, { field: "priority", value: "" }])}
                 className="text-xs text-[#0052cc] hover:underline"
               >
-                Add condition
+                {t("projects.automation.addCondition")}
               </button>
             </div>
             <ul className="space-y-1">
               {conditions.map((c, i) => (
                 <li key={i} className="flex items-center gap-2">
                   <select
-                    aria-label={`Condition field ${i + 1}`}
+                    aria-label={t("projects.automation.conditionField", { n: i + 1 })}
                     value={c.field}
                     onChange={(e) => {
                       const next = [...conditions];
@@ -224,27 +229,27 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
                     }}
                     className="rounded border border-slate-300 px-2 py-1 text-sm"
                   >
-                    {CONDITION_FIELDS.map((f) => (
-                      <option key={f.value} value={f.value}>{f.label}</option>
+                    {CONDITION_FIELDS.map((v) => (
+                      <option key={v} value={v}>{t(`projects.automation.conditionFields.${v}`)}</option>
                     ))}
                   </select>
                   <input
-                    aria-label={`Condition value ${i + 1}`}
+                    aria-label={t("projects.automation.conditionValue", { n: i + 1 })}
                     value={c.value}
                     onChange={(e) => {
                       const next = [...conditions];
                       next[i] = { ...next[i], value: e.target.value };
                       setConditions(next);
                     }}
-                    placeholder="Value"
+                    placeholder={t("projects.automation.value")}
                     className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
                   />
                   <button
                     onClick={() => setConditions(conditions.filter((_, j) => j !== i))}
                     className="text-xs text-red-600 hover:underline"
-                    aria-label={`Remove condition ${i + 1}`}
+                    aria-label={t("projects.automation.removeCondition", { n: i + 1 })}
                   >
-                    Remove
+                    {t("projects.automation.remove")}
                   </button>
                 </li>
               ))}
@@ -253,19 +258,19 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
 
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">Actions</span>
+              <span className="text-xs font-semibold text-slate-500">{t("projects.automation.actions")}</span>
               <button
                 onClick={() => setActions([...actions, { type: "set_assignee", value: "" }])}
                 className="text-xs text-[#0052cc] hover:underline"
               >
-                Add action
+                {t("projects.automation.addAction")}
               </button>
             </div>
             <ul className="space-y-1">
               {actions.map((a, i) => (
                 <li key={i} className="flex items-center gap-2">
                   <select
-                    aria-label={`Action type ${i + 1}`}
+                    aria-label={t("projects.automation.actionType", { n: i + 1 })}
                     value={a.type}
                     onChange={(e) => {
                       const next = [...actions];
@@ -274,27 +279,27 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
                     }}
                     className="rounded border border-slate-300 px-2 py-1 text-sm"
                   >
-                    {ACTION_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
+                    {ACTION_TYPES.map((v) => (
+                      <option key={v} value={v}>{t(`projects.automation.actionTypes.${v}`)}</option>
                     ))}
                   </select>
                   <input
-                    aria-label={`Action value ${i + 1}`}
+                    aria-label={t("projects.automation.actionValue", { n: i + 1 })}
                     value={a.value}
                     onChange={(e) => {
                       const next = [...actions];
                       next[i] = { ...next[i], value: e.target.value };
                       setActions(next);
                     }}
-                    placeholder="Value"
+                    placeholder={t("projects.automation.value")}
                     className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
                   />
                   <button
                     onClick={() => setActions(actions.filter((_, j) => j !== i))}
                     className="text-xs text-red-600 hover:underline"
-                    aria-label={`Remove action ${i + 1}`}
+                    aria-label={t("projects.automation.removeAction", { n: i + 1 })}
                   >
-                    Remove
+                    {t("projects.automation.remove")}
                   </button>
                 </li>
               ))}
@@ -303,7 +308,7 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
 
           {create.isError && (
             <p className="text-sm text-red-600">
-              {create.error instanceof Error ? create.error.message : "Failed to create rule"}
+              {create.error instanceof Error ? create.error.message : t("projects.automation.createFailed")}
             </p>
           )}
 
@@ -312,14 +317,14 @@ export function AutomationTab({ projectKey }: { projectKey: string }) {
               onClick={resetForm}
               className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600"
             >
-              Cancel
+              {t("projects.automation.cancel")}
             </button>
             <button
               onClick={() => name && create.mutate()}
               disabled={!name || create.isPending}
               className="rounded bg-[#0052cc] px-4 py-1 text-sm text-white disabled:opacity-60"
             >
-              Create
+              {t("projects.automation.create")}
             </button>
           </div>
         </section>

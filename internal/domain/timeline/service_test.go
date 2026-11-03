@@ -105,3 +105,21 @@ func TestGetTimelineDataEpicBarsByLevelWithColour(t *testing.T) {
 		t.Errorf("e-2 (no colour key) = %q, want color_1 fallback #8B5CF6", colours["e-2"])
 	}
 }
+
+// Quarter headers must be "YYYY-Qn" with n in 1..4 (Go's "2006-Q1" layout
+// would print the MONTH number: Q1/Q4/Q7/Q10).
+func TestGenerateHeadersQuarters(t *testing.T) {
+	svc := NewService(nil)
+	start := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 12, 10, 0, 0, 0, 0, time.UTC)
+	got := svc.generateHeaders(start, end, "quarters")
+	want := []string{"2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"}
+	if len(got) != len(want) {
+		t.Fatalf("headers = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("headers = %v, want %v", got, want)
+		}
+	}
+}

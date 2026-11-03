@@ -6,11 +6,14 @@ export function StackedAreaChart({
   categories,
   data,
   height = 240,
+  categoryLabels,
 }: {
   dates: string[];
   categories: string[];
   data: Record<string, number[]>;
   height?: number;
+  /** Optional display label per category key (legend); defaults to the key itself. */
+  categoryLabels?: Record<string, string>;
 }) {
   const w = 640;
   const pad = 32;
@@ -36,7 +39,7 @@ export function StackedAreaChart({
       {categories.map((c, ci) => (
         <g key={c}>
           <rect x={pad + ci * 110} y={8} width={10} height={10} fill={colors[c] ?? "#c1c7d0"} />
-          <text x={pad + ci * 110 + 14} y={17} fontSize={11} fill="#6b7280">{c}</text>
+          <text x={pad + ci * 110 + 14} y={17} fontSize={11} fill="#6b7280">{categoryLabels?.[c] ?? c}</text>
         </g>
       ))}
     </svg>

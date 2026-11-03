@@ -8,6 +8,14 @@ import { BarChart } from "@/components/charts/BarChart";
 import { PieChart } from "@/components/charts/PieChart";
 import { StackedAreaChart } from "@/components/charts/StackedAreaChart";
 import { ProjectHeader } from "@/components/projects/ProjectHeader";
+import { useT } from "@/lib/i18n";
+
+// Fallback labels the report API emits for missing values (chrome, not data).
+const PIE_FALLBACKS = {
+  "No status": "projects.reports.pieFallback.noStatus",
+  Unassigned: "projects.reports.pieFallback.unassigned",
+  "No type": "projects.reports.pieFallback.noType",
+} as const;
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -20,6 +28,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 export default function ReportsPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params);
+  const t = useT();
   const [pieField, setPieField] = useState("status");
 
   // Resolve THIS project's board (not the hardcoded board 1), then its sprints.
@@ -55,10 +64,10 @@ export default function ReportsPage({ params }: { params: Promise<{ key: string 
       <ProjectHeader projectKey={key} active="reports" />
       <div className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center gap-2">
-          <label className="text-sm text-slate-500">Sprint</label>
+          <label className="text-sm text-slate-500">{t("projects.reports.sprint")}</label>
           <select
             data-testid="reports-sprint-select"
-            aria-label="Sprint"
+            aria-label={t("projects.reports.sprint")}
             value={activeSprintId}
             onChange={(e) => setSprintId(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1 text-sm"
@@ -71,73 +80,92 @@ export default function ReportsPage({ params }: { params: Promise<{ key: string 
           </select>
         </div>
 
-        <Card title="Burndown">
+        <Card title={t("projects.reports.burndown")}>
           {burndown.data ? (
             <LineChart
               labels={burndown.data.labels}
               series={[
-                { name: "Ideal", color: "#8993a4", values: burndown.data.ideal },
-                { name: "Actual", color: "#0052cc", values: burndown.data.actual },
+                { name: t("projects.reports.ideal"), color: "#8993a4", values: burndown.data.ideal },
+                { name: t("projects.reports.actual"), color: "#0052cc", values: burndown.data.actual },
               ]}
             />
           ) : (
-            <p className="text-sm text-slate-400">No active sprint</p>
+            <p className="text-sm text-slate-400">{t("projects.reports.noActiveSprint")}</p>
           )}
         </Card>
 
-        <Card title="Burnup">
+        <Card title={t("projects.reports.burnup")}>
           {burnup.data ? (
             <LineChart
               labels={burnup.data.labels}
               series={[
-                { name: "Scope", color: "#8993a4", values: burnup.data.ideal },
-                { name: "Completed", color: "#00875a", values: burnup.data.actual },
+                { name: t("projects.reports.scope"), color: "#8993a4", values: burnup.data.ideal },
+                { name: t("projects.reports.completed"), color: "#00875a", values: burnup.data.actual },
               ]}
             />
           ) : (
-            <p className="text-sm text-slate-400">No active sprint</p>
+            <p className="text-sm text-slate-400">{t("projects.reports.noActiveSprint")}</p>
           )}
         </Card>
 
-        <Card title="Velocity">
+        <Card title={t("projects.reports.velocity")}>
           {velocity.data && velocity.data.sprints.length > 0 ? (
             <BarChart bars={velocity.data.sprints.map((s) => ({ label: s.sprint_name, value: s.completed }))} />
           ) : (
-            <p className="text-sm text-slate-400">No completed sprints</p>
+            <p className="text-sm text-slate-400">{t("projects.reports.noCompletedSprints")}</p>
           )}
         </Card>
 
-        <Card title="Cumulative Flow">
-          {cfd.data ? <StackedAreaChart dates={cfd.data.dates} categories={cfd.data.categories} data={cfd.data.data} /> : null}
+        <Card title={t("projects.reports.cfd")}>
+          {cfd.data ? (
+            <StackedAreaChart
+              dates={cfd.data.dates}
+              categories={cfd.data.categories}
+              data={cfd.data.data}
+              categoryLabels={{
+                todo: t("projects.reports.categories.todo"),
+                inprogress: t("projects.reports.categories.inprogress"),
+                done: t("projects.reports.categories.done"),
+              }}
+            />
+          ) : null}
         </Card>
 
-        <Card title="Created vs Resolved (14d)">
+        <Card title={t("projects.reports.cvr")}>
           {cvr.data ? (
             <LineChart
               labels={cvr.data.dates}
               series={[
-                { name: "Created", color: "#de350b", values: cvr.data.created },
-                { name: "Resolved", color: "#00875a", values: cvr.data.resolved },
+                { name: t("projects.reports.created"), color: "#de350b", values: cvr.data.created },
+                { name: t("projects.reports.resolved"), color: "#00875a", values: cvr.data.resolved },
               ]}
             />
           ) : null}
         </Card>
 
-        <Card title="Breakdown">
+        <Card title={t("projects.reports.breakdown")}>
           <div className="mb-3">
             <select
-              aria-label="Pie field"
+              aria-label={t("projects.reports.pieField")}
               value={pieField}
               onChange={(e) => setPieField(e.target.value)}
               className="rounded border border-slate-300 px-2 py-1 text-sm"
             >
-              <option value="status">Status</option>
-              <option value="priority">Priority</option>
-              <option value="assignee">Assignee</option>
-              <option value="type">Type</option>
+              <option value="status">{t("projects.reports.pieFields.status")}</option>
+              <option value="priority">{t("projects.reports.pieFields.priority")}</option>
+              <option value="assignee">{t("projects.reports.pieFields.assignee")}</option>
+              <option value="type">{t("projects.reports.pieFields.type")}</option>
             </select>
           </div>
-          {pie.data ? <PieChart slices={pie.data} /> : null}
+          {pie.data ? (
+            <PieChart
+              slices={pie.data.map((s) =>
+                Object.prototype.hasOwnProperty.call(PIE_FALLBACKS, s.label)
+                  ? { ...s, label: t(PIE_FALLBACKS[s.label as keyof typeof PIE_FALLBACKS]) }
+                  : s
+              )}
+            />
+          ) : null}
         </Card>
       </div>
     </div>

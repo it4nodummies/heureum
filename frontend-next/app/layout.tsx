@@ -1,21 +1,11 @@
 import type { Metadata } from "next";
-import { cookies, headers } from "next/headers";
 import "./globals.css";
 import { Providers } from "./providers";
-import { LOCALE_COOKIE, firstAcceptLanguage, resolveLocale } from "@/lib/i18n/resolve";
+import { requestLocale } from "@/lib/i18n/server";
 import { translate } from "@/lib/i18n/translate";
-import type { Locale } from "@/lib/i18n/types";
 
-// Server-side locale for the first paint: the `heureum_locale` cookie (last
-// resolved locale) → the browser's Accept-Language → en. The client re-resolves
-// against the user's saved locale once /myself loads (components/layout/LocaleSync).
-async function requestLocale(): Promise<Locale> {
-  const [cookieStore, headerList] = await Promise.all([cookies(), headers()]);
-  return resolveLocale({
-    cookie: cookieStore.get(LOCALE_COOKIE)?.value,
-    browser: firstAcceptLanguage(headerList.get("accept-language")),
-  });
-}
+// Server-side locale for the first paint: see requestLocale (cookie →
+// Accept-Language → en); the client re-resolves once /myself loads.
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await requestLocale();
