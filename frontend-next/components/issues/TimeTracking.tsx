@@ -4,15 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { issues, worklogs as worklogsApi, parseJiraDuration, formatSeconds, textToADF } from "@/lib/api";
 import { AdfRenderer } from "./adf";
+import { useFormat, useT } from "@/lib/i18n";
 
 interface Props {
   issueKey: string;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 // Time tracking block: progress bar + summary text (derived from the issue's
@@ -22,6 +17,8 @@ function formatDate(iso: string): string {
 // IssueView.tsx) because the worklog list/dialog state is self-contained and
 // would otherwise bloat an already-large component.
 export function TimeTracking({ issueKey }: Props) {
+  const t = useT();
+  const fmt = useFormat();
   const qc = useQueryClient();
   const issueQueryKey = ["issue", issueKey];
   const worklogQueryKey = ["issue", issueKey, "worklogs"];
@@ -75,12 +72,12 @@ export function TimeTracking({ issueKey }: Props) {
   return (
     <section className="mt-8" data-testid="time-tracking-section">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Time tracking</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.timeTracking.title")}</h2>
         <button
           onClick={() => setDialogOpen(true)}
           className="rounded border border-[#0052cc] px-3 py-1.5 text-xs font-semibold text-[#0052cc] hover:bg-[#0052cc]/5"
         >
-          Log work
+          {t("issues.timeTracking.logWork")}
         </button>
       </div>
 
@@ -93,17 +90,24 @@ export function TimeTracking({ issueKey }: Props) {
             />
           </div>
           <p data-testid="time-tracking-text" className="mt-1 text-xs text-slate-500">
-            {formatSeconds(timeSpentSeconds)} logged / {formatSeconds(originalEstimateSeconds)} estimated
-            {remainingEstimateSeconds != null ? ` · ${formatSeconds(remainingEstimateSeconds)} remaining` : ""}
+            {t("issues.timeTracking.summary", {
+              logged: formatSeconds(timeSpentSeconds),
+              estimated: formatSeconds(originalEstimateSeconds),
+            })}
+            {remainingEstimateSeconds != null
+              ? t("issues.timeTracking.remaining", { remaining: formatSeconds(remainingEstimateSeconds) })
+              : ""}
           </p>
         </div>
       ) : (
         <p data-testid="time-tracking-text" className="mb-4 text-sm text-slate-400">
-          {timeSpentSeconds > 0 ? `${formatSeconds(timeSpentSeconds)} logged · no estimate set` : "No time logged"}
+          {timeSpentSeconds > 0
+            ? t("issues.timeTracking.loggedNoEstimate", { logged: formatSeconds(timeSpentSeconds) })
+            : t("issues.timeTracking.noTime")}
         </p>
       )}
 
-      {list.length === 0 && <p className="text-sm text-slate-400">No work logged yet.</p>}
+      {list.length === 0 && <p className="text-sm text-slate-400">{t("issues.timeTracking.empty")}</p>}
 
       {list.length > 0 && (
         <ul className="space-y-2">
@@ -115,8 +119,8 @@ export function TimeTracking({ issueKey }: Props) {
           >
             <div className="min-w-0">
               <div className="font-semibold text-[#1a1f36]">
-                {wl.author?.displayName ?? "Unknown"}
-                <span className="ml-2 font-normal text-slate-400">{formatDate(wl.started || wl.created)}</span>
+                {wl.author?.displayName ?? t("issues.unknownUser")}
+                <span className="ml-2 font-normal text-slate-400">{fmt.date(wl.started || wl.created)}</span>
               </div>
               <div className="mt-0.5 text-slate-600">{wl.timeSpent}</div>
               {wl.comment && (
@@ -128,10 +132,10 @@ export function TimeTracking({ issueKey }: Props) {
             <button
               onClick={() => remove.mutate(wl.id)}
               disabled={remove.isPending && remove.variables === wl.id}
-              aria-label={`Delete worklog ${wl.id}`}
+              aria-label={t("issues.timeTracking.deleteWorklog", { id: wl.id })}
               className="shrink-0 text-xs text-slate-400 hover:text-red-600 disabled:opacity-60"
             >
-              {remove.isPending && remove.variables === wl.id ? "Deleting…" : "Delete"}
+              {remove.isPending && remove.variables === wl.id ? t("issues.actions.deleting") : t("issues.actions.delete")}
             </button>
           </li>
           ))}
@@ -141,20 +145,20 @@ export function TimeTracking({ issueKey }: Props) {
       {dialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="w-[420px] rounded-lg bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-semibold text-[#1a1f36]">Log work</h2>
+            <h2 className="mb-4 text-lg font-semibold text-[#1a1f36]">{t("issues.timeTracking.logWork")}</h2>
 
             <label
               htmlFor="worklog-time-spent"
               className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
             >
-              Time spent
+              {t("issues.timeTracking.timeSpent")}
             </label>
             <input
               id="worklog-time-spent"
               autoFocus
               value={timeSpent}
               onChange={(e) => setTimeSpent(e.target.value)}
-              placeholder="e.g. 2h 30m"
+              placeholder={t("issues.timeTracking.timeSpentPlaceholder")}
               className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
             />
 
@@ -162,20 +166,20 @@ export function TimeTracking({ issueKey }: Props) {
               htmlFor="worklog-description"
               className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
             >
-              Description (optional)
+              {t("issues.timeTracking.description")}
             </label>
             <textarea
               id="worklog-description"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What did you work on?"
+              placeholder={t("issues.timeTracking.descriptionPlaceholder")}
               className="mb-4 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
             />
 
             {logWork.isError && (
               <p className="mb-3 text-sm text-red-600">
-                {logWork.error instanceof Error ? logWork.error.message : "Failed to log work."}
+                {logWork.error instanceof Error ? logWork.error.message : t("issues.timeTracking.failed")}
               </p>
             )}
 
@@ -184,14 +188,14 @@ export function TimeTracking({ issueKey }: Props) {
                 onClick={() => setDialogOpen(false)}
                 className="rounded px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
               >
-                Cancel
+                {t("issues.actions.cancel")}
               </button>
               <button
                 onClick={() => logWork.mutate()}
                 disabled={!canSubmit}
                 className="rounded bg-[#0052cc] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0065ff] disabled:opacity-60"
               >
-                {logWork.isPending ? "Logging…" : "Log work"}
+                {logWork.isPending ? t("issues.timeTracking.logging") : t("issues.timeTracking.logWork")}
               </button>
             </div>
           </div>

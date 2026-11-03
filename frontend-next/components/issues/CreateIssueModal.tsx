@@ -17,6 +17,7 @@ import {
 import { textToAdf } from "./adf";
 import { UserPicker } from "@/components/common/UserPicker";
 import { ParentPicker, type ParentOption } from "./ParentPicker";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   projectKey?: string;
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const { data: priorities } = useQuery({
     queryKey: ["priorities"],
@@ -253,7 +255,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div className="w-[480px] max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
-        <h2 className="mb-4 text-lg font-semibold text-[#1a1f36]">Create issue</h2>
+        <h2 className="mb-4 text-lg font-semibold text-[#1a1f36]">{t("issues.create.title")}</h2>
 
         {showProjectPicker && (
           <>
@@ -261,7 +263,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
               htmlFor="issue-project"
               className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
             >
-              Project
+              {t("issues.create.project")}
             </label>
             <select
               id="issue-project"
@@ -269,7 +271,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
               onChange={(e) => setSelectedProjectKey(e.target.value)}
               className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
             >
-              <option value="">Select a project…</option>
+              <option value="">{t("issues.create.selectProject")}</option>
               {(projectsList.data?.values ?? []).map((p) => (
                 <option key={p.key} value={p.key}>
                   {p.name} ({p.key})
@@ -283,7 +285,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           htmlFor="issue-type"
           className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
         >
-          Type
+          {t("issues.create.type")}
         </label>
         <select
           id="issue-type"
@@ -302,7 +304,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           htmlFor="issue-summary"
           className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
         >
-          Summary
+          {t("issues.create.summary")}
         </label>
         <input
           id="issue-summary"
@@ -315,14 +317,14 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           htmlFor="issue-description"
           className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
         >
-          Description
+          {t("issues.create.description")}
         </label>
         <textarea
           id="issue-description"
           rows={4}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Add a description…"
+          placeholder={t("issues.create.descriptionPlaceholder")}
           className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
         />
 
@@ -332,7 +334,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
               htmlFor="issue-priority"
               className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
             >
-              Priority
+              {t("issues.create.priority")}
             </label>
             <select
               id="issue-priority"
@@ -340,7 +342,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
               onChange={(e) => setPriorityId(e.target.value)}
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
             >
-              <option value="">Default</option>
+              <option value="">{t("issues.create.defaultPriority")}</option>
               {(priorities ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -351,7 +353,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
 
           <div>
             <div className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Assignee
+              {t("issues.create.assignee")}
             </div>
             <UserPicker
               projectKey={effectiveProjectKey}
@@ -372,7 +374,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
               htmlFor="issue-epic"
               className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
             >
-              Epic
+              {t("issues.create.epic")}
             </label>
             <select
               id="issue-epic"
@@ -382,7 +384,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
               disabled={!effectiveProjectKey}
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc] disabled:opacity-60"
             >
-              <option value="">No epic</option>
+              <option value="">{t("issues.create.noEpic")}</option>
               {projectEpics.map((e) => (
                 <option key={e.key} value={e.key}>
                   {e.key} · {e.fields.summary}
@@ -396,7 +398,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
         {isSubtask && (
           <div className="mb-3">
             <div className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Parent issue
+              {t("issues.create.parentIssue")}
             </div>
             <ParentPicker
               projectKey={effectiveProjectKey}
@@ -404,7 +406,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
               value={parent}
               onChange={setParent}
               disabled={!effectiveProjectKey}
-              label="Parent issue"
+              label={t("issues.create.parentIssue")}
               inputTestId="create-modal-parent-input"
               clearTestId="create-modal-parent-clear"
             />
@@ -416,7 +418,7 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
           htmlFor="issue-fixversions"
           className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500"
         >
-          Fix versions
+          {t("issues.create.fixVersions")}
         </label>
         <select
           id="issue-fixversions"
@@ -465,36 +467,35 @@ export function CreateIssueModal({ projectKey, onClose, onCreated }: Props) {
             onChange={(e) => setCreateAnother(e.target.checked)}
             className="rounded border-slate-300"
           />
-          Create another
+          {t("issues.create.createAnother")}
         </label>
 
         {justCreatedKey && (
-          <p className="mb-3 text-sm text-green-700">{justCreatedKey} created. Add the next one below.</p>
+          <p className="mb-3 text-sm text-green-700">{t("issues.create.justCreated", { key: justCreatedKey })}</p>
         )}
 
         {cfWarnings.length > 0 && (
           <p className="mb-3 text-sm text-amber-700">
-            Issue created, but these custom fields could not be saved:{" "}
-            {cfWarnings.join(", ")}. You can set them from the issue’s Details.
+            {t("issues.create.customFieldsWarning", { fields: cfWarnings.join(", ") })}
           </p>
         )}
 
         {create.isError && !parentError && (
           <p className="mb-3 text-sm text-red-600">
-            {create.error instanceof Error ? create.error.message : "Failed to create issue"}
+            {create.error instanceof Error ? create.error.message : t("issues.create.failed")}
           </p>
         )}
 
         <div className="flex justify-end gap-3">
           <button onClick={onClose} className="rounded px-4 py-2 text-sm text-slate-600 hover:text-slate-800">
-            {createAnother ? "Done" : "Cancel"}
+            {createAnother ? t("issues.create.done") : t("issues.create.cancel")}
           </button>
           <button
             onClick={submit}
             disabled={!canSubmit}
             className="rounded bg-[#0052cc] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0065ff] disabled:opacity-60"
           >
-            {create.isPending ? "Creating…" : "Create"}
+            {create.isPending ? t("issues.create.creating") : t("issues.create.create")}
           </button>
         </div>
       </div>
@@ -524,6 +525,7 @@ function CustomFieldCreateInput({
   onMulti: (vals: string[]) => void;
   onUser: (accountId: string | null, label: string | null) => void;
 }) {
+  const t = useT();
   const isOption = field.field_type === "select" || field.field_type === "multiselect";
   const { data: options } = useQuery({
     queryKey: ["customFieldOptions", field.id],
@@ -543,7 +545,7 @@ function CustomFieldCreateInput({
     case "select":
       return (
         <select id={`cf-${field.id}`} value={scalar} onChange={(e) => onScalar(e.target.value)} className={cfInputClass}>
-          <option value="">Select…</option>
+          <option value="">{t("issues.actions.select")}</option>
           {(options ?? []).map((o) => (
             <option key={o.id} value={o.id}>
               {o.value}

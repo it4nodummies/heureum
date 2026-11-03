@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { hierarchyLevelOf, search, type SearchIssue } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 export interface ParentOption {
   key: string;
@@ -76,16 +77,17 @@ export function ParentPicker({
   autoOpen = false,
   onCancel,
 }: Props) {
+  const t = useT();
   const parentLevel = childLevel + 1;
-  const noun = parentLevel === 1 ? "epic" : "parent issue";
+  const isEpic = parentLevel === 1;
   const [open, setOpen] = useState(autoOpen);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(timer);
   }, [query]);
 
   useEffect(() => {
@@ -137,7 +139,7 @@ export function ParentPicker({
       <div className="mt-1 flex items-stretch gap-1">
         <button
           type="button"
-          aria-label={label ?? `Select ${noun}`}
+          aria-label={label ?? (isEpic ? t("issues.parentPicker.selectEpic") : t("issues.parentPicker.selectParentIssue"))}
           aria-haspopup="listbox"
           aria-expanded={open}
           disabled={disabled}
@@ -150,7 +152,7 @@ export function ParentPicker({
               <span className="truncate">{value.summary}</span>
             </span>
           ) : (
-            <span className="text-slate-400">{placeholder ?? `No ${noun}`}</span>
+            <span className="text-slate-400">{placeholder ?? (isEpic ? t("issues.parentPicker.noEpic") : t("issues.parentPicker.noParentIssue"))}</span>
           )}
           <span aria-hidden className="ml-1 shrink-0 text-slate-400">
             ▾
@@ -159,8 +161,8 @@ export function ParentPicker({
         {clearable && value && (
           <button
             type="button"
-            aria-label={`Remove ${noun}`}
-            title={`Remove ${noun}`}
+            aria-label={isEpic ? t("issues.parentPicker.removeEpic") : t("issues.parentPicker.removeParentIssue")}
+            title={isEpic ? t("issues.parentPicker.removeEpic") : t("issues.parentPicker.removeParentIssue")}
             data-testid={clearTestId}
             disabled={disabled}
             onClick={() => select(null)}
@@ -175,11 +177,11 @@ export function ParentPicker({
         <div className="absolute z-20 mt-1 w-full min-w-64 rounded border border-slate-200 bg-white shadow-lg">
           <input
             autoFocus
-            aria-label={`Search ${noun}`}
+            aria-label={isEpic ? t("issues.parentPicker.searchEpic") : t("issues.parentPicker.searchParentIssue")}
             data-testid={inputTestId}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Search by key or summary…`}
+            placeholder={t("issues.parentPicker.searchPlaceholder")}
             className="w-full border-b border-slate-100 px-2 py-1.5 text-sm focus:outline-none"
           />
           <div className="max-h-56 overflow-y-auto py-1" role="listbox">
@@ -191,10 +193,10 @@ export function ParentPicker({
                 onClick={() => select(null)}
                 className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-slate-500 hover:bg-slate-50"
               >
-                — No {noun}
+                — {isEpic ? t("issues.parentPicker.noEpic") : t("issues.parentPicker.noParentIssue")}
               </button>
             )}
-            {isFetching && <div className="px-2 py-1.5 text-xs text-slate-400">Searching…</div>}
+            {isFetching && <div className="px-2 py-1.5 text-xs text-slate-400">{t("issues.actions.searching")}</div>}
             {!isFetching &&
               candidates.map((i) => (
                 <button
@@ -214,7 +216,7 @@ export function ParentPicker({
               ))}
             {!isFetching && data && candidates.length === 0 && (
               <div className="px-2 py-1.5 text-xs text-slate-400">
-                No matching {parentLevel === 1 ? "epics" : "issues"}
+                {isEpic ? t("issues.parentPicker.noMatchingEpics") : t("issues.parentPicker.noMatchingIssues")}
               </div>
             )}
           </div>

@@ -2,19 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { issueGit } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 export function DevelopmentPanel({ issueKey }: { issueKey: string }) {
+  const t = useT();
   const info = useQuery({ queryKey: ["issue-git", issueKey], queryFn: () => issueGit.info(issueKey) });
   const d = info.data;
   const empty = d && d.commits.length === 0 && d.branches.length === 0 && d.pull_requests.length === 0;
   if (info.isLoading) return null;
   return (
     <section className="mt-4 rounded border border-slate-200 bg-white p-3" data-testid="development-panel">
-      <h3 className="mb-2 text-sm font-semibold text-slate-700">Development</h3>
-      {empty && <p className="text-sm text-slate-400">No linked commits, branches or pull requests</p>}
+      <h3 className="mb-2 text-sm font-semibold text-slate-700">{t("issues.development.title")}</h3>
+      {empty && <p className="text-sm text-slate-400">{t("issues.development.empty")}</p>}
       {d && d.commits.length > 0 && (
         <div className="mb-2">
-          <div className="text-xs font-semibold text-slate-500">Commits</div>
+          <div className="text-xs font-semibold text-slate-500">{t("issues.development.commits")}</div>
           <ul className="text-sm">
             {d.commits.map((c) => (
               <li key={c.id} className="text-[#1a1f36]">
@@ -26,7 +28,7 @@ export function DevelopmentPanel({ issueKey }: { issueKey: string }) {
       )}
       {d && d.pull_requests.length > 0 && (
         <div className="mb-2">
-          <div className="text-xs font-semibold text-slate-500">Pull requests</div>
+          <div className="text-xs font-semibold text-slate-500">{t("issues.development.pullRequests")}</div>
           <ul className="text-sm">
             {d.pull_requests.map((p) => (
               <li key={p.id}>
@@ -41,7 +43,7 @@ export function DevelopmentPanel({ issueKey }: { issueKey: string }) {
       )}
       {d && d.branches.length > 0 && (
         <div>
-          <div className="text-xs font-semibold text-slate-500">Branches</div>
+          <div className="text-xs font-semibold text-slate-500">{t("issues.development.branches")}</div>
           <ul className="text-sm text-[#1a1f36]">
             {d.branches.map((b) => (
               <li key={b.id}>{b.branch_name}</li>
