@@ -32,7 +32,7 @@ export const boards = {
     sendToBoard: "Send to board",
     noInProgress: "No in-progress status configured",
     noInProgressForBoard: "No in-progress status configured for this board",
-    moreDragged: "+{count} more",
+    moreDragged: { one: "+{count} more", other: "+{count} more" },
     errors: {
       move: "Failed to move issue(s)",
       moveIntoEpic: "Failed to move issue(s) into epic",

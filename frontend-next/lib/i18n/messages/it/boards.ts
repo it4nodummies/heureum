@@ -32,7 +32,7 @@ export const boards: Catalog<typeof en> = {
     sendToBoard: "Invia alla board",
     noInProgress: "Nessuno stato \"in corso\" configurato",
     noInProgressForBoard: "Nessuno stato \"in corso\" configurato per questa board",
-    moreDragged: "+{count} altri",
+    moreDragged: { one: "+{count} altro", other: "+{count} altri" },
     errors: {
       move: "Impossibile spostare i ticket",
       moveIntoEpic: "Impossibile spostare i ticket nell'epic",
@@ -78,7 +78,7 @@ export const boards: Catalog<typeof en> = {
   epics: {
     panel: "Epic",
     title: "Epic",
-    show: "Epic",
+    show: "Mostra epic",
     hide: "Nascondi epic",
     create: "Crea epic",
     newName: "Nome della nuova epic",
@@ -107,7 +107,7 @@ export const boards: Catalog<typeof en> = {
     swimlaneAssignee: "Assegnatario",
     swimlaneEpic: "Epic",
     quickFilters: "Filtri rapidi",
-    noQuickFilters: "Nessun filtro rapido.",
+    noQuickFilters: "Ancora nessun filtro rapido.",
     removeQuickFilter: "Rimuovi il filtro rapido {name}",
     name: "Nome",
     quickFilterName: "Nome del filtro rapido",

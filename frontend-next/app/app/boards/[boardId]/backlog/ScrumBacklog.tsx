@@ -32,9 +32,28 @@ import { useFormat, useT, type MessageKey } from "@/lib/i18n";
 const BACKLOG_ID = "backlog";
 const sprintContainerId = (sprintId: number) => `sprint-${sprintId}`;
 
-// Sprint dates are calendar days: format the YYYY-MM-DD part in UTC so the
-// shown day never shifts with the viewer's timezone.
-const SPRINT_DATE: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" };
+// Sprint dates come back as full datetimes. A value at exactly UTC midnight was
+// set as a plain day (the sprint dialogs' date inputs): its YYYY-MM-DD part is
+// formatted in UTC so the day never shifts with the viewer's timezone. Any other
+// value is a real instant (e.g. "Start sprint" stamps the current time) and is
+// shown — and prefilled in the edit form — in the viewer's timezone.
+const SPRINT_DAY_UTC: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" };
+const UTC_MIDNIGHT = /T00:00:00(\.0+)?(Z|\+00:00)$/;
+
+function isDateOnly(d: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) || UTC_MIDNIGHT.test(d);
+}
+
+// Value for an <input type="date">: the UTC day for date-only values, the
+// viewer's local day for real timestamps.
+function toDateInput(d?: string): string {
+  if (!d) return "";
+  if (isDateOnly(d)) return d.slice(0, 10);
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return d.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 
 const SPRINT_STATE_KEYS: Record<string, MessageKey> = {
   future: "boards.sprint.state.future",
@@ -52,7 +71,10 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
   const qc = useQueryClient();
   const t = useT();
   const fmt = useFormat();
-  const sprintDate = (d?: string) => (d ? fmt.date(d.slice(0, 10), SPRINT_DATE) : t("boards.sprint.dateUnset"));
+  const sprintDate = (d?: string) => {
+    if (!d) return t("boards.sprint.dateUnset");
+    return isDateOnly(d) ? fmt.date(d.slice(0, 10), SPRINT_DAY_UTC) : fmt.date(d);
+  };
   const [newSprint, setNewSprint] = useState("");
   const [newGoal, setNewGoal] = useState("");
   const [newStart, setNewStart] = useState("");
@@ -163,8 +185,8 @@ export function ScrumBacklog({ boardId }: { boardId: number }) {
     setEditing(sp.id);
     setEditName(sp.name);
     setEditGoal(sp.goal ?? "");
-    setEditStart(sp.startDate ? sp.startDate.slice(0, 10) : "");
-    setEditEnd(sp.endDate ? sp.endDate.slice(0, 10) : "");
+    setEditStart(toDateInput(sp.startDate));
+    setEditEnd(toDateInput(sp.endDate));
   };
   const openComplete = (sprintId: number) => {
     setEditing(null);

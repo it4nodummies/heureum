@@ -153,6 +153,16 @@ test("scrum backlog: epic panel, sprint controls, Italian dates and plurals", as
   await expect(dialog.getByText("Sposta nello sprint")).toBeVisible();
   await dialog.getByRole("button", { name: "Annulla" }).click();
   await expect(dialog).toHaveCount(0);
+
+  // Singular: with one issue sent back to the backlog, one incomplete issue is left.
+  const back = await page.request.post(`${API}/rest/agile/1.0/backlog/issue`, {
+    headers: await authHeaders(page.request),
+    data: { issues: [scrumIssues[1]] },
+  });
+  expect(back.status(), "move issue to backlog").toBeLessThan(300);
+  await page.reload();
+  await page.getByRole("button", { name: "Completa sprint" }).click();
+  await expect(page.getByTestId("incomplete-count")).toHaveText("1 ticket incompleto verrà spostato.");
 });
 
 test("kanban backlog, board header, board settings and swimlane bands", async ({ page }) => {
@@ -171,7 +181,7 @@ test("kanban backlog, board header, board settings and swimlane bands", async ({
   await expect(page.getByRole("heading", { name: "Colonne" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Aggiungi colonna" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Filtri rapidi" })).toBeVisible();
-  await expect(page.getByText("Nessun filtro rapido.")).toBeVisible();
+  await expect(page.getByText("Ancora nessun filtro rapido.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Aggiungi filtro" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Torna alla board" })).toBeVisible();
   await expect(page.getByTestId("settings-column-0").getByText("TO DO", { exact: true })).toBeVisible();
