@@ -56,6 +56,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cards; board: epic quick filter and epic swimlanes with the epic's name and colour. The demo seed
   now includes an epic with two children.
 
+- **Italian UI.** The whole web UI is available in Italian as well as English: navigation, login,
+  profile, notifications, issue detail and create modal, boards and backlogs, board and project
+  settings, releases, reports, calendar, timeline, search, filters, dashboards and teams. Dates,
+  relative times and numbers follow the active language (`Intl`), plurals use `Intl.PluralRules`.
+  User data (status, issue-type, project, board, sprint, epic, workflow and priority names) is
+  never translated. No new dependency: a small typed i18n layer under `frontend-next/lib/i18n`
+  where a missing or extra translation key fails the build.
+- **Language resolution.** The UI language is the one saved in the profile (Language: *Default
+  (browser)* / *English* / *Italiano*) or, when unset, the browser's language — so an Italian
+  browser gets Italian with no configuration. The server renders `<html lang>` from a
+  `heureum_locale` cookie, so there is no flash of English on load; legacy saved values (`es`,
+  `fr`, …) count as unset. Saving the profile applies the language immediately.
+- **Italian issue-type names.** Types named `Sottotask` / `Sotto-task` / `Sotto-attività` are
+  recognised as subtasks and `Epica` as an epic (hierarchy level, subtask flag and icon).
+
 ### Changed
 
 - **Parent links are validated.** Creating or updating an issue with a `parent` that does not exist,
@@ -108,6 +123,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Timeline quarter headers** always read `Q1` (`"2006-Q1"` used as a Go time layout); they now
+  show the real quarter.
+- **Burndown/burnup reports answered HTTP 500 for every sprint.** The endpoints looked up
+  `?sprintId=` as the internal id while the UI (and the Agile API) use the sprint's public id; the
+  sprint is now resolved by its public id within the project, and a sprint of another project or
+  an unknown id is 404.
 - **Project invites failed on Postgres.** `project_invites.accepted_by` was written as `""` on
   creation; it is a nullable FK to `users(id)`, so the insert violated the constraint on Postgres
   (SQLite never enforced it). It is now `NULL` until the invite is accepted.
