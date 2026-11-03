@@ -9,20 +9,23 @@ import {
   type JiraUser,
   type IssueTransitionOption,
 } from "@/lib/api";
+import { useFormat, useT } from "@/lib/i18n";
 
+// Column headers are chrome (translated via `label`); cell values are data.
 const ALL_COLUMNS = [
-  { key: "key", label: "Key" },
-  { key: "summary", label: "Summary" },
-  { key: "status", label: "Status" },
-  { key: "priority", label: "Priority" },
-  { key: "assignee", label: "Assignee" },
-  { key: "updated", label: "Updated" },
+  { key: "key", label: "search.columns.key" },
+  { key: "summary", label: "search.columns.summary" },
+  { key: "status", label: "search.columns.status" },
+  { key: "priority", label: "search.columns.priority" },
+  { key: "assignee", label: "search.columns.assignee" },
+  { key: "updated", label: "search.columns.updated" },
 ] as const;
 
 type ColKey = (typeof ALL_COLUMNS)[number]["key"];
 
 // The 5 fixed Jira priorities (id "1".."5" = highest..lowest), matching
-// internal/api/v3/reference.go priorityOrder.
+// internal/api/v3/reference.go priorityOrder. The names are data (the same
+// names the API returns and the cells show), so they are not translated.
 const PRIORITIES = [
   { id: "1", name: "Highest" },
   { id: "2", name: "High" },
@@ -38,6 +41,8 @@ export function SearchResults({
   issues: SearchIssue[];
   onChanged?: () => void;
 }) {
+  const t = useT();
+  const fmt = useFormat();
   const [cols, setCols] = useState<Set<ColKey>>(
     new Set(ALL_COLUMNS.map((c) => c.key)),
   );
@@ -171,7 +176,7 @@ export function SearchResults({
       case "assignee":
         return <AssigneeCell iss={iss} onChanged={onChanged} />;
       case "updated":
-        return iss.fields.updated?.slice(0, 10) ?? "";
+        return iss.fields.updated ? fmt.date(iss.fields.updated) : "";
     }
   };
 
@@ -181,11 +186,11 @@ export function SearchResults({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap gap-3 text-sm text-slate-500" aria-label="Columns">
+      <div className="mb-3 flex flex-wrap gap-3 text-sm text-slate-500" aria-label={t("search.columns.label")}>
         {ALL_COLUMNS.map((c) => (
           <label key={c.key} className="flex items-center gap-1">
             <input type="checkbox" checked={cols.has(c.key)} onChange={() => toggle(c.key)} />
-            {c.label}
+            {t(c.label)}
           </label>
         ))}
       </div>
@@ -195,15 +200,17 @@ export function SearchResults({
           data-testid="bulk-bar"
           className="mb-3 flex flex-wrap items-center gap-3 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
         >
-          <span className="font-semibold text-[#1a1f36]">{selected.size} selected</span>
+          <span className="font-semibold text-[#1a1f36]">
+            {t("search.bulk.selected", { count: selected.size })}
+          </span>
 
           <select
-            aria-label="Bulk priority"
+            aria-label={t("search.bulk.priority")}
             value={priorityId}
             onChange={(e) => setPriorityId(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1 text-sm"
           >
-            <option value="">Priority…</option>
+            <option value="">{t("search.bulk.priorityPlaceholder")}</option>
             {PRIORITIES.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -214,11 +221,11 @@ export function SearchResults({
           <BulkAssigneePicker value={assignee} onChange={setAssignee} />
 
           <input
-            aria-label="Set label(s)"
+            aria-label={t("search.bulk.labels")}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Set label(s), comma-separated"
-            title="Replaces the existing labels on the selected issues"
+            placeholder={t("search.bulk.labelsPlaceholder")}
+            title={t("search.bulk.labelsHint")}
             className="w-56 rounded border border-slate-300 px-2 py-1 text-sm"
           />
 
@@ -228,7 +235,7 @@ export function SearchResults({
             disabled={!canApply}
             className="rounded bg-[#0052cc] px-3 py-1 text-sm font-semibold text-white disabled:opacity-60"
           >
-            Apply
+            {t("search.bulk.apply")}
           </button>
 
           <button
@@ -237,7 +244,7 @@ export function SearchResults({
             disabled={bulk.isPending}
             className="rounded border border-red-300 px-3 py-1 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
           >
-            Delete
+            {t("common.actions.delete")}
           </button>
 
           <button
@@ -245,14 +252,14 @@ export function SearchResults({
             onClick={clearBulk}
             className="text-xs text-slate-400 hover:text-slate-700"
           >
-            Clear
+            {t("search.bulk.clear")}
           </button>
         </div>
       )}
 
       {failed.length > 0 && (
         <p data-testid="bulk-warning" className="mb-3 text-sm text-amber-700">
-          Some issues could not be updated: {failed.join(", ")}
+          {t("search.bulk.failed", { keys: failed.join(", ") })}
         </p>
       )}
 
@@ -263,14 +270,14 @@ export function SearchResults({
               <input
                 type="checkbox"
                 data-testid="select-all"
-                aria-label="Select all"
+                aria-label={t("search.table.selectAll")}
                 checked={allSelected}
                 onChange={toggleAll}
               />
             </th>
             {visible.map((c) => (
               <th key={c.key} className="py-2 pr-4 font-semibold">
-                {c.label}
+                {t(c.label)}
               </th>
             ))}
           </tr>
@@ -286,7 +293,7 @@ export function SearchResults({
                 <input
                   type="checkbox"
                   data-testid="row-select"
-                  aria-label={`Select ${iss.key}`}
+                  aria-label={t("search.table.selectRow", { key: iss.key })}
                   checked={selected.has(iss.key)}
                   onChange={() => toggleRow(iss.key)}
                 />
@@ -315,7 +322,7 @@ export function SearchResults({
           {rows.length === 0 && (
             <tr>
               <td className="py-4 text-slate-400" colSpan={visible.length + 1}>
-                No results
+                {t("search.table.noResults")}
               </td>
             </tr>
           )}
@@ -378,6 +385,7 @@ function BulkAssigneePicker({
   value: { accountId: string; displayName: string } | null;
   onChange: (v: { accountId: string; displayName: string } | null) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const { query, setQuery, results } = usePeopleSearch(open);
@@ -397,14 +405,14 @@ function BulkAssigneePicker({
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        aria-label="Bulk assignee"
+        aria-label={t("search.bulk.assignee")}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="flex w-40 items-center justify-between rounded border border-slate-300 px-2 py-1 text-left text-sm hover:bg-slate-50"
       >
         <span className={value ? "text-[#1a1f36]" : "text-slate-400"}>
-          {value ? value.displayName : "Assignee…"}
+          {value ? value.displayName : t("search.bulk.assigneePlaceholder")}
         </span>
         <span aria-hidden className="text-slate-400">
           ▾
@@ -415,15 +423,15 @@ function BulkAssigneePicker({
         <div className="absolute z-20 mt-1 w-56 rounded border border-slate-200 bg-white shadow-lg">
           <input
             autoFocus
-            aria-label="Search people"
+            aria-label={t("search.people.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search people…"
+            placeholder={t("search.people.placeholder")}
             className="w-full border-b border-slate-100 px-2 py-1.5 text-sm focus:outline-none"
           />
           <div className="max-h-56 overflow-y-auto py-1" role="listbox">
             {results.length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-slate-400">No matching people</div>
+              <div className="px-2 py-1.5 text-xs text-slate-400">{t("search.people.noMatches")}</div>
             )}
             {results.map((u) => (
               <button
@@ -451,6 +459,7 @@ function BulkAssigneePicker({
 // change.
 
 function PriorityCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => void }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const update = useMutation({
     mutationFn: (id: string) => issues.update(iss.key, { priority: { id } }),
@@ -479,7 +488,7 @@ function PriorityCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => 
   return (
     <select
       autoFocus
-      aria-label={`Priority for ${iss.key}`}
+      aria-label={t("search.table.priorityFor", { key: iss.key })}
       defaultValue={iss.fields.priority?.id ?? ""}
       disabled={update.isPending}
       onClick={(e) => e.stopPropagation()}
@@ -500,6 +509,7 @@ function PriorityCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => 
 }
 
 function StatusCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => void }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [opts, setOpts] = useState<IssueTransitionOption[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -554,7 +564,7 @@ function StatusCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => vo
       <button
         type="button"
         data-testid="cell-status"
-        title={opts !== null && opts.length === 0 ? "No transitions available" : undefined}
+        title={opts !== null && opts.length === 0 ? t("search.table.noTransitions") : undefined}
         onClick={(e) => {
           e.stopPropagation();
           setEditing(false);
@@ -569,7 +579,7 @@ function StatusCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => vo
   return (
     <select
       autoFocus
-      aria-label={`Status for ${iss.key}`}
+      aria-label={t("search.table.statusFor", { key: iss.key })}
       defaultValue=""
       disabled={transition.isPending}
       onClick={(e) => e.stopPropagation()}
@@ -580,9 +590,9 @@ function StatusCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => vo
       className="rounded border border-slate-300 px-1 py-0.5 text-sm"
     >
       <option value="">{label}…</option>
-      {opts.map((t) => (
-        <option key={t.id} value={t.to.id}>
-          {t.to.name}
+      {opts.map((tr) => (
+        <option key={tr.id} value={tr.to.id}>
+          {tr.to.name}
         </option>
       ))}
     </select>
@@ -590,6 +600,7 @@ function StatusCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => vo
 }
 
 function AssigneeCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const { query, setQuery, results } = usePeopleSearch(open);
@@ -612,7 +623,7 @@ function AssigneeCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => 
       <button
         type="button"
         data-testid="cell-assignee"
-        aria-label={`Assignee for ${iss.key}`}
+        aria-label={t("search.table.assigneeFor", { key: iss.key })}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={(e) => {
@@ -621,7 +632,7 @@ function AssigneeCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => 
         }}
         className="rounded px-1 text-left text-[#1a1f36] hover:bg-slate-100"
       >
-        {iss.fields.assignee?.displayName ?? "Unassigned"}
+        {iss.fields.assignee?.displayName ?? t("search.table.unassigned")}
       </button>
 
       {open && (
@@ -631,15 +642,15 @@ function AssigneeCell({ iss, onChanged }: { iss: SearchIssue; onChanged?: () => 
         >
           <input
             autoFocus
-            aria-label={`Search people for ${iss.key}`}
+            aria-label={t("search.people.searchFor", { key: iss.key })}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search people…"
+            placeholder={t("search.people.placeholder")}
             className="w-full border-b border-slate-100 px-2 py-1.5 text-sm focus:outline-none"
           />
           <div className="max-h-56 overflow-y-auto py-1" role="listbox">
             {results.length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-slate-400">No matching people</div>
+              <div className="px-2 py-1.5 text-xs text-slate-400">{t("search.people.noMatches")}</div>
             )}
             {results.map((u) => (
               <button
