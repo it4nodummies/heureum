@@ -733,18 +733,8 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", err
 	}
-	icon, isSubtask := "task", false
-	switch strings.ToLower(name) {
-	case "subtask", "sub-task":
-		icon, isSubtask = "subtask", true
-	case "bug":
-		icon = "bug"
-	case "story":
-		icon = "story"
-	case "epic":
-		icon = "epic"
-	}
-	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: icon, IsSubtask: isSubtask, HierarchyLevel: levelForTypeName(name)}
+	class := classifyTypeName(name)
+	it = IssueType{ID: uuid.New().String(), ProjectID: projectID, Name: name, Icon: class.Icon, IsSubtask: class.IsSubtask, HierarchyLevel: class.Level}
 	if err := s.db.Create(&it).Error; err != nil {
 		return "", err
 	}
@@ -753,7 +743,7 @@ func (s *Service) TypeIDByName(projectID, name string) (string, error) {
 
 // SeedStandardTypes crea (idempotente) un tipo issue per ciascun nome nel
 // progetto, delegando a TypeIDByName — che fa get-or-create per nome e inferisce
-// icon/isSubtask/hierarchyLevel (levelForTypeName). Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
+// icon/isSubtask/hierarchyLevel (classifyTypeName). Rieseguirlo con gli stessi nomi è un no-op. Ritorna il primo
 // errore incontrato.
 func (s *Service) SeedStandardTypes(projectID string, names []string) error {
 	for _, name := range names {
