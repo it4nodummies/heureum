@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Comments } from "./Comments";
 import { History } from "./History";
+import { useT } from "@/lib/i18n";
 
 type ActivityTab = "comments" | "history";
 
@@ -30,16 +31,17 @@ function TabButton({
 // add/list flow (Comments.tsx) isn't hidden behind an extra click; "History"
 // renders the per-issue changelog (see History.tsx).
 export function Activity({ issueKey, projectKey }: { issueKey: string; projectKey?: string }) {
+  const t = useT();
   const [tab, setTab] = useState<ActivityTab>("comments");
 
   return (
     <section className="mt-8">
       <div data-testid="activity-tabs" className="mb-4 flex items-center gap-5 border-b border-slate-200">
         <TabButton active={tab === "comments"} onClick={() => setTab("comments")}>
-          Comments
+          {t("issues.activity.comments")}
         </TabButton>
         <TabButton active={tab === "history"} onClick={() => setTab("history")}>
-          History
+          {t("issues.activity.history")}
         </TabButton>
       </div>
 

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  ApiError,
   issues,
   meta,
   watchers,
@@ -28,12 +29,14 @@ import { EpicColorPicker } from "./EpicColorPicker";
 import { ParentField } from "./ParentField";
 import { TimeTracking } from "./TimeTracking";
 import { UserPicker } from "@/components/common/UserPicker";
+import { useFormat, useT } from "@/lib/i18n";
 
 interface Props {
   issueKey: string;
 }
 
 export function IssueView({ issueKey }: Props) {
+  const t = useT();
   const { data: issue, isLoading, isError, error } = useQuery({
     queryKey: ["issue", issueKey],
     queryFn: () => issues.get(issueKey),
@@ -213,7 +216,7 @@ export function IssueView({ issueKey }: Props) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <div className="w-7 h-7 rounded-full border-2 border-[#0052cc] border-t-transparent animate-spin" />
-        <span className="text-sm text-slate-400">Loading issue…</span>
+        <span className="text-sm text-slate-400">{t("issues.detail.loading")}</span>
       </div>
     );
   }
@@ -222,7 +225,11 @@ export function IssueView({ issueKey }: Props) {
     return (
       <div className="px-8 py-8">
         <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl">
-          {error instanceof Error ? error.message : "Issue not found."}
+          {error instanceof ApiError && error.status === 404
+            ? t("issues.detail.notFound")
+            : error instanceof Error
+              ? error.message
+              : t("issues.detail.missing")}
         </div>
       </div>
     );
@@ -267,7 +274,7 @@ export function IssueView({ issueKey }: Props) {
     <div className="max-w-5xl px-8 py-8">
       <nav data-testid="issue-breadcrumb" className="mb-3 flex items-center gap-1.5 text-xs text-slate-400">
         <Link href="/app/projects" className="text-[#0052cc] hover:underline">
-          Projects
+          {t("issues.detail.breadcrumbProjects")}
         </Link>
         <span>›</span>
         <Link href={`/app/projects/${projectKey}`} className="text-[#0052cc] hover:underline">
@@ -295,7 +302,7 @@ export function IssueView({ issueKey }: Props) {
           <button
             type="button"
             onClick={startEdit}
-            aria-label="Edit"
+            aria-label={t("issues.actions.edit")}
             data-testid="issue-edit-button"
             className="rounded p-1 text-slate-400 hover:text-[#0052cc] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#0052cc]/60"
           >
@@ -320,16 +327,16 @@ export function IssueView({ issueKey }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-8">
         <div className="bg-white border border-slate-100 rounded-2xl shadow-sm shadow-slate-100/80 p-6">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Description
+            {t("issues.detail.description")}
           </h2>
           {editMode ? (
             <RichTextEditor
               key={editSession}
               valueAdf={draftDescriptionAdf}
               onChangeAdf={setDraftDescriptionAdf}
-              placeholder="Add a description…"
+              placeholder={t("issues.detail.descriptionPlaceholder")}
               projectKey={projectKey}
-              ariaLabel="Description"
+              ariaLabel={t("issues.detail.description")}
               testId="description-editor"
             />
           ) : (
@@ -340,14 +347,14 @@ export function IssueView({ issueKey }: Props) {
         <aside className="space-y-4 bg-white border border-slate-100 rounded-2xl shadow-sm shadow-slate-100/80 p-5 h-fit">
           <button onClick={() => toggleWatch.mutate()} disabled={toggleWatch.isPending}
             className="w-full rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
-            {w?.isWatching ? "Stop watching" : "Watch"} ({w?.watchCount ?? 0})
+            {w?.isWatching ? t("issues.detail.stopWatching") : t("issues.detail.watch")} ({w?.watchCount ?? 0})
           </button>
           <button onClick={() => toggleVote.mutate()} disabled={toggleVote.isPending}
             className="mt-2 w-full rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
-            {v?.hasVoted ? "Unvote" : "Vote"} ({v?.votes ?? 0})
+            {v?.hasVoted ? t("issues.detail.unvote") : t("issues.detail.vote")} ({v?.votes ?? 0})
           </button>
-          <Field label="Status" value={f.status?.name} />
-          <Field label="Type" value={f.issuetype?.name} />
+          <Field id="status" label={t("issues.detail.status")} value={f.status?.name} />
+          <Field id="type" label={t("issues.detail.type")} value={f.issuetype?.name} />
           {level === 1 ? (
             <EpicColorPicker epicKey={issue.key} />
           ) : (
@@ -361,13 +368,13 @@ export function IssueView({ issueKey }: Props) {
 
           {editMode ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Priority</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.detail.priority")}</div>
               <select
                 value={draftPriorityId}
                 onChange={(e) => setDraftPriorityId(e.target.value)}
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
               >
-                {!draftPriorityId && <option value="">Select…</option>}
+                {!draftPriorityId && <option value="">{t("issues.actions.select")}</option>}
                 {(priorities ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -376,12 +383,12 @@ export function IssueView({ issueKey }: Props) {
               </select>
             </div>
           ) : (
-            <Field label="Priority" value={f.priority?.name} />
+            <Field id="priority" label={t("issues.detail.priority")} value={f.priority?.name} />
           )}
 
           {editMode ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Assignee</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.detail.assignee")}</div>
               <UserPicker
                 projectKey={projectKey}
                 value={draftAssigneeId}
@@ -393,31 +400,31 @@ export function IssueView({ issueKey }: Props) {
               />
             </div>
           ) : (
-            <Field label="Assignee" value={f.assignee?.displayName ?? "Unassigned"} />
+            <Field id="assignee" label={t("issues.detail.assignee")} value={f.assignee?.displayName ?? t("issues.unassigned")} />
           )}
-          <Field label="Reporter" value={f.reporter?.displayName ?? "—"} />
+          <Field id="reporter" label={t("issues.detail.reporter")} value={f.reporter?.displayName ?? "—"} />
 
           {editMode ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Labels</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.detail.labels")}</div>
               <input
                 value={draftLabels}
                 onChange={(e) => setDraftLabels(e.target.value)}
-                placeholder="comma, separated, labels"
+                placeholder={t("issues.detail.labelsPlaceholder")}
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
               />
             </div>
           ) : (
-            <Field label="Labels" value={f.labels.length ? f.labels.join(", ") : "None"} />
+            <Field id="labels" label={t("issues.detail.labels")} value={f.labels.length ? f.labels.join(", ") : t("issues.none")} />
           )}
 
           {editMode ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Fix versions</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.detail.fixVersions")}</div>
               <select
                 multiple
                 data-testid="issue-fixversions-select"
-                aria-label="Fix versions"
+                aria-label={t("issues.detail.fixVersions")}
                 value={draftFixVersionIds}
                 onChange={(e) =>
                   setDraftFixVersionIds(Array.from(e.target.selectedOptions, (o) => o.value))
@@ -433,7 +440,7 @@ export function IssueView({ issueKey }: Props) {
             </div>
           ) : (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Fix versions</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.detail.fixVersions")}</div>
               <div data-testid="issue-fixversions" className="mt-1 flex flex-wrap gap-1">
                 {(f.fixVersions ?? []).length ? (
                   (f.fixVersions ?? []).map((ver) => (
@@ -445,7 +452,7 @@ export function IssueView({ issueKey }: Props) {
                     </span>
                   ))
                 ) : (
-                  <span className="text-sm text-[#1a1f36]">None</span>
+                  <span className="text-sm text-[#1a1f36]">{t("issues.none")}</span>
                 )}
               </div>
             </div>
@@ -454,7 +461,7 @@ export function IssueView({ issueKey }: Props) {
           {editMode ? (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Story points
+                {t("issues.detail.storyPoints")}
               </div>
               <input
                 type="number"
@@ -466,7 +473,7 @@ export function IssueView({ issueKey }: Props) {
               />
             </div>
           ) : (
-            <Field label="Story points" value={f.customfield_10016 != null ? String(f.customfield_10016) : undefined} />
+            <Field id="story points" label={t("issues.detail.storyPoints")} value={f.customfield_10016 != null ? String(f.customfield_10016) : undefined} />
           )}
 
           {(customFieldDefs ?? []).map((cf) => (
@@ -491,18 +498,19 @@ export function IssueView({ issueKey }: Props) {
           {editMode ? (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Original estimate
+                {t("issues.detail.originalEstimate")}
               </div>
               <input
                 value={draftOriginalEstimate}
                 onChange={(e) => setDraftOriginalEstimate(e.target.value)}
-                placeholder="e.g. 1d 4h"
+                placeholder={t("issues.detail.originalEstimatePlaceholder")}
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
               />
             </div>
           ) : (
             <Field
-              label="Original estimate"
+              id="original estimate"
+              label={t("issues.detail.originalEstimate")}
               value={f.timetracking?.originalEstimateSeconds ? formatSeconds(f.timetracking.originalEstimateSeconds) : undefined}
             />
           )}
@@ -510,18 +518,19 @@ export function IssueView({ issueKey }: Props) {
           {editMode ? (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Remaining estimate
+                {t("issues.detail.remainingEstimate")}
               </div>
               <input
                 value={draftRemainingEstimate}
                 onChange={(e) => setDraftRemainingEstimate(e.target.value)}
-                placeholder="e.g. 4h"
+                placeholder={t("issues.detail.remainingEstimatePlaceholder")}
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0052cc]/20 focus:border-[#0052cc]"
               />
             </div>
           ) : (
             <Field
-              label="Remaining estimate"
+              id="remaining estimate"
+              label={t("issues.detail.remainingEstimate")}
               value={f.timetracking?.remainingEstimateSeconds ? formatSeconds(f.timetracking.remainingEstimateSeconds) : undefined}
             />
           )}
@@ -533,30 +542,30 @@ export function IssueView({ issueKey }: Props) {
                 disabled={save.isPending || requiredCustomMissing}
                 className="flex-1 rounded bg-[#0052cc] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0065ff] disabled:opacity-60"
               >
-                {save.isPending ? "Saving…" : "Save"}
+                {save.isPending ? t("issues.actions.saving") : t("issues.actions.save")}
               </button>
               <button
                 onClick={() => setEditMode(false)}
                 className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
               >
-                Cancel
+                {t("issues.actions.cancel")}
               </button>
             </div>
           )}
 
           {editMode && requiredCustomMissing && (
-            <p className="text-xs text-amber-700">Fill all required (*) custom fields to save.</p>
+            <p className="text-xs text-amber-700">{t("issues.detail.requiredCustomMissing")}</p>
           )}
 
           {save.isError && (
             <p className="text-xs text-red-600">
-              {save.error instanceof Error ? save.error.message : "Failed to save changes."}
+              {save.error instanceof Error ? save.error.message : t("issues.detail.saveFailed")}
             </p>
           )}
 
           {cfCustomWarnings.length > 0 && (
             <p className="text-xs text-amber-700">
-              Saved, but these custom fields could not be updated: {cfCustomWarnings.join(", ")}.
+              {t("issues.detail.customFieldsWarning", { fields: cfCustomWarnings.join(", ") })}
             </p>
           )}
         </aside>
@@ -577,11 +586,13 @@ export function IssueView({ issueKey }: Props) {
   );
 }
 
-function Field({ label, value }: { label: string; value?: string }) {
+// `id` keeps the pre-i18n English testid (`field-assignee`, `field-story points`…)
+// independent of the translated label.
+function Field({ id, label, value }: { id: string; label: string; value?: string }) {
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-      <div data-testid={`field-${label.toLowerCase()}`} className="text-sm text-[#1a1f36] mt-0.5">
+      <div data-testid={`field-${id}`} className="text-sm text-[#1a1f36] mt-0.5">
         {value ?? "—"}
       </div>
     </div>
@@ -614,6 +625,8 @@ function CustomFieldRow({
   onMulti: (vals: string[]) => void;
   onUser: (accountId: string | null, label: string | null) => void;
 }) {
+  const t = useT();
+  const fmt = useFormat();
   const isOption = field.field_type === "select" || field.field_type === "multiselect";
   const { data: options } = useQuery({
     queryKey: ["customFieldOptions", field.id],
@@ -627,7 +640,16 @@ function CustomFieldRow({
       case "number":
         return value.value_number != null ? String(value.value_number) : "—";
       case "date":
-        return value.value_date ? value.value_date.slice(0, 10) : "—";
+        // A date-only value stored at UTC midnight: format it in UTC so it
+        // never shifts to the previous day west of Greenwich.
+        return value.value_date
+          ? fmt.date(`${value.value_date.slice(0, 10)}T00:00:00Z`, {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              timeZone: "UTC",
+            })
+          : "—";
       case "select":
       case "multiselect": {
         const opt = (options ?? []).find((o) => o.id === value.option_id);
@@ -652,7 +674,7 @@ function CustomFieldRow({
         <input type="date" value={scalar} onChange={(e) => onScalar(e.target.value)} className={cfEditClass} />
       ) : field.field_type === "select" ? (
         <select value={scalar} onChange={(e) => onScalar(e.target.value)} className={cfEditClass}>
-          <option value="">Select…</option>
+          <option value="">{t("issues.actions.select")}</option>
           {(options ?? []).map((o) => (
             <option key={o.id} value={o.id}>
               {o.value}
@@ -676,7 +698,7 @@ function CustomFieldRow({
         <UserPicker
           projectKey={projectKey}
           value={scalar || null}
-          valueLabel={userLabel ?? (value?.value_text ? "Assigned" : null)}
+          valueLabel={userLabel ?? (value?.value_text ? t("issues.assigned") : null)}
           label={field.name}
           onChange={(accountId, user) => onUser(accountId, user?.displayName ?? null)}
         />

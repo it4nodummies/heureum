@@ -1,10 +1,12 @@
 "use client";
 
 import type { ADFNode } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 export function AdfRenderer({ doc }: { doc: ADFNode | null }) {
+  const t = useT();
   if (!doc || !doc.content || doc.content.length === 0) {
-    return <p className="italic text-slate-400">No description</p>;
+    return <p className="italic text-slate-400">{t("issues.adf.noDescription")}</p>;
   }
   return (
     <div className="prose prose-sm max-w-none">

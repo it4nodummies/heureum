@@ -7,12 +7,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { epics } from "@/lib/api";
 import { DEFAULT_EPIC_COLOR_KEY, EPIC_COLORS, EPIC_COLOR_KEYS } from "@/lib/epicColors";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   epicKey: string;
 }
 
 export function EpicColorPicker({ epicKey }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const { data: epic } = useQuery({
     queryKey: ["epic", epicKey],
@@ -31,23 +33,25 @@ export function EpicColorPicker({ epicKey }: Props) {
 
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Epic colour</div>
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("issues.epicColor.title")}</div>
       <div
         role="radiogroup"
-        aria-label="Epic colour"
+        aria-label={t("issues.epicColor.title")}
         data-testid="epic-color-picker"
         className="mt-1.5 grid grid-cols-7 gap-1.5"
       >
         {EPIC_COLOR_KEYS.map((key) => {
           const selected = key === current;
+          // "color_3" → "color 3" (en) / "colore 3" (it).
+          const swatchName = t("issues.epicColor.swatch", { n: key.replace("color_", "") });
           return (
             <button
               key={key}
               type="button"
               role="radio"
               aria-checked={selected}
-              aria-label={key.replace("_", " ")}
-              title={key.replace("_", " ")}
+              aria-label={swatchName}
+              title={swatchName}
               data-testid={`epic-color-${key}`}
               data-selected={selected ? "true" : undefined}
               disabled={setColor.isPending}
@@ -64,7 +68,7 @@ export function EpicColorPicker({ epicKey }: Props) {
       </div>
       {setColor.isError && (
         <p className="mt-1 text-xs text-red-600">
-          {setColor.error instanceof Error ? setColor.error.message : "Could not change the colour."}
+          {setColor.error instanceof Error ? setColor.error.message : t("issues.epicColor.failed")}
         </p>
       )}
     </div>

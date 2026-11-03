@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { users, profile, type JiraUserRef } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   projectKey: string;
@@ -24,15 +25,16 @@ interface Props {
   label?: string;
 }
 
-export function UserPicker({ projectKey, value, valueLabel, onChange, disabled, label = "Assignee" }: Props) {
+export function UserPicker({ projectKey, value, valueLabel, onChange, disabled, label }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(timer);
   }, [query]);
 
   useEffect(() => {
@@ -66,13 +68,13 @@ export function UserPicker({ projectKey, value, valueLabel, onChange, disabled, 
     setQuery("");
   }
 
-  const currentLabel = value ? valueLabel ?? "Assigned" : "Unassigned";
+  const currentLabel = value ? valueLabel ?? t("issues.assigned") : t("issues.unassigned");
 
   return (
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        aria-label={label}
+        aria-label={label ?? t("issues.userPicker.label")}
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
@@ -89,10 +91,10 @@ export function UserPicker({ projectKey, value, valueLabel, onChange, disabled, 
         <div className="absolute z-20 mt-1 w-64 rounded border border-slate-200 bg-white shadow-lg">
           <input
             autoFocus
-            aria-label="Search people"
+            aria-label={t("issues.userPicker.searchPeople")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search people…"
+            placeholder={t("issues.userPicker.searchPeoplePlaceholder")}
             className="w-full border-b border-slate-100 px-2 py-1.5 text-sm focus:outline-none"
           />
           <div className="max-h-56 overflow-y-auto py-1" role="listbox">
@@ -107,7 +109,7 @@ export function UserPicker({ projectKey, value, valueLabel, onChange, disabled, 
               >
                 —
               </span>
-              Unassigned
+              {t("issues.unassigned")}
             </button>
             {me && (
               <button
@@ -123,11 +125,11 @@ export function UserPicker({ projectKey, value, valueLabel, onChange, disabled, 
                 className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-slate-50"
               >
                 <UserAvatar displayName={me.displayName} avatarUrls={me.avatarUrls} />
-                Assign to me
+                {t("issues.userPicker.assignToMe")}
               </button>
             )}
             <div className="my-1 border-t border-slate-100" />
-            {isFetching && <div className="px-2 py-1.5 text-xs text-slate-400">Searching…</div>}
+            {isFetching && <div className="px-2 py-1.5 text-xs text-slate-400">{t("issues.actions.searching")}</div>}
             {!isFetching &&
               (results ?? [])
                 .filter((u) => u.accountId !== me?.accountId)
@@ -143,7 +145,7 @@ export function UserPicker({ projectKey, value, valueLabel, onChange, disabled, 
                   </button>
                 ))}
             {!isFetching && (results ?? []).length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-slate-400">No matching people</div>
+              <div className="px-2 py-1.5 text-xs text-slate-400">{t("issues.userPicker.noMatches")}</div>
             )}
           </div>
         </div>
